@@ -1,0 +1,175 @@
+---
+title: "Forest carbon loss 2001-2020 from Woodwell and Hansen data"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+
+```
+
+```{r plots, echo=FALSE, eval = TRUE, message = FALSE}
+setwd('/Users/emilysturdivant/PROJECTS/exploring_rgee')
+
+# Function ----
+tidy_forest_loss_df <- function(df) {
+  df_carbon <- df %>% 
+    select(starts_with('carbon_loss'), zone) %>% 
+    pivot_longer(-zone, 
+                 names_to = 'year',
+                 names_prefix = 'carbon_loss_', 
+                 values_to = 'carbon_loss_MgC') %>% 
+    mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
+             lubridate::year(), )
+  
+  df_area <- df %>% 
+    select(starts_with('forest'), zone) %>% 
+    pivot_longer(-zone, 
+                 names_to = 'year',
+                 names_prefix = 'forest_loss_', 
+                 values_to = 'forest_loss_ha') %>% 
+    mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
+             lubridate::year())
+  
+  # Join forest carbon and area loss values
+  df_join <- df_carbon %>% 
+    left_join(df_area) %>% 
+    mutate(across(carbon_loss_MgC:forest_loss_ha, ~ .x * -1)) %>% 
+    pivot_longer(cols = carbon_loss_MgC:forest_loss_ha) %>% 
+    mutate(yr_label = str_c(substr(year-1, 3,4), '-', substr(year, 3,4)))
+  
+  return(df_join)
+}
+
+# BBBR ----
+site <- 'BBBR'
+df <- read_csv('data/BBBR_annual_deforestation_by_district.csv') %>% 
+  mutate(zone = c('control 1', 'control 2', 'experiment'))
+
+df_join <- tidy_forest_loss_df(df)
+
+# Plot
+yr_labels <- df_join %>% distinct(yr_label) %>% deframe
+df_join %>% 
+  filter(!str_detect(name, 'forest')) %>% 
+  ggplot(aes(x = year, y = value)) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 2001:2020, 
+                     labels = yr_labels) +
+  labs(x = 'Year', y = 'Aboveground carbon (metric tons)',
+       title = site) +
+  facet_grid(rows = vars(zone),
+             cols = vars(name), 
+             scales = 'fixed') +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) 
+
+# Terra do Meio ----
+site = 'Xingu'
+df_tdm <- read_csv('data/TdM_RESEX_annual_deforestation.csv') %>% 
+  mutate(zone = c('Terra do Meio', 'RESEX Rio Iriri', 
+                  'RESEX Rio Xingu', 'RESEX Riosinho do Anfrisio'))
+
+df_tdm <- tidy_forest_loss_df(df_tdm) %>% 
+  filter(!str_detect(name, 'forest'))
+
+# Plot
+yr_labels <- df_tdm %>% distinct(yr_label) %>% deframe
+df_tdm %>% 
+  filter(zone == 'Terra do Meio') %>% 
+  ggplot(aes(x = year, y = value)) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 2001:2020, 
+                     labels = yr_labels) +
+  labs(x = 'Year', y = 'Aboveground carbon (metric tons)',
+       title = site) +
+  facet_grid(rows = vars(zone),
+             # cols = vars(name), 
+             scales = 'fixed') +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+# Plot
+yr_labels <- df_tdm %>% distinct(yr_label) %>% deframe
+df_tdm %>% 
+  filter(zone != 'Terra do Meio') %>% 
+  ggplot(aes(x = year, y = value)) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 2001:2020, 
+                     labels = yr_labels) +
+  labs(x = 'Year', y = 'Aboveground carbon (metric tons)',
+       title = site) +
+  facet_grid(rows = vars(zone),
+             # cols = vars(name), 
+             scales = 'fixed') +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+# Plot
+# df_join %>% 
+#   filter(zone == 'Terra do Meio') %>% 
+#   ggplot(aes(x = year, y = value)) +
+#   geom_point() +
+#   geom_line() +
+#   scale_x_continuous(breaks = 2001:2020) +
+#   xlab("Year") +
+#   facet_grid(rows = vars(name),
+#              cols = vars(zone), 
+#              scales = 'free_y')
+
+# Gunung Palung ----
+site <- 'Gunung Palung'
+df_gp <- read_csv('data/GPNP_annual_deforestation.csv') %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE))) %>% 
+  mutate(zone = site)
+
+df_gp <- tidy_forest_loss_df(df_gp) %>% 
+  filter(!str_detect(name, 'forest'))
+
+# Plot
+yr_labels <- df_gp %>% distinct(yr_label) %>% deframe
+df_gp %>% 
+  ggplot(aes(x = year, y = value)) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 2001:2020, 
+                     labels = yr_labels) +
+  labs(x = 'Year', y = 'Aboveground carbon (metric tons)',
+       title = site) +
+  facet_grid(rows = vars(zone),
+             # cols = vars(name),
+             scales = 'fixed') +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+# Manombo ----
+site <- 'Manombo'
+df_manombo <- read_csv('data/Manombo_annual_deforestation.csv') %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE))) %>% 
+  mutate(zone = site)
+
+df_manombo <- tidy_forest_loss_df(df_manombo) %>% 
+  filter(!str_detect(name, 'forest'))
+
+# Plot
+yr_labels <- df_manombo %>% distinct(yr_label) %>% deframe
+df_manombo %>% 
+  ggplot(aes(x = year, y = value)) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 2001:2020, 
+                     labels = yr_labels) +
+  labs(x = 'Year', y = 'Aboveground carbon (metric tons)',
+       title = site) +
+  facet_grid(rows = vars(zone),
+             # cols = vars(name),
+             scales = 'fixed') +
+  theme(
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+```

@@ -1,0 +1,55 @@
+---
+title: ""
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(sf)
+library(terra)
+```
+
+```{r plots, echo=FALSE, eval = TRUE, message = FALSE}
+# Global Safety Net
+gsn_dir <- "/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/01 GSN Layers"
+(gsn_shps <- list.files(gsn_dir, '*.shp$', full.names = TRUE))
+
+# Load data
+gsn_02 <- st_read(gsn_shps[[1]])
+summary(gsn_02)
+head(gsn_02)
+
+# Forest Landscape Integrity Index
+flii_dir <- "/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/flii"
+(flii_tifs <- list.files(flii_dir, '*.tif', full.names = TRUE))
+
+# Load data
+flii_africa <- terra::rast(flii_tifs[[1]])
+flii_africa <- flii_africa / 1000
+summary(flii_africa)
+NAflag(flii_africa) <- -9999
+
+plot(flii_africa)
+
+# make test area
+library(tmap)
+tmap_mode('view')
+
+e <- ext(c(xmin = 22, xmax = 41, ymin = -12, ymax = 2))
+bb <- c(e$xmin, e$ymin, e$xmax, e$ymax)
+
+tm_shape(st_as_sfc(st_bbox(bb))) + tm_borders()
+
+flii_sub <- flii_africa %>% crop(e)
+plot(flii_sub)
+
+flii_subr <- as(flii_sub, 'Raster')
+tm_shape(flii_subr) + tm_raster()
+
+library(mapview)
+mapview::mapview(flii_sub)
+```
