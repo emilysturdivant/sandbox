@@ -1,20 +1,23 @@
 ---
-title: "Forest carbon loss 2001-2020 from Woodwell and Hansen data"
-output: html_document
-editor_options: 
+title: "Forest carbon loss 2001-2020 from the 2000 baseline based on Hansen forest cover loss year"
+output:
+  word_document:
+    reference_docx: style.docx
+editor_options:
   chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE, echo = FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, results = FALSE)
 
 library(tmap)
+# tmap_mode('view')
 library(sf)
 library(patchwork)
 library(tidyverse)
 ```
 
-```{r plots, echo=FALSE, eval = TRUE, message = FALSE}
+```{r plots, eval = TRUE}
 setwd('/Users/emilysturdivant/PROJECTS/sandbox')
 
 # Function ----
@@ -46,45 +49,30 @@ tidy_forest_loss_df <- function(df) {
   #   pivot_longer(cols = carbon_loss_MgC:forest_loss_ha) %>% 
   #   mutate(yr_label = str_c(substr(year-1, 3,4), '-', substr(year, 3,4)))
   
-  return(df_join)
+  # Get carbon stock in 2000
+  mgc_2000 <- df %>% dplyr::select(zone, sum)
+  
+  # Get area of each polygon
+  mgc_2000$area_ha  <- mgc_2000 %>% 
+    st_transform(23836) %>% 
+    st_area() %>% 
+    units::set_units('ha') %>% 
+    units::set_units(NULL)
+  
+  # Get percent of carbon lost annually and percent of the region deforested 
+  df_tidy <- df_join %>% 
+    left_join(st_drop_geometry(mgc_2000)) %>% 
+    mutate(carbon_loss_pct = carbon_loss_MgC / sum,
+           forest_loss_pct = forest_loss_ha / area_ha)
+
+  return(df_tidy)
 }
 
-# BBBR ----
-site <- 'BBBR'
-df <- read_csv(here::here('data/BBBR_annual_deforestation_by_district.csv')) %>% 
-  rename(zone = name)
-
-df <- st_read(here::here('data/HIH_site_geojsons/BBBR_annual_deforestation.geojson')) %>% 
-  rename(zone = name)
-
-tmap_mode('view')
-tm_shape(df_sf) + tm_polygons()
-
-
-df_join <- tidy_forest_loss_df(df)
-
-# Get 
-mgc_2000 <- df %>% dplyr::select(zone, sum)
-
-# Get area of each polygon
-mgc_2000$area_ha  <- mgc_2000 %>% 
-  st_transform(23836) %>% 
-  st_area() %>% 
-  units::set_units('ha') %>% 
-  units::set_units(NULL)
-
-# Get percent of carbon lost annually and percent of the region deforested 
-df_tidy <- df_join %>% 
-  left_join(st_drop_geometry(mgc_2000)) %>% 
-  mutate(carbon_loss_pct = carbon_loss_MgC / sum,
-         forest_loss_pct = forest_loss_ha / area_ha)
-
-# Plot forest carbon and area loss ----
-plot_loss <- function(df, title, y_name) {
+plot_loss <- function(df, title, y_name, facet_scales = 'free_y') {
   
-  p <- ggplot(df, aes(x = year, y = value), , color = 'grey30') +
-    geom_point(size = .3) +
-    geom_line() +
+  p <- ggplot(df, aes(x = year, y = value)) +
+    geom_point(size = .3, color = 'grey30') +
+    geom_line(color = 'grey30') +
     # tidyquant::geom_ma(ma_fun = SMA, n = 3, color = "red") +
   	# geom_hline(yintercept = 0, color = 'grey30', size = 0.4, linetype = 'solid') +
     geom_smooth(method = 'lm', 
@@ -95,13 +83,13 @@ plot_loss <- function(df, title, y_name) {
                 show.legend = FALSE) +
     scale_x_continuous(name = "Year",
                        breaks = 2001:2020,
-                       ) +
+                       expand = c(0, 0)) +
   	scale_y_continuous(name = y_name,
   	                   labels = scales::comma) +
     labs(title = title) +
     facet_grid(rows = vars(zone),
                # rows = vars(name), 
-               scales = 'fixed') +
+               scales = facet_scales) +
     theme_bw() +
     theme(
       axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
@@ -110,198 +98,177 @@ plot_loss <- function(df, title, y_name) {
   return(p)
 }
 
+# BBBR ----
+site <- 'BBBR'
+df <- st_read(here::here('data/gee_exports/BBBR_annual_deforestation.geojson')) %>% 
+  filter(zone != '')
+
+tm_shape(df) + tm_polygons()
+
+df_tidy <- tidy_forest_loss_df(df)
+
+# Plot forest carbon and area loss ----
 # Plot
-(pc <- df_join %>% 
-  filter(!str_detect(name, 'forest')) %>%
-  plot_loss(title = 'Forest carbon loss', y_name = 'Aboveground carbon (metric tons)'))
-(pf <- df_join %>% 
-  filter(!str_detect(name, 'carbon_loss')) %>%
-  plot_loss(title = 'Forest area loss', y_name = 'Forest area (hectares)'))
+pc <- df_tidy %>% 
+   rename(value = carbon_loss_MgC) %>% 
+  # filter(!str_detect(name, 'forest')) %>%
+  plot_loss(title = 'Forest carbon loss', 
+            y_name = 'Aboveground carbon (metric tons)',
+            facet_scales = 'fixed')
+pf <- df_tidy %>% 
+   rename(value = forest_loss_ha) %>% 
+  # filter(!str_detect(name, 'carbon_loss')) %>%
+  plot_loss(title = 'Forest area loss',
+            y_name = 'Forest area (hectares)',
+            facet_scales = 'fixed')
 
 pc / pf
 
-# Plot
-df_tidy %>% 
-  mutate(carbon_loss_pct = carbon_loss_pct * 100) %>% 
-  ggplot(aes(x = year, y = carbon_loss_pct)) +
-  geom_point(size = 0.4) +
-  geom_line() +
-	geom_hline(yintercept = 0, color = 'grey30', size = 0.4, linetype = 'dashed') +
-  scale_x_continuous(name = "Year",
-                     breaks = 2001:2020,
-                     ) +
-	scale_y_continuous(name = 'Aboveground carbon (metric tons)',
-	                   labels = scales::comma) +
-  labs(title = site,
-       caption = "Annual loss in aboveground carbon storage. Greater values indicate more carbon lost.") +
-  facet_grid(rows = vars(zone),
-             # rows = vars(name), 
-             scales = 'fixed') +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
-    panel.grid.minor = element_blank()) 
-
-df_tidy %>% 
-  ggplot(aes(x = year, y = forest_loss_pct)) +
-  geom_point(size = 0.4) +
-  geom_line() +
-	geom_hline(yintercept = 0, color = 'grey30', size = 0.4, linetype = 'dashed') +
-  scale_x_continuous(name = "Year",
-                     breaks = 2001:2020,
-                     ) +
-	scale_y_continuous(name = 'Forest area (hectares)',
-	                   labels = scales::comma) +
-  labs(title = site,
-       caption = "Annual loss in aboveground carbon storage. Greater values indicate more carbon lost.") +
-  facet_grid(rows = vars(zone),
-             # rows = vars(name), 
-             scales = 'fixed') +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
-    panel.grid.minor = element_blank()) 
-
-# Seth's plot format
-y.abs.max <- max(abs(df_join$value))
-y.lim.50 <- plyr::round_any(y.abs.max, 50, f = ceiling) 
-
-df_join %>% filter(!str_detect(name, 'forest')) %>% 
-  mutate(category = 'Loss') %>% 
-  ggplot(aes(x = year, y = value, color = category)) +
-	geom_hline(yintercept = 0, color = 'grey30', size = 0.4, linetype = 'dashed') +
-	geom_line() +
-	geom_point() +
-	theme_bw() +
-	labs(x = 'Year', y = 'Aboveground carbon (metric tons)') +
-	scale_color_manual(name = '', 
-	                   breaks = c('Loss'), 
-	                   values = c('Loss'='red2')) +
-	scale_x_continuous(breaks = 2001:2020,
-					   limits = c(2001, 2020),
-					   expand = c(0, 0)) +
-	scale_y_continuous(breaks = scales::pretty_breaks(n = 4),
-					   # labels = y.lab.format,
-					   labels = scales::comma,
-					   limits = c(0, y.lim.50), 
-					   expand = c(0, 0)) +
-	coord_cartesian(clip = 'off') +
-	theme(
-		legend.title = element_blank(),
-		legend.position = 'none',
-		axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
-		plot.margin = unit(c(1, 1, 1, 1), 'lines'),
-		panel.grid = element_blank()
-	) +
-  facet_grid(rows = vars(zone),
-             # cols = vars(name), 
-             scales = 'fixed')
-
-
-
-# Terra do Meio ----
-site = 'Xingu'
-df_tdm <- read_csv('data/TdM_RESEX_annual_deforestation.csv') %>% 
-  mutate(zone = c('Terra do Meio', 'RESEX Rio Iriri', 
-                  'RESEX Rio Xingu', 'RESEX Riosinho do Anfrisio'))
-
-df_tdm <- tidy_forest_loss_df(df_tdm) %>% 
-  filter(!str_detect(name, 'forest'))
-
-# Plot
-yr_labels <- df_tdm %>% distinct(yr_label) %>% deframe
-df_tdm %>% 
-  filter(zone == 'Terra do Meio') %>% 
-  ggplot(aes(x = year, y = value)) +
-  geom_point() +
-  geom_line() +
-  scale_x_continuous(breaks = 2001:2020, 
-                     labels = yr_labels) +
-  labs(x = 'Year', y = 'Aboveground carbon (metric tons)',
-       title = site) +
-  facet_grid(rows = vars(zone),
-             # cols = vars(name), 
-             scales = 'fixed') +
-  theme(
-    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
-
-# Plot
-yr_labels <- df_tdm %>% distinct(yr_label) %>% deframe
-df_tdm %>% 
-  filter(zone != 'Terra do Meio') %>% 
-  ggplot(aes(x = year, y = value)) +
-  geom_point() +
-  geom_line() +
-  scale_x_continuous(breaks = 2001:2020, 
-                     labels = yr_labels) +
-  labs(x = 'Year', y = 'Aboveground carbon (metric tons)',
-       title = site) +
-  facet_grid(rows = vars(zone),
-             # cols = vars(name), 
-             scales = 'fixed') +
-  theme(
-    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
-
-# Plot
-# df_join %>% 
-#   filter(zone == 'Terra do Meio') %>% 
-#   ggplot(aes(x = year, y = value)) +
-#   geom_point() +
-#   geom_line() +
-#   scale_x_continuous(breaks = 2001:2020) +
-#   xlab("Year") +
-#   facet_grid(rows = vars(name),
-#              cols = vars(zone), 
-#              scales = 'free_y')
-
 # Gunung Palung ----
 site <- 'Gunung Palung'
-df_gp <- read_csv('data/GPNP_annual_deforestation.csv') %>% 
+df <- st_read(here::here('data/gee_exports/GPNP_annual_deforestation.geojson')) %>% 
   summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE))) %>% 
   mutate(zone = site)
 
-df_gp <- tidy_forest_loss_df(df_gp) %>% 
-  filter(!str_detect(name, 'forest'))
+tm_shape(df) + tm_polygons()
 
-# Plot
-yr_labels <- df_gp %>% distinct(yr_label) %>% deframe
-df_gp %>% 
-  ggplot(aes(x = year, y = value)) +
-  geom_point() +
-  geom_line() +
-  scale_x_continuous(breaks = 2001:2020, 
-                     labels = yr_labels) +
-  labs(x = 'Year', y = 'Aboveground carbon (metric tons)',
-       title = site) +
-  facet_grid(rows = vars(zone),
-             # cols = vars(name),
-             scales = 'fixed') +
-  theme(
-    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+df_tidy <- tidy_forest_loss_df(df)
+
+# Plot 
+pc <- df_tidy %>% 
+   rename(value = carbon_loss_MgC) %>%
+  plot_loss(title = 'Forest carbon loss', 
+            y_name = 'Aboveground carbon (metric tons)')
+pf <- df_tidy %>% 
+   rename(value = forest_loss_ha) %>% 
+  plot_loss(title = 'Forest area loss', 
+            y_name = 'Forest area (hectares)')
+
+pc / pf
 
 # Manombo ----
 site <- 'Manombo'
-df_manombo <- read_csv('data/Manombo_annual_deforestation.csv') %>% 
+df <- st_read(here::here('data/gee_exports/Manombo_annual_deforestation.geojson')) %>% 
   summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE))) %>% 
   mutate(zone = site)
 
-df_manombo <- tidy_forest_loss_df(df_manombo) %>% 
-  filter(!str_detect(name, 'forest'))
+tm_shape(df) + tm_polygons()
 
-# Plot
-yr_labels <- df_manombo %>% distinct(yr_label) %>% deframe
-df_manombo %>% 
-  ggplot(aes(x = year, y = value)) +
-  geom_point() +
-  geom_line() +
-  scale_x_continuous(breaks = 2001:2020, 
-                     labels = yr_labels) +
-  labs(x = 'Year', y = 'Aboveground carbon (metric tons)',
-       title = site) +
-  facet_grid(rows = vars(zone),
-             # cols = vars(name),
-             scales = 'fixed') +
-  theme(
-    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+df_tidy <- tidy_forest_loss_df(df)
 
+# Plot forest carbon and area loss
+pc <- df_tidy %>% 
+   rename(value = carbon_loss_MgC) %>%
+  plot_loss(title = 'Forest carbon loss', 
+            y_name = 'Aboveground carbon (metric tons)')
+pf <- df_tidy %>% 
+   rename(value = forest_loss_ha) %>% 
+  plot_loss(title = 'Forest area loss', 
+            y_name = 'Forest area (hectares)')
+
+pc / pf
+
+# Terra do Meio ----
+site <- 'Terra do Meio'
+df <- st_read(here::here('data/gee_exports/TdM_annual_deforestation.geojson')) %>% 
+  rename(zone = nombre)
+# df %>% select(-starts_with('carbon'))
+
+tm_shape(df) + tm_polygons('type1')
+
+df_tidy <- tidy_forest_loss_df(df) %>% 
+  mutate(type = str_extract(zone, '\\w+'))
+
+# Plot forest carbon and area loss ----
+# Plot TIs
+pc <- df_tidy %>% 
+  filter(type == 'TI') %>% 
+   rename(value = carbon_loss_MgC) %>%
+  plot_loss(title = 'Forest carbon loss', 
+            y_name = 'Aboveground carbon (metric tons)')
+pf <- df_tidy %>% 
+  filter(type == 'TI') %>% 
+   rename(value = forest_loss_ha) %>% 
+  plot_loss(title = 'Forest area loss', 
+            y_name = 'Forest area (hectares)')
+
+pc
+pf
+
+# Plot RESEX
+pc <- df_tidy %>% 
+  filter(type == 'RESEX') %>% 
+   rename(value = carbon_loss_MgC) %>%
+  plot_loss(title = 'Forest carbon loss', 
+            y_name = 'Aboveground carbon (metric tons)', 
+            facet_scales = 'fixed')
+pf <- df_tidy %>% 
+  filter(type == 'RESEX') %>% 
+   rename(value = forest_loss_ha) %>% 
+  plot_loss(title = 'Forest area loss',
+            y_name = 'Forest area (hectares)', 
+            facet_scales = 'fixed')
+
+pc / pf
+
+# Plot UCs
+pc <- df_tidy %>% 
+  filter(type != 'RESEX' & type != 'TI') %>% 
+   rename(value = carbon_loss_MgC) %>%
+  plot_loss(title = 'Forest carbon loss', 
+            y_name = 'Aboveground carbon (metric tons)', 
+            facet_scales = 'free_y')
+pf <- df_tidy %>% 
+  filter(type != 'RESEX' & type != 'TI') %>% 
+   rename(value = forest_loss_ha) %>% 
+  plot_loss(title = 'Forest area loss', 
+            y_name = 'Forest area (hectares)', 
+            facet_scales = 'free_y')
+
+pc
+pf
+# 
+# # Plot
+# df_tidy %>% 
+#   mutate(carbon_loss_pct = carbon_loss_pct * 100) %>% 
+#   ggplot(aes(x = year, y = carbon_loss_pct)) +
+#   geom_point(size = 0.4) +
+#   geom_line() +
+# 	geom_hline(yintercept = 0, color = 'grey30', size = 0.4, linetype = 'dashed') +
+#   scale_x_continuous(name = "Year",
+#                      breaks = 2001:2020,
+#                      ) +
+# 	scale_y_continuous(name = 'Aboveground carbon (metric tons)',
+# 	                   labels = scales::comma) +
+#   labs(title = site,
+#        caption = "Annual loss in aboveground carbon storage. Greater values indicate more carbon lost.") +
+#   facet_grid(rows = vars(zone),
+#              # rows = vars(name), 
+#              scales = 'fixed') +
+#   theme_minimal() +
+#   theme(
+#     axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+#     panel.grid.minor = element_blank()) 
+
+# # Plot
+# df_tidy %>% 
+#   mutate(carbon_loss_pct = carbon_loss_pct * 100) %>% 
+#   ggplot(aes(x = year, y = carbon_loss_pct)) +
+#   geom_point(size = 0.4) +
+#   geom_line() +
+# 	geom_hline(yintercept = 0, color = 'grey30', size = 0.4, linetype = 'dashed') +
+#   scale_x_continuous(name = "Year",
+#                      breaks = 2001:2020,
+#                      ) +
+# 	scale_y_continuous(name = 'Aboveground carbon (metric tons)',
+# 	                   labels = scales::comma) +
+#   labs(title = site,
+#        caption = "Annual loss in aboveground carbon storage. Greater values indicate more carbon lost.") +
+#   facet_grid(rows = vars(zone),
+#              # rows = vars(name), 
+#              scales = 'fixed') +
+#   theme_minimal() +
+#   theme(
+#     axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+#     panel.grid.minor = element_blank()) 
 ```
