@@ -1,5 +1,6 @@
 ---
-title: "Forest carbon loss 2001-2020 from the 2000 baseline based on Hansen forest cover loss year"
+title: "Forest carbon loss 2001-2020"
+subtitle: "Calculated by applying Hansen forest cover loss year to the Woodwell 2000 forest carbon baseline at 30 m resolution"
 output:
   word_document:
     reference_docx: style.docx
@@ -8,7 +9,8 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE, echo = FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, results = FALSE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, 
+                      warning = FALSE, results = FALSE, eval = TRUE)
 
 library(tmap)
 # tmap_mode('view')
@@ -17,9 +19,7 @@ library(patchwork)
 library(tidyverse)
 ```
 
-```{r plots, eval = TRUE}
-setwd('/Users/emilysturdivant/PROJECTS/sandbox')
-
+```{r plots}
 # Function ----
 tidy_forest_loss_df <- function(df) {
   df_carbon <- df %>% 
@@ -97,13 +97,42 @@ plot_loss <- function(df, title, y_name, facet_scales = 'free_y') {
   
   return(p)
 }
+```
+
+```{r}
+setwd('/Users/emilysturdivant/PROJECTS/sandbox')
+
+# Gunung Palung ----
+site <- 'Gunung Palung'
+df <- st_read(here::here('data/gee_exports/GPNP_annual_deforestation.geojson')) %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE))) %>% 
+  mutate(zone = site)
+
+#tm_shape(df) + tm_polygons()
+
+df_tidy <- tidy_forest_loss_df(df)
+
+# Plot 
+pc <- df_tidy %>% 
+   rename(value = carbon_loss_MgC) %>%
+  plot_loss(title = 'Forest carbon loss', 
+            y_name = 'Aboveground carbon (metric tons)')
+pf <- df_tidy %>% 
+   rename(value = forest_loss_ha) %>% 
+  plot_loss(title = 'Forest area loss', 
+            y_name = 'Forest area (hectares)')
+
+pc / pf
+```
+
+```{r}
 
 # BBBR ----
 site <- 'BBBR'
 df <- st_read(here::here('data/gee_exports/BBBR_annual_deforestation.geojson')) %>% 
   filter(zone != '')
 
-tm_shape(df) + tm_polygons()
+#tm_shape(df) + tm_polygons()
 
 df_tidy <- tidy_forest_loss_df(df)
 
@@ -123,36 +152,16 @@ pf <- df_tidy %>%
             facet_scales = 'fixed')
 
 pc / pf
+```
 
-# Gunung Palung ----
-site <- 'Gunung Palung'
-df <- st_read(here::here('data/gee_exports/GPNP_annual_deforestation.geojson')) %>% 
-  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE))) %>% 
-  mutate(zone = site)
-
-tm_shape(df) + tm_polygons()
-
-df_tidy <- tidy_forest_loss_df(df)
-
-# Plot 
-pc <- df_tidy %>% 
-   rename(value = carbon_loss_MgC) %>%
-  plot_loss(title = 'Forest carbon loss', 
-            y_name = 'Aboveground carbon (metric tons)')
-pf <- df_tidy %>% 
-   rename(value = forest_loss_ha) %>% 
-  plot_loss(title = 'Forest area loss', 
-            y_name = 'Forest area (hectares)')
-
-pc / pf
-
+```{r}
 # Manombo ----
 site <- 'Manombo'
 df <- st_read(here::here('data/gee_exports/Manombo_annual_deforestation.geojson')) %>% 
   summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE))) %>% 
   mutate(zone = site)
 
-tm_shape(df) + tm_polygons()
+#tm_shape(df) + tm_polygons()
 
 df_tidy <- tidy_forest_loss_df(df)
 
@@ -167,18 +176,22 @@ pf <- df_tidy %>%
             y_name = 'Forest area (hectares)')
 
 pc / pf
+```
 
+```{r}
 # Terra do Meio ----
 site <- 'Terra do Meio'
 df <- st_read(here::here('data/gee_exports/TdM_annual_deforestation.geojson')) %>% 
   rename(zone = nombre)
 # df %>% select(-starts_with('carbon'))
 
-tm_shape(df) + tm_polygons('type1')
+#tm_shape(df) + tm_polygons('type1')
 
 df_tidy <- tidy_forest_loss_df(df) %>% 
   mutate(type = str_extract(zone, '\\w+'))
+```
 
+```{r}
 # Plot forest carbon and area loss ----
 # Plot TIs
 pc <- df_tidy %>% 
@@ -194,7 +207,9 @@ pf <- df_tidy %>%
 
 pc
 pf
+```
 
+```{r}
 # Plot RESEX
 pc <- df_tidy %>% 
   filter(type == 'RESEX') %>% 
@@ -210,7 +225,9 @@ pf <- df_tidy %>%
             facet_scales = 'fixed')
 
 pc / pf
+```
 
+```{r}
 # Plot UCs
 pc <- df_tidy %>% 
   filter(type != 'RESEX' & type != 'TI') %>% 
@@ -227,6 +244,9 @@ pf <- df_tidy %>%
 
 pc
 pf
+```
+
+```{r}
 # 
 # # Plot
 # df_tidy %>% 

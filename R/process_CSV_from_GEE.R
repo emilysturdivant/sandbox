@@ -1,11 +1,37 @@
 
-library(tidyverse)
 library(sf)
+library(terra)
+library(tidyverse)
+
+# Convert Allen zoonotic spillover predictions to GeoTIFFs ----
+load('data/predictions.RData')
+
+lyr_name <- 'bsm_response'
+lyr_name <- 'bsm_weight_pubs'
+lyr_name <- 'bsm_weight_pop'
+
+# Convert to raster
+pred <- predictions %>% 
+  dplyr::select(lon, lat, matches(lyr_name)) %>% 
+  dplyr::rename(x=lon, y=lat)
+
+# Convert to SpatialPixelsDataFrame
+sp::coordinates(pred) = ~ x + y
+sp::proj4string(pred) = sp::CRS("+init=epsg:4326") # set it to lat-long
+sp::gridded(pred) <- TRUE
+
+# Convert to SpatRaster
+predr <-  raster::raster(pred) %>% rast()
+plot(predr)
+
+# Save
+writeRaster(predr, str_c('data/allen_', lyr_name, '.tif'))
+
 
 # Get area for site polygons ----
 polys_dir <- '/Volumes/GoogleDrive-105942041423621298895/My Drive/2_Work/Woodwell/HIH/site_polys'
 tdm_shp <- file.path(polys_dir,
-                     'Xingu/final_divisions/TdM_all_dissolved.shp')
+                     'Xingu/final_divisions/TdM_all_dissolved_gapfilled.shp')
 tdm <- st_read(tdm_shp)
 tdm %>% tbl_vars()
 
