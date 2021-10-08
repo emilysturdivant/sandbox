@@ -23,6 +23,54 @@ tmap_mode('view')
 tm_shape(tropics_rect) + tm_borders()
 
 data_dir <- '/Users/emilysturdivant/data'
+tropics_rect %>% st_write(file.path(data_dir, 'context', 'tropics_wide.shp'))
+```
+
+```{r extract-tropic-countries}
+# Select countries where MSF is working ----
+standardize_text <- function(x){
+  x %>% as.character() %>% 
+    str_trim() %>% 
+    str_to_upper() %>% 
+    stringi::stri_trans_general(str=., id='Latin-ASCII') %>% 
+    str_replace_all(' +', ' ') %>% 
+    str_replace_all('(, )+', ', ') %>% 
+    str_replace_all('( ,)+', ',') %>% 
+    str_remove_all('^,') %>% 
+    str_trim()
+}
+
+# MSF countries
+msf_countries <- read_csv(file.path('data', 'MSF_countries.csv'))
+msf_countries <- msf_countries %>% 
+  mutate(country = standardize_text(country), 
+         MSF = 1) %>% 
+  arrange(country)
+
+# Load data
+countries <- st_read(file.path(data_dir, 'gadm', 'gadm36_0.shp'),
+                             promote_to_multi = TRUE) %>% 
+  st_cast("POLYGON")
+
+# Simplify and subset countries to those that intersect tropics
+countries <- countries %>% st_simplify(dTolerance = 0.001)
+countries <- countries[unlist(st_intersects(tropics_rect, countries)),]
+
+# Remove parts of countries <2km2
+countries['area'] <- countries %>% st_area()
+countries <- countries %>% 
+  filter(area > units::set_units(4, 'km^2')) %>% 
+  group_by(NAME_0) %>% 
+  summarize()
+
+countries <- countries %>% 
+  mutate(country = standardize_text(NAME_0)) %>% 
+  left_join(msf_countries, by = 'country')
+
+# Save
+countries %>% st_write(file.path(data_dir, 'gadm', 'gadm36_0_tropics_simp001big3.shp'))
+
+tm_shape(countries) + tm_polygons(col = 'MSF')
 ```
 
 ```{r extract-tropics-pas}
@@ -143,7 +191,7 @@ pa_tropics %>%
   st_write(file.path(data_dir, 'protected_areas', 'WDOECM_Oct2021_tropics_simp001_buff0085.gpkg'))
 ```
 
-```{r}
+```{r prep-gsn}
 # Global Safety Net ----
 gsn_shps <- list.files(
   file.path(data_dir, 'global_safety_net', 'global_safety_net'),
@@ -172,7 +220,7 @@ subset_to_tropics <- function(shp_fp) {
 gsn_shps[[1]] %>% purrr::walk(subset_to_tropics)
 ```
 
-```{r}
+```{r prep-ifl}
 # Intact Forest Landscape ----
 in_dir <- file.path(data_dir, 'forests', 'IFL_2016')
 out_dir <- file.path(data_dir, 'forests', 'ifl_2016_tropics')
@@ -200,21 +248,22 @@ subset_to_tropics <- function(shp_fp) {
 ifl_shp[[1]] %>% purrr::walk(subset_to_tropics)
 ```
 
-```{r extract-tropics-flii}
+```{r prep-flii}
 # FLII
-out_dir <- file.path(data_dir, 'forests', 'flii_tropics')
+out_dir <- file.path(data_dir, 'forests', 'flii_tropics2')
 (flii_tifs <- list.files(file.path(data_dir, 'forests', 'flii'), 
                        pattern = 'flii_[^earth].*\\.tif$', 
                        full.names = TRUE))
 
-agg_and_crop <- function(fp) {
+crop_and_agg <- function(fp) {
   # Get output name
   fn_ac <- file.path(out_dir, str_c(basename(tools::file_path_sans_ext(fp)), '_agg3.tif'))
   
   # Load raster
   r <- terra::rast(fp)
   
-  # Get intersection of the bounding boxes of the two rasters (didn't work with terra::intersect)
+  # Get intersection of the bounding boxes of the two rasters 
+  # (didn't work with terra::intersect)
   r_bbox <- terra::ext(r) %>% as.vector() %>% sf::st_bbox() %>% sf::st_as_sfc()
   e_bbox <- e %>% as.vector() %>% sf::st_bbox() %>% sf::st_as_sfc()
   bb <- sf::st_intersection(r_bbox, e_bbox)
@@ -228,14 +277,16 @@ agg_and_crop <- function(fp) {
   # Convert to terra extent object
   bbex <- terra::ext(bb[c(1, 3, 2, 4)])
   
-  # Aggregate by factor of 3
-  r_agg <- terra::aggregate(r, 3)
+  # Crop
+  NAflag(r) <- -9999
+  r <- terra::crop(r, bbex)
   
-  # Crop and save
-  terra::crop(r_agg, bbex, filename = fn_ac, overwrite = TRUE)
+  # Aggregate and save
+  terra::aggregate(r, fact = 3, na.rm = TRUE, filename = fn_ac, overwrite = TRUE, 
+              datatype = 'INT2U')
 }
 
-flii_tifs %>% purrr::walk(agg_and_crop)
+flii_tifs %>% purrr::walk(crop_and_agg)
 
 # gdalUtils::gdalwarp(srcfile = fp, 
 #                     dstfile = fn_ac, 
@@ -243,25 +294,35 @@ flii_tifs %>% purrr::walk(agg_and_crop)
 #                     tr = c(xres(flii), yres(flii)), 
 #                     tap = TRUE, 
 #                     overwrite = TRUE)
-  
+
+# Mosaic resulting rasters
+in_dir <- file.path(data_dir, 'forests', 'flii_tropics2')
+out_dir <- file.path(data_dir, 'forests', 'flii_tropics3')
+(flii_tifs <- list.files(in_dir, 
+                       pattern = 'flii_[^earth].*\\.tif$', 
+                       full.names = TRUE))
+
+gdalUtils::mosaic_rasters(flii_tifs, file.path(out_dir, 'flii_tropics_agg3.tif'))
 ```
 
-```{r extract-tropics-hm}
-# FLII
+```{r prep-hm}
+# Human modification
 in_dir <- file.path(data_dir, 'human_influence', 'gHM')
 out_dir <- in_dir
-(tifs <- list.files(in_dir, pattern = '.tif$', full.names = TRUE))
+(tifs <- list.files(in_dir, pattern = 'gHM\\.tif$', full.names = TRUE))
 fp <- tifs[[1]]
   
 # Get output name
 fn_ac <- file.path(out_dir, str_c(basename(tools::file_path_sans_ext(fp)), '_wgs_tropics.tif'))
 
-# Load raster
+# Load raster ----
 r <- terra::rast(fp)
+
+# Reproject from Mollweide to WGS84
 crs(r)
 r_p <- terra::project(r, "epsg:4326")
 
-# Get intersection of the bounding boxes of the two rasters (didn't work with terra::intersect)
+# Get intersection of the bounding boxes of the two rasters
 r_bbox <- terra::ext(r_p) %>% as.vector() %>% sf::st_bbox() %>% sf::st_as_sfc()
 e_bbox <- e %>% as.vector() %>% sf::st_bbox() %>% sf::st_as_sfc()
 bb <- sf::st_intersection(r_bbox, e_bbox)
@@ -276,6 +337,27 @@ bbex <- terra::ext(bb[c(1, 3, 2, 4)])
 
 # Crop and save
 terra::crop(r_p, bbex, filename = fn_ac, overwrite = TRUE)
+
+
+```
+
+```{r combine-rasters}
+# Load Human modification
+hm_fp <- file.path(data_dir, 'human_influence', 'gHM', 'gHM_wgs_tropics.tif')
+hm <- terra::rast(fn_ac)
+
+# Load FLII
+out_dir <- file.path(data_dir, 'forests', 'flii_tropics3')
+flii_fp <- file.path(data_dir, 'forests', 'flii_tropics3', 'flii_tropics_agg3.tif')
+flii <- terra::rast(flii_fp)
+
+# Resample to common grid
+hm
+
+# Adjust range
+flii2 <- flii / 10000
+
+
 ```
 
 ```{r plots, echo=FALSE, eval = TRUE, message = FALSE}
