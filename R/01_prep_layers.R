@@ -1,3 +1,11 @@
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Script to:
+#     * Prep layers for HIH scaling
+# Requires:
+#     * 
+# Author:
+#     * esturdivant@woodwellclimate.org, 2021-09-30
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 library(sf)
 library(terra)
@@ -178,6 +186,55 @@ tm_shape(pa_tropics) + tm_polygons()
 pa_tropics %>% 
   st_write(file.path(data_dir, 'protected_areas', 'WDOECM_Oct2021_tropics_simp001_buff0085.gpkg'))
 
+
+# Convert Allen zoonotic spillover predictions to GeoTIFFs ----
+load('data/predictions.RData')
+
+pred_list <- c('bsm_response', 'bsm_weight_pubs', 'bsm_weight_pop') %>% 
+  purrr::map(function(lyr_name){
+    # Convert to raster
+    pred <- predictions %>% 
+      dplyr::select(lon, lat, matches(lyr_name)) %>% 
+      dplyr::rename(x=lon, y=lat)
+    
+    # Convert to SpatialPixelsDataFrame
+    sp::coordinates(pred) = ~ x + y
+    sp::proj4string(pred) = sp::CRS("+init=epsg:4326") # set it to lat-long
+    sp::gridded(pred) <- TRUE
+    
+    # Convert to SpatRaster
+    predr <-  raster::raster(pred) %>% rast()
+  }
+  )
+
+pred_stack <- terra::rast(pred_list)
+plot(pred_stack)
+
+# Save
+writeRaster(pred_stack, str_c('data/zoonotic_eid_risk.tif'))
+
+
+lyr_name <- 'bsm_response'
+lyr_name <- 'bsm_weight_pubs'
+lyr_name <- 'bsm_weight_pop'
+
+# Convert to raster
+pred <- predictions %>% 
+  dplyr::select(lon, lat, matches(lyr_name)) %>% 
+  dplyr::rename(x=lon, y=lat)
+
+# Convert to SpatialPixelsDataFrame
+sp::coordinates(pred) = ~ x + y
+sp::proj4string(pred) = sp::CRS("+init=epsg:4326") # set it to lat-long
+sp::gridded(pred) <- TRUE
+
+# Convert to SpatRaster
+predr <-  raster::raster(pred) %>% rast()
+plot(predr)
+
+# Save
+writeRaster(predr, str_c('data/allen_', lyr_name, '.tif'))
+
 # Prep Global Safety Net ----
 # Global Safety Net ----
 gsn_shps <- list.files(
@@ -205,6 +262,30 @@ subset_to_tropics <- function(shp_fp) {
 }
 
 gsn_shps[[1]] %>% purrr::walk(subset_to_tropics)
+
+# Convert Allen zoonotic spillover predictions to GeoTIFFs ----
+load('data/predictions.RData')
+
+lyr_name <- 'bsm_response'
+lyr_name <- 'bsm_weight_pubs'
+lyr_name <- 'bsm_weight_pop'
+
+# Convert to raster
+pred <- predictions %>% 
+  dplyr::select(lon, lat, matches(lyr_name)) %>% 
+  dplyr::rename(x=lon, y=lat)
+
+# Convert to SpatialPixelsDataFrame
+sp::coordinates(pred) = ~ x + y
+sp::proj4string(pred) = sp::CRS("+init=epsg:4326") # set it to lat-long
+sp::gridded(pred) <- TRUE
+
+# Convert to SpatRaster
+predr <-  raster::raster(pred) %>% rast()
+plot(predr)
+
+# Save
+writeRaster(predr, str_c('data/allen_', lyr_name, '.tif'))
 
 # Intact Forest Landscape ----
 in_dir <- file.path(data_dir, 'forests', 'IFL_2016')

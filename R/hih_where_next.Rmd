@@ -249,7 +249,7 @@ ifl_shp[[1]] %>% purrr::walk(subset_to_tropics)
 ```
 
 ```{r prep-flii}
-# FLII
+# FLII ----
 out_dir <- file.path(data_dir, 'forests', 'flii_tropics2')
 (flii_tifs <- list.files(file.path(data_dir, 'forests', 'flii'), 
                        pattern = 'flii_[^earth].*\\.tif$', 
