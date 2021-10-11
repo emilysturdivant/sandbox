@@ -1,3 +1,12 @@
+# ------------------------------------------------------------------------------
+# Script to:
+#     * Export 1 km total carbon stock from 500m AGB (2016), BGB (2016), and SOC (2010)
+# Requires:
+#     * export extent polygon
+#     * GEE account
+# Author:
+#     * esturdivant@woodwellclimate.org, 2021-10-10
+# ------------------------------------------------------------------------------
 
 # Load libraries ----
 library(rgee)
@@ -7,6 +16,31 @@ library(tidyverse)
 # Initialize variables ----
 viridis <- c('#440154', '#433982', '#30678D', '#218F8B', '#36B677', '#8ED542', '#FDE725')
 
+# Set a region of interest and center map display
+# region <- ee$Geometry$BBox(43, -18, 50, -16)
+# Map$centerObject(region, 0)
+
+# Get tropical biomes ----
+ecoregions <- ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")
+
+tropics <- ee$FeatureCollection(
+  c(
+    ecoregions$
+      filter(ee$Filter$eq('BIOME_NAME', 'Tropical & Subtropical Coniferous Forests')),
+    ecoregions$
+      filter(ee$Filter$eq('BIOME_NAME', 'Tropical & Subtropical Dry Broadleaf Forests')),
+    ecoregions$
+      filter(ee$Filter$eq('BIOME_NAME', 'Tropical & Subtropical Grasslands, Savannas & Shrublands')),
+    ecoregions$
+      filter(ee$Filter$eq('BIOME_NAME', 'Tropical & Subtropical Moist Broadleaf Forests'))
+  )
+)$
+  flatten()$
+  union()
+
+# View 
+Map$addLayer(eeObject = tropics, name = "Tropical biomes", opacity = 0.5) 
+
 # Create ImageCollection ----
 biomass_mgha <- ee$ImageCollection(c(
   "users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_Mgha", 
@@ -14,11 +48,9 @@ biomass_mgha <- ee$ImageCollection(c(
   "users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_SOC_Mgha"
 ))
 
-# pixel resolution and area
-res <- biomass_mgha$
-  first()$
-  projection()$
-  nominalScale()$getInfo()
+# Get original CRS, resolution, and area (ha)
+ee_crs <- biomass_mgha$first()$projection()$getInfo()$crs # should be 'SR-ORG:6974'
+res <- biomass_mgha$first()$projection()$nominalScale()$getInfo() # should be 463.3127165275
 pxl_ha <- (res*res)/(1e4)
 print(str_c('Pixel area (ha): ', pxl_ha))
 
@@ -40,21 +72,16 @@ carbon_mgc_tropics_1km <- carbon_mgc_tropics$
   
   # Explicitly specify the layer in MODIS projection and resolution
   # reproject(crs = 'SR-ORG:6974', scale = 463.3127165275)$
-  setDefaultProjection(crs = 'SR-ORG:6974', scale = 463.3127165275)$
+  setDefaultProjection(crs = ee_crs, scale = res)$
 
   # Specify that you want to sum 500m carbon stock
   # values within each of the 1km output pixels
   reduceResolution(reducer = ee$Reducer$sum(), maxPixels = 5)$
   
   # Finally, specify the output spatial resolution (~500m)
-  reproject(crs = 'SR-ORG:6974', scale = 1000)
-  # setDefaultProjection(crs = 'SR-ORG:6974', scale = 1000)
+  reproject(crs = ee_crs, scale = 1000)
 
 # View ----
-# Set a region of interest and center map display
-region <- ee$Geometry$BBox(43, -18, 50, -16)
-Map$centerObject(region, 6)
-
 # View 500 m and 1 km total C stock
 Map$addLayer(
   eeObject = carbon_mgc_tropics,
