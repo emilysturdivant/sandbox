@@ -170,8 +170,12 @@ df %>%
   units::set_units('ha') %>% 
   units::set_units(NULL)
   
-# tmap_mode('view')
-# tm_shape(df) + tm_polygons(alpha = 0.5)
+mdg3 <- raster::getData('GADM', country = 'MDG', level = 3)
+mdg <- st_read('/Users/emilysturdivant/data/context/gadm36_MDG_gpkg/gadm36_MDG.gpkg')
+
+tmap_mode('view')
+tm_shape(df) + tm_polygons(alpha = 0.5) +
+tm_shape(mdg) + tm_polygons(alpha = 0.5)
 
 # pas <- st_read('/Users/emilysturdivant/data/protected_areas/WDPA/WDPA_Oct2021_polygons_tropics_simp001.gpkg') %>% 
 #   filter(ISO3 == 'MDG')
