@@ -1,0 +1,324 @@
+---
+title: "HIH scaling priorities"
+output: 
+  ioslides_presentation:
+    widescreen: true
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, 
+                      warning = FALSE, results = TRUE, 
+                      eval = TRUE, 
+                      fig.height=5, fig.width=9)
+
+source('01_use_rgee.R')
+```
+
+```{r, eval = TRUE}
+# Sum FLII and human modification ----
+indices <- list(
+  list( 
+    name = "Forest Integrity (FLII) + Human Modification (HM)",
+    index = flii$
+      add(gHM)$
+      divide(1.2)),
+  list( 
+    name = "FLII + HM + Carbon",
+    index = flii$
+      add(carbon_idx)$
+      add(gHM)$
+      divide(2.2)
+  ),
+  list( 
+    name = "FLII + HM + C + Development Threats Index",
+    index = flii$
+      add(gHM)$
+      add(carbon_idx)$
+      add(dti$unmask())$
+      divide(2.9)
+  ),
+  list( 
+    name = "FLII + HM + C + DTI + Healthcare access",
+    index = flii$
+      add(gHM)$
+      add(carbon_idx)$
+      add(dti$unmask())$
+      add(hc_access)$
+      divide(3.5)
+  ),
+  list( 
+    name = "FLII + HM + C + DTI + HC + Spillover risk",
+    index = flii$
+      add(gHM)$
+      add(carbon_idx)$
+      add(dti$unmask())$
+      add(hc_access)$
+      add(zoonotic_risk)$
+      divide(3.5)
+  ),
+  list( 
+    name = "FLII + HM + C + DTI + HC + Spillover + Biodiversity",
+    index = flii$
+      add(gHM)$
+      add(carbon_idx)$
+      add(dti$unmask())$
+      add(hc_access)$
+      add(zoonotic_risk)$
+      add(kba_r$unmask())$
+      divide(4.2)
+  )
+)
+```
+
+```{r, eval = TRUE}
+# Set a region of interest and center map display
+Map$setCenter(zoom = 2)
+legend <- Map$addLegend(
+  visParams = indexViz,
+  name = "Legend",
+  position = c("bottomright", "topright", "bottomleft", "topleft"),
+  color_mapping = "numeric",
+  opacity = 1
+)
+```
+
+## `r indices[[1]]$name` 
+
+```{r, eval = TRUE}
+Map$addLayer(eeObject = indices[[1]]$index, visParams = indexViz, name = indices[[1]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[2]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[2]]$index, visParams = indexViz, name = indices[[2]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[3]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[3]]$index, visParams = indexViz, name = indices[[3]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[4]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[4]]$index, visParams = indexViz, name = indices[[4]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[5]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[5]]$index, visParams = indexViz, name = indices[[5]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[6]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[6]]$index, visParams = indexViz, name = indices[[6]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+```{r, eval = TRUE}
+# Set a region of interest and center map display
+Map$centerObject(tdm, 5)
+legend <- Map$addLegend(
+  visParams = indexViz,
+  name = "Legend",
+  position = c("bottomright", "topright", "bottomleft", "topleft"),
+  color_mapping = "numeric",
+  opacity = 1
+)
+```
+
+```{r, eval = FALSE}
+Map$addLayer(eeObject = indices[[1]]$index, visParams = indexViz, name = indices[[1]]$name) +
+  Map$addLayer(eeObject = indices[[2]]$index, visParams = indexViz, name = indices[[2]]$name) +
+  Map$addLayer(eeObject = indices[[3]]$index, visParams = indexViz, name = indices[[3]]$name) +
+  Map$addLayer(eeObject = indices[[4]]$index, visParams = indexViz, name = indices[[4]]$name) +
+  Map$addLayer(eeObject = indices[[5]]$index, visParams = indexViz, name = indices[[5]]$name) +
+  Map$addLayer(eeObject = indices[[6]]$index, visParams = indexViz, name = indices[[6]]$name) +
+  hih_sites_lyr +
+  legend
+```
+
+## `r indices[[1]]$name` 
+
+```{r, eval = TRUE}
+Map$addLayer(eeObject = indices[[1]]$index, visParams = indexViz, name = indices[[1]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[2]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[2]]$index, visParams = indexViz, name = indices[[2]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[3]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[3]]$index, visParams = indexViz, name = indices[[3]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[4]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[4]]$index, visParams = indexViz, name = indices[[4]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[5]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[5]]$index, visParams = indexViz, name = indices[[5]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[6]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[6]]$index, visParams = indexViz, name = indices[[6]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+```{r, eval = TRUE}
+# Set a region of interest and center map display
+Map$centerObject(manombo, 7)
+legend <- Map$addLegend(
+  visParams = indexViz,
+  name = "Legend",
+  position = c("bottomright", "topright", "bottomleft", "topleft"),
+  color_mapping = "numeric",
+  opacity = 1
+)
+```
+
+## `r indices[[1]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[1]]$index, visParams = indexViz, name = indices[[1]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[2]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[2]]$index, visParams = indexViz, name = indices[[2]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[3]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[3]]$index, visParams = indexViz, name = indices[[3]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[4]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[4]]$index, visParams = indexViz, name = indices[[4]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[5]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[5]]$index, visParams = indexViz, name = indices[[5]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[6]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[6]]$index, visParams = indexViz, name = indices[[6]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+```{r, eval = TRUE}
+# Set a region of interest and center map display
+Map$centerObject(bbbr, 5)
+legend <- Map$addLegend(
+  visParams = indexViz,
+  name = "Legend",
+  position = c("bottomright", "topright", "bottomleft", "topleft"),
+  color_mapping = "numeric",
+  opacity = 1
+)
+```
+
+## `r indices[[1]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[1]]$index, visParams = indexViz, name = indices[[1]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[2]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[2]]$index, visParams = indexViz, name = indices[[2]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[3]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[3]]$index, visParams = indexViz, name = indices[[3]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[4]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[4]]$index, visParams = indexViz, name = indices[[4]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[5]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[5]]$index, visParams = indexViz, name = indices[[5]]$name) +
+  hih_sites_lyr + 
+  legend
+```
+
+## `r indices[[6]]$name`
+
+```{r}
+Map$addLayer(eeObject = indices[[6]]$index, visParams = indexViz, name = indices[[6]]$name) +
+  hih_sites_lyr + 
+  legend
+```
