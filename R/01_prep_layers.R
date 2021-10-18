@@ -16,14 +16,14 @@ library(tidyverse)
 # Initialize ----
 data_dir <- '/Users/emilysturdivant/data'
 
-# Create tropics extent
-e <- ext(c(xmin = -180, xmax = 180, ymin = -23.5, ymax = 23.5))
+# Create tropics extent ----
+e <- ext(c(xmin = -180, xmax = 180, ymin = -23.3, ymax = 23.3))
 bb <- c(e$xmin, e$ymin, e$xmax, e$ymax)
 tropics_rect <- st_as_sfc(st_bbox(bb, crs = st_crs(4326)))
 
-tropics_rect_shp <- file.path(data_dir, 'context', 'tropics_wide.shp')
+tropics_rect_shp <- file.path(data_dir, 'context', 'tropics_rect.shp')
 if(!file.exists(tropics_rect_shp)) {
-  tropics_rect %>% st_write(file.path(data_dir, 'context', 'tropics_wide.shp'))
+  tropics_rect %>% st_write(tropics_rect_shp)
 }
 
 # Extract countries in tropics and add MSF flag ----

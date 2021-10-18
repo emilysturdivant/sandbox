@@ -4,27 +4,25 @@ source('R/01_use_rgee.R')
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Combine ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Sum FLII and human modification ----
-indices_add <- list(
+# Sums ----
+additive <- list(
   fi_hm = list(
     name = "FLII + HM",
     index = flii$
-      add(gHM)$
-      divide(1.2)),
+      add(gHM)
+    ),
   fi_hm_c = list(
     name = "FLII  + C + HM",
     index = flii$
       add(carbon_idx)$
-      add(gHM)$
-      divide(2.2)
+      add(gHM)
   ),
   fi_c_hm_dti = list(
     name = "FLII + C + HM + DTI",
     index = flii$
       add(gHM)$
       add(carbon_idx)$
-      add(dti$unmask())$
-      divide(2.9)
+      add(dti$unmask())
   ),
   fi_c_hm_dti_hc = list(
     name = "FLII + HM + C + DTI + HC",
@@ -32,8 +30,7 @@ indices_add <- list(
       add(gHM)$
       add(carbon_idx)$
       add(dti$unmask())$
-      add(hc_access)$
-      divide(3.5)
+      add(hc_access)
   ),
   fi_c_hm_dti_hc_zs = list(
     name = "FLII + C + HM + DTI + HC + ZS",
@@ -42,8 +39,7 @@ indices_add <- list(
       add(carbon_idx)$
       add(dti$unmask())$
       add(hc_access)$
-      add(zoonotic_risk)$
-      divide(3.5)
+      add(zoonotic_risk)
   ),
   fi_c_bio_hm_dti_hc = list(
     name = "FLII + C + Biodiv + HM + DTI + HC",
@@ -52,8 +48,7 @@ indices_add <- list(
       add(carbon_idx)$
       add(dti$unmask())$
       add(hc_access)$
-      add(kba_r$unmask())$
-      divide(4)
+      add(kba_r$unmask())
   ),
   fi_c_bio_hm_dti_hc_zs = list(
     name = "FLII+ C + Biodiv + HM + DTI + HC + ZS",
@@ -63,11 +58,173 @@ indices_add <- list(
       add(gHM)$
       add(dti$unmask())$
       add(hc_access)$
-      add(zoonotic_risk)$
-      divide(4.2)
+      add(zoonotic_risk)
   )
 )
 
+# Rescale to 0-1 and mask
+rescale_index_in_list <- function(lst, tropics_bb) {
+  idx <- lst$index$
+    updateMask(tropics_r$neq(0))
+  
+  idx <- rescale_to_pctl(idx, tropics_bb)
+  
+  return( list(name = lst$name, 
+               index = idx))
+}
+
+# Run
+additive_01 <- additive %>% purrr::map(rescale_index_in_list, tropics_bb)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Create indicators (combinations of inputs) ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Forest ----
+i_forest <- flii$
+  add(carbon_idx)$
+  divide(2)
+
+# Threat ----
+# i_threat <- dti$unmask()$
+#   add(gHM$multiply(2))
+i_threat <- dti$unmask()$
+  add(gHM)$
+  divide(2)
+
+# Health ----
+i_health <- hc_access$
+  add(infant_mort)$
+  divide(2)
+
+# Biodiversity ----
+i_biodiv <- kba_r$unmask()
+
+# (Forest + Biodiversity) ----
+i_forestbio <- flii$
+  add(carbon_idx)$
+  add(kba_r$unmask())$
+  divide(3)
+
+# Humans ----
+i_humans <- dti$unmask()$
+  add(gHM)$
+  add(hc_access)$
+  add(infant_mort)$
+  divide(4)
+
+# Zoonotic risk ----
+i_zs <- zoonotic_risk$multiply(0.5)$add(0.5)
+
+# Humans+ -----
+i_humansz <- dti$unmask()$
+  add(gHM)$
+  add(hc_access)$
+  add(infant_mort)$
+  add(zoonotic_risk)$
+  divide(5)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Combine indicators ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+multiplicative <- list(
+  f_t = list(
+    name = "Forests * Threats",
+    name2 = "(FLII + C) * (HM + DTI)",
+    index = i_forest$
+      multiply(i_threat)$
+      resample()
+  ),
+  f_t_h = list(
+    name = "Forests * Threats * Health",
+    name2 = "(FLII + C) * (HM + DTI) * (HC + IMR)",
+    index = i_forest$
+      multiply(i_threat)$
+      multiply(i_health)$
+      resample()
+  ),
+  f_t_h_b = list(
+    name = "Forests * Threats * Health * Biodiversity",
+    name2 = "(FLII + C) * (HM + DTI) * (HC + IMR) * Biodiv",
+    index = i_forest$
+      multiply(i_threat)$
+      multiply(i_health)$
+      multiply(i_biodiv)$
+      resample()
+  ),
+  fb_t_h = list(
+    name = "ForestsBio * Threats * Health",
+    name2 = "(FLII + C + Biodiv) * (HM + DTI) * (HC + IMR)",
+    index = i_forestbio$
+      multiply(i_threat)$
+      multiply(i_health)$
+      resample()
+  ),
+  fb_hum = list(
+    name = "ForestsBio * ThreatsHealth",
+    name2 = "(FLII + C + Biodiv) * (HM + DTI + HC + IMR)",
+    index = i_forestbio$
+      multiply(i_humans)$
+      resample()
+  ),
+  fb_hum_z = list(
+    name = "ForestsBio * ThreatsHealth * Spillover",
+    name2 = "(FLII + C + Biodiv) * (HM + DTI + HC + IMR) * ZS",
+    index = i_forestbio$
+      multiply(i_humans)$
+      multiply(i_zs)$
+      resample()
+  ),
+  fb_humz = list(
+    name = "ForestsBio * ThreatsHealthSpillover",
+    name2 = "(FLII + C + Biodiv) * (HM + DTI + HC + IMR + ZS)",
+    index = i_forestbio$
+      multiply(i_humansz)$
+      resample()
+  ),
+  f_humz = list(
+    name = "Forests * ThreatsHealthSpillover",
+    name2 = "(FLII + C) * (HM + DTI + HC + IMR + ZS)",
+    index = i_forest$
+      multiply(i_humansz)$
+      resample()
+  )
+)
+
+# Run
+multiplicative_01 <- multiplicative %>% purrr::map(rescale_index_in_list, tropics_bb)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Classify ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+classify_index <- function(img) {
+  ee$Image(0)$
+    where(img$lt(0.2), 1)$
+    where(img$gte(0.2), 2)$
+    where(img$gte(0.4), 3)$
+    where(img$gte(0.6), 4)$
+    where(img$gte(0.8), 5)$
+    where(img$gte(0.95), 6)$
+    updateMask(img$mask())
+}
+
+classify_index_in_list <- function(lst) {
+  idx <- classify_index(lst$index)
+  
+  return( list(name = lst$name, 
+               index = idx)
+          )
+}
+
+# Reclass ----
+idx_ForestBioXThreatsHealthXSpillover <- classify_index(idx_ForestBioXThreatsHealthXSpillover)
+idx_ForestBioXThreatsHealthSpillover <- classify_index(idx_ForestBioXThreatsHealthSpillover)
+
+# Run
+mltplctv_clas <- multiplicative_01 %>% purrr::map(classify_index_in_list)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# View ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Map$setCenter(zoom = 2)
 legend <- Map$addLegend(
   visParams = indexViz,
@@ -77,39 +234,64 @@ legend <- Map$addLegend(
   opacity = 1
 )
 
-indices_add[[1]]
+Map$addLayer(eeObject = additive_01[[1]]$index, visParams = indexViz, name = additive_01[[1]]$name,
+             shown = FALSE) +
+  Map$addLayer(eeObject = additive_01[[2]]$index, visParams = indexViz, name = additive_01[[2]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = additive_01[[3]]$index, visParams = indexViz, name = additive_01[[3]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = additive_01[[4]]$index, visParams = indexViz, name = additive_01[[4]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = additive_01[[5]]$index, visParams = indexViz, name = additive_01[[5]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = additive_01[[6]]$index, visParams = indexViz, name = additive_01[[6]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = additive_01[[7]]$index, visParams = indexViz, name = additive_01[[7]]$name,
+               shown = FALSE) +
+  hih_sites_lyr +
+  legend
 
-# Map$addLayer(eeObject = indices_add[[1]]$index, visParams = indexViz, name = indices_add[[1]]$name) +
-#   Map$addLayer(eeObject = indices_add[[2]]$index, visParams = indexViz, name = indices_add[[2]]$name) +
-#   Map$addLayer(eeObject = indices_add[[3]]$index, visParams = indexViz, name = indices_add[[3]]$name) +
-#   Map$addLayer(eeObject = indices_add[[4]]$index, visParams = indexViz, name = indices_add[[4]]$name) +
-#   Map$addLayer(eeObject = indices_add[[5]]$index, visParams = indexViz, name = indices_add[[5]]$name) +
-#   Map$addLayer(eeObject = indices_add[[6]]$index, visParams = indexViz, name = indices_add[[6]]$name) +
-#   Map$addLayer(eeObject = indices_add[[7]]$index, visParams = indexViz, name = indices_add[[7]]$name) +
-#   hih_sites_lyr +
-#   legend
+Map$addLayer(eeObject = multiplicative_01[[1]]$index, visParams = indexViz, name = multiplicative_01[[1]]$name,
+             shown = FALSE) +
+  Map$addLayer(eeObject = multiplicative_01[[2]]$index, visParams = indexViz, name = multiplicative_01[[2]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = multiplicative_01[[3]]$index, visParams = indexViz, name = multiplicative_01[[3]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = multiplicative_01[[4]]$index, visParams = indexViz, name = multiplicative_01[[4]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = multiplicative_01[[5]]$index, visParams = indexViz, name = multiplicative_01[[5]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = multiplicative_01[[6]]$index, visParams = indexViz, name = multiplicative_01[[6]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = multiplicative_01[[7]]$index, visParams = indexViz, name = multiplicative_01[[7]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = multiplicative_01[[8]]$index, visParams = indexViz, name = multiplicative_01[[8]]$name,
+               shown = FALSE) +
+  hih_sites_lyr +
+  legend
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Add and multiply ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Forest and Threat ----
-i_forest <- flii$add(carbon_idx)$divide(2)
-i_threat <- dti$unmask()$add(gHM$multiply(2))$divide(1.9)
+viz <- list(min = 0, max = 5, palette = BlueToRed, values = c('1', '2', '3', '4', '5'))
+Map$addLayer(eeObject = mltplctv_clas[[1]]$index, visParams = viz, name = mltplctv_clas[[1]]$name,
+             shown = FALSE) +
+  Map$addLayer(eeObject = mltplctv_clas[[2]]$index, visParams = viz, name = mltplctv_clas[[2]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = mltplctv_clas[[3]]$index, visParams = viz, name = mltplctv_clas[[3]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = mltplctv_clas[[4]]$index, visParams = viz, name = mltplctv_clas[[4]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = mltplctv_clas[[5]]$index, visParams = viz, name = mltplctv_clas[[5]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = mltplctv_clas[[6]]$index, visParams = viz, name = mltplctv_clas[[6]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = mltplctv_clas[[7]]$index, visParams = viz, name = mltplctv_clas[[7]]$name,
+               shown = FALSE) +
+  Map$addLayer(eeObject = mltplctv_clas[[8]]$index, visParams = viz, name = mltplctv_clas[[8]]$name,
+               shown = FALSE) +
+  hih_sites_lyr +
+  Map$addLegend( visParams = viz, color_mapp = 'character', name = NA)
 
-# Combine
-idx_multiply <- i_forest$multiply(i_threat)$resample()$divide(0.4)
-idx_sum <- i_forest$add(i_threat)$resample()$divide(1.3)
 
-# get percentiles
-idx_pctls <- i_threat$reduceRegion(
-  reducer = ee$Reducer$percentile(c(0, 2, 50, 98, 99, 100)),
-  geometry = tropics_bb,
-  bestEffort = TRUE)$
-  getInfo()
-
-
-
-
+# Map individual indicators ----
 map_forests <- Map$addLayer(
   eeObject = i_forest, visParams = indexViz, name = "Forests indicator (FLII + Carbon)",
   shown = FALSE
@@ -133,167 +315,6 @@ map_idx_sum<- Map$addLayer(
   shown = FALSE
 )
 
-# Forest * Threat * Health ----
-i_health <- hc_access$add(infant_mort)$divide(1.4)
-
-idx <- i_forest$
-  multiply(i_threat)$
-  multiply(i_health)$
-  resample()$
-  divide(0.22)
-
-# Map
-map_idx_ForestXThreatsXHealth <- Map$addLayer(
-  eeObject = idx, visParams = indexViz,
-  name = "(FLII + Carbon) * (HumanModification + DTI) * (HC + IMR)",
-  shown = FALSE
-)
-
-# Forest * Threat * Health * Biodiversity ----
-i_biodiv <- kba_r$unmask()
-
-idx <- i_forest$
-  multiply(i_threat)$
-  multiply(i_health)$
-  multiply(i_biodiv)$
-  resample()$
-  divide(0.12)
-
-# Map
-map_idx_ForestXThreatsXHealthXBio <- Map$addLayer(
-  eeObject = idx, visParams = indexViz,
-  name = "(FLII + Carbon) * (HumanModification + DTI) * (HC + IMR) * (Biodiversity)",
-  shown = FALSE
-)
-
-# (Forest + Biodiversity) * Threat * Health ----
-i_forestbio <- flii$add(carbon_idx)$add(kba_r$unmask())$divide(3)
-
-idx <- i_forestbio$
-  multiply(i_threat)$
-  multiply(i_health)$
-  resample()$
-  divide(0.2)
-
-# # get percentiles
-# (idx_pctls <- idx$reduceRegion(
-#   reducer = ee$Reducer$percentile(c(0, 2, 50, 98, 99, 100)),
-#   geometry = tropics_bb,
-#   bestEffort = TRUE)$
-#     getInfo())
-
-# get percentiles
-map_idx_ForestBioXThreatsXHealth <- Map$addLayer(
-  eeObject = idx, visParams = indexViz,
-  name = "(FLII + C + Biodiv) * (HumanModification + DTI) * (HC + IMR)",
-  shown = FALSE
-)
-
-# (Forest + Biodiversity) * (Threat + Health) ----
-i_forestbio <- flii$add(carbon_idx)$add(kba_r$unmask())$divide(3)
-i_humans <- dti$unmask()$add(gHM)$add(hc_access)$add(infant_mort)$divide(2.2)
-
-idx <- i_forestbio$
-  multiply(i_humans)$
-  resample()$
-  divide(0.67)
-
-# # get percentiles
-# (idx_pctls <- idx$reduceRegion(
-#   reducer = ee$Reducer$percentile(c(0, 2, 50, 98, 99, 100)),
-#   geometry = tropics_bb,
-#   bestEffort = TRUE)$
-#     getInfo())
-
-# get percentiles
-map_idx_ForestBio_X_ThreatsHealth <- Map$addLayer(
-  eeObject = idx, visParams = indexViz,
-  name = "(FLII + C + Biodiv) * (HumanModification + DTI + HC + IMR)",
-  shown = FALSE
-)
-
-# (Forest + Biodiversity) * (Threat + Health) * Zoonotic ----
-idx_ForestBioXThreatsHealthXSpillover <- i_forestbio$
-  multiply(i_humans)$
-  multiply(zoonotic_risk$multiply(0.5)$add(0.5))$
-  resample()$
-  divide(0.36)
-
-# # get percentiles
-# (idx_pctls <- idx$reduceRegion(
-#   reducer = ee$Reducer$percentile(c(99, 100)),
-#   geometry = tropics_bb,
-#   bestEffort = TRUE)$
-#     getInfo())
-
-# get percentiles
-map_idx_ForestBioXThreatsHealthXSpillover <- Map$addLayer(
-  eeObject = idx_ForestBioXThreatsHealthXSpillover, visParams = indexViz,
-  name = "(FLII + C + Biodiv) * (HumanMod + DTI + HC + IMR) * Spillover",
-  shown = FALSE
-)
-
-# (Forest + Biodiversity) * (Threat + Health + Zoonotic) ----
-i_humansz <- dti$unmask()$
-  add(gHM)$
-  add(hc_access)$
-  add(infant_mort)$
-  add(zoonotic_risk)$
-  divide(2.4)
-
-idx_ForestBioXThreatsHealthSpillover <- i_forestbio$
-  multiply(i_humansz)$
-  resample()$
-  divide(0.66)
-
-# # get percentiles
-# (idx_pctls <- idx_ForestBioXThreatsHealthSpillover$reduceRegion(
-#   reducer = ee$Reducer$percentile(c(99, 100)),
-#   geometry = tropics_bb,
-#   bestEffort = TRUE)$
-#     getInfo())
-
-# get percentiles
-map_idx_ForestBioXThreatsHealthSpillover <- Map$addLayer(
-  eeObject = idx_ForestBioXThreatsHealthSpillover, visParams = indexViz,
-  name = "(FLII + C + Biodiv) * (HumanMod + DTI + HC + IMR + Spillover)",
-  shown = FALSE
-)
-
-
-# Reclass ----
-idx1 <- idx_ForestBioXThreatsHealthXSpillover
-idx_reclas_1 <- ee$Image(0)$
-  where(idx1$lt(0.2), 1)$
-  where(idx1$gte(0.2), 2)$
-  where(idx1$gte(0.4), 3)$
-  where(idx1$gte(0.6), 4)$
-  where(idx1$gte(0.8), 5)$
-  where(idx1$gte(0.95), 6)$
-  updateMask(flii$mask())
-
-idx1 <- idx_ForestBioXThreatsHealthSpillover
-idx_reclas_2 <- ee$Image(0)$
-  where(idx1$lt(0.2), 1)$
-  where(idx1$gte(0.2), 2)$
-  where(idx1$gte(0.4), 3)$
-  where(idx1$gte(0.6), 4)$
-  where(idx1$gte(0.8), 5)$
-  where(idx1$gte(0.95), 6)$
-  updateMask(flii$mask())
-
-viz <- list(min = 0, max = 5, palette = BlueToRed, values = c('1', '2', '3', '4', '5'))
-Map$addLayer(
-  eeObject = idx_reclas_1, visParams = viz,
-  name = "(FLII + C + Biodiv) * (HumanMod + DTI + HC + IMR) * Spillover"
-) + 
-  Map$addLayer(
-      eeObject = idx_reclas_2, visParams = viz,
-      name = "(FLII + C + Biodiv) * (HumanMod + DTI + HC + IMR + Spillover"
-    ) + 
-    Map$addLegend( visParams = viz, color_mapp = 'character', name = NA)
-
-
 # Map individual indicators ----
 map_flii <- Map$addLayer(eeObject = flii, visParams = indexViz, name = "FLII (forest landscape integrity)", shown = FALSE)
 map_carbon <- Map$addLayer(eeObject = carbon_idx, visParams = indexViz, name = "Carbon", shown = FALSE)
@@ -313,40 +334,10 @@ map_forestbio <- Map$addLayer(eeObject = i_forestbio, visParams = indexViz,
 map_health <- Map$addLayer(eeObject = i_health, visParams = indexViz, 
                            name = "Health indicator (HC + IMR)", shown = FALSE)
 
-# View ----
-# All
-map_forests +
-  map_forestbio +
-  map_threats +
-  map_health +
-  Map$addLayer(eeObject = indices_add[[1]]$index, visParams = indexViz, name = indices_add[[1]]$name,
-               shown = FALSE) +
-  Map$addLayer(eeObject = indices_add[[2]]$index, visParams = indexViz, name = indices_add[[2]]$name,
-               shown = FALSE) +
-  Map$addLayer(eeObject = indices_add[[3]]$index, visParams = indexViz, name = indices_add[[3]]$name,
-               shown = FALSE) +
-  Map$addLayer(eeObject = indices_add[[4]]$index, visParams = indexViz, name = indices_add[[4]]$name,
-               shown = FALSE) +
-  Map$addLayer(eeObject = indices_add[[5]]$index, visParams = indexViz, name = indices_add[[5]]$name,
-               shown = FALSE) +
-  Map$addLayer(eeObject = indices_add[[6]]$index, visParams = indexViz, name = indices_add[[6]]$name,
-               shown = FALSE) +
-  Map$addLayer(eeObject = indices_add[[7]]$index, visParams = indexViz, name = indices_add[[7]]$name,
-               shown = FALSE) +
-  map_idx_sum +
-  map_idx_ForestXThreats +
-  map_idx_ForestXThreatsXHealth +
-  map_idx_ForestXThreatsXHealthXBio +
-  map_idx_ForestBioXThreatsXHealth +
-  map_idx_ForestBio_X_ThreatsHealth +
-  map_idx_ForestBioXThreatsHealthXSpillover +
-  hih_sites_lyr +
-  legend
-
 # Top picks
-Map$addLayer(eeObject = indices_add[[2]]$index, visParams = indexViz, name = indices_add[[2]]$name,
+Map$addLayer(eeObject = additive_01[[2]]$index, visParams = indexViz, name = additive_01[[2]]$name,
              shown = FALSE) +
-  Map$addLayer(eeObject = indices_add[[3]]$index, visParams = indexViz, name = indices_add[[3]]$name,
+  Map$addLayer(eeObject = additive_01[[3]]$index, visParams = indexViz, name = additive_01[[3]]$name,
                shown = FALSE) +
   map_idx_ForestXThreats +
   map_idx_ForestXThreatsXHealth +
