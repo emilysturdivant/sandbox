@@ -10,8 +10,8 @@ tidy_forest_loss_df <- function(df) {
   # Get DF with annual carbon loss
   df_carbon <- df %>% 
     st_drop_geometry() %>% 
-    dplyr::select(starts_with('carbon_loss'), zone) %>% 
-    pivot_longer(-zone, 
+    dplyr::select(starts_with('carbon_loss'), name) %>% 
+    pivot_longer(-name, 
                  names_to = 'year',
                  values_to = 'carbon_loss_MgC') %>% 
     mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
@@ -20,8 +20,8 @@ tidy_forest_loss_df <- function(df) {
   # Get DF with annual forest area loss
   df_area <- df %>% 
     st_drop_geometry() %>% 
-    dplyr::select(starts_with('forest'), zone) %>% 
-    pivot_longer(-zone, 
+    dplyr::select(starts_with('forest'), name) %>% 
+    pivot_longer(-name, 
                  names_to = 'year',
                  values_to = 'forest_loss_ha') %>% 
     mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
@@ -32,7 +32,7 @@ tidy_forest_loss_df <- function(df) {
     left_join(df_area)
   
   # Get carbon stock in 2000
-  mgc_2000 <- df %>% dplyr::select(zone, sum)
+  mgc_2000 <- df %>% dplyr::select(name, sum)
   
   # Get area of each polygon
   mgc_2000$area_ha  <- mgc_2000 %>% 
@@ -49,64 +49,6 @@ tidy_forest_loss_df <- function(df) {
   
   # Return
   return(df_tidy)
-}
-
-plot_loss_piecewise <- function(df, 
-                                # title, 
-                                y_name, 
-                                segment =  FALSE, 
-                                control = seg.control(display = FALSE)) {
-  
-  if(segment ) {
-    set.seed(12)
-    out.lm <- lm(carbon_loss_MgC ~ year, data = df)
-    # os <- selgmented(out.lm) ## selects number of breakpoints via the Score test
-    os <-selgmented(out.lm, Kmax=3, type="bic", control = control) #BIC-based selection
-    
-    dat2 = data.frame(x = df$year, y = broken.line(os)$fit)
-    df$piecewise <- dat2$y
-    
-    # npsi <- nrow(os$psi)
-    # segment = npsi > 0
-  }
-  
-  # if(segment & is.vector(breakpoints)) {
-  #   o <- segmented(out.lm, seg.Z = ~ year, 
-  #                  psi = list(year = breakpoints),
-  #                  # control = control)
-  #                  control = seg.control(display = FALSE, 
-  #                                        fix.npsi = FALSE,
-  #                                        K = npsi,
-  #                                        # quant = FALSE, 
-  #                                        # random = TRUE, 
-  #                                        # conv.psi = TRUE
-  #                                        ))
-  #   dat2 = data.frame(x = df$year, y = broken.line(o)$fit)
-  #   df$piecewise <- dat2$y
-  # }
-  
-  p <- df %>% 
-    ggplot(aes(x = year, y = carbon_loss_MgC)) +
-    geom_point(size = .3, color = 'grey30') +
-    geom_line(color = 'grey30', size = .5)
-  
-  if(segment) {
-    p <- p + geom_line(aes(y = piecewise), color = 'steelblue3', size = .5)
-  }
-  
-  p <- p +
-    scale_x_continuous(name = "Year",
-                       breaks = 2001:2020,
-                       expand = c(0.01, 0.01)) +
-    scale_y_continuous(name = y_name,
-                       labels = scales::comma) +
-    # labs(title = title) +
-    theme_bw() +
-    theme(
-      axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
-      panel.grid.minor = element_blank()) 
-  
-  return(p)
 }
 
 get_piecewise_line <- function(df_zone) {
@@ -148,38 +90,6 @@ get_piecewise_line <- function(df_zone) {
   } 
   
   return(dat2)
-}
-
-div_name <- div_names[[2]]
-plot_loss_for_zone <- function(df_tidy, div_name, y_name = 'AGC loss (metric tons C)') {
-  
-  rm(out.lm, os, dat2, npsi)
-  
-  # Filter to name
-  df_zone <- df_tidy %>% filter(zone == div_name)
-  
-  # Get piecewise fit
-  pw_fit <- get_piecewise_line(df_zone)
-  
-  # Plot
-  p <- df_zone %>% 
-    ggplot(aes(x = year, y = carbon_loss_MgC)) +
-    geom_point(size = .3, color = 'grey30') +
-    geom_line(color = 'grey30', size = .5) + 
-    geom_line(data = pw_fit, aes(x = x, y = y), color = 'steelblue3', size = .5) +
-    scale_x_continuous(name = "Year",
-                       breaks = 2001:2020,
-                       expand = c(0.01, 0.01)) +
-    scale_y_continuous(name = y_name,
-                       labels = scales::comma) +
-    labs(title = div_name) +
-    theme_bw() +
-    theme(
-      axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
-      panel.grid.minor = element_blank()) 
-  
-  # p
-  return(p)
 }
 
 plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (metric tons C)') {
@@ -264,7 +174,7 @@ ggsave(file.path(cr_hansen_dir, str_c(site_code, '_noTI_2001_2020_piecewise.png'
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # BBBR ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-site <- 'BBBR'
+site <- 'Bukit Baka Bukit Raya National Park'
 site_code <- 'BBBR'
 df_bbbr <- st_read(here::here('data/gee_exports/BBBR_annual_deforestation.geojson')) %>% 
   filter(zone != '')

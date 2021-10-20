@@ -34,9 +34,10 @@ tdm_union %>%
 
 # Troubleshoot Manombo polygon ----
 site <- 'Manombo'
+manombo_shp_new <- file.path(polys_dir, 'ManomboNP_all.shp')
 
 # Original Special Reserve ---
-manombo_shp <- file.path(polys_dir, 'ManomboNP_SRGpolys.shp')
+manombo_shp <- file.path(sites_dir, 'Manombo', 'ManomboNP_SRGpolys.shp')
 manombo_sr <- st_read(manombo_shp) 
 
 manombo_sr$area_ha <-  manombo_sr %>%
@@ -93,7 +94,7 @@ manombo_sr <- select(manombo_sr, ID, name, HIH_site, area_ha)
 
 manombo <- rbind(manombo_sr, efatsy)
 
-manombo %>% st_write(file.path(polys_dir, 'ManomboNP_all.shp'))
+manombo %>% st_write(manombo_shp_new)
 
 #
 tm_shape(manombo) + tm_polygons(alpha = 0.5)
@@ -130,14 +131,60 @@ tm_shape(efatsy) + tm_polygons(alpha = 0.5) +
 # GERP ----
 fps <- list.files(file.path(sites_dir, 'Manombo', 'GERP'), 'shp$', full.names = TRUE)
 sf_list <- fps %>% purrr::map(st_read)
+names <- fps %>% purrr::map(function(x) {
+  x %>% basename() 
+})
+areas <- sf_list %>% purrr::map(function(x) {
+  x %>% st_union() %>% 
+    st_area() %>%
+    units::set_units('ha') %>%
+    units::set_units(NULL)
+})
+
+as_tibble(list(names = flatten_chr(names), areas = flatten_dbl(areas)))
+
+manombo <- st_read(manombo_shp_new)
+
+names(sf_list) <- flatten_chr(names)
+sf <- sf_list %>% flatten_dfr()
+
+sf_list[[2]] %>% filter(DISTRICT == 'Farafangana')
 
 
-tm_shape(sf_list[[1]]) + tm_borders() +
-  tm_shape(sf_list[[2]]) + tm_borders() +
+limite_AP_manombo <- sf_list[[3]] %>% 
+  filter(NOM_AP == 'Manombo') %>% 
+  select(-TITRE)
+limite_AP_manombo %>% 
+  st_union() %>% 
+  st_area() %>%
+  units::set_units('ha') %>%
+  units::set_units(NULL)
+
+tm_shape(sf_list[[1]]) + tm_polygons(alpha = 0.4, col = 'purple') + # GERP
+  # tm_shape(sf_list[[2]]) + tm_borders() +
   # tm_shape(sf_list[[3]]) + tm_borders() +
-  tm_shape(sf_list[[4]]) + tm_borders() +
-  tm_shape(manombo) + tm_borders()
+  # tm_shape(sf_list[[4]]) + tm_borders() +
+  tm_shape(limite_AP_manombo) + tm_borders() +
+  tm_shape(manombo) + tm_borders(col = 'black')
   
+# BBBR ----
+fp <- list.files(file.path(sites_dir, 'BBBR_divisions', 'final_divisions'), 
+                 'BBBR_divisions_v2\\.shp', full.names = TRUE)
+bbbr <- st_read(fp) %>% filter(zone != '')
+bbbr$area_ha <- st_area(bbbr) %>%
+  units::set_units('ha') %>%
+  units::set_units(NULL)
+bbbr <- bbbr %>% 
+  rename(name = zone) %>% 
+  mutate(HIH_site = 'Bukit Baka Bukit Raya National Park', 
+         site_code = 'BBBRNP',
+         type = 'NP') %>% 
+  select(HIH_site, site_code, name, type, area_ha)
+
+tmap_mode('view')
+tm_shape(bbbr) + tm_polygons()
+bbbr %>% st_write(file.path(polys_dir, 'BBBR_divisions_v3.shp'), 
+                  append = FALSE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Merge all ----
