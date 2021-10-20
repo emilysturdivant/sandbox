@@ -1,0 +1,148 @@
+---
+title: "HIH scaling priorities"
+output: 
+  ioslides_presentation:
+    widescreen: true
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, 
+                      warning = FALSE, results = TRUE, 
+                      eval = TRUE, 
+                      fig.height=5, fig.width=9)
+
+source('01_use_rgee.R')
+```
+
+```{r, eval = TRUE}
+map_layer <- function(lst, shown = FALSE) {
+  
+  Map$addLayer(eeObject = lst$index, 
+               visParams = viz, 
+               name = lst$name, 
+               shown = shown)
+}
+
+Map$setCenter(zoom = 2)
+```
+
+## `r addtv_clas_eq$fi_c_bio_hm_dti_hc_zs$name` 
+
+```{r, eval = TRUE}
+# Display
+viz <- list(min = 10, max = 90, 
+            palette = BlueToRed, 
+            values = c('0-20', '20-40', '40-60', '60-80', '80-100'))
+
+map_layer(addtv_clas_eq$fi_c_bio_hm_dti_hc_zs, shown = TRUE) +
+  hih_sites_lyr +
+  Map$addLegend( visParams = viz, color_map = 'character', name = NA)
+```
+
+## `r mltplctv_clas_eq$f_t_hz$name` 
+
+```{r, eval = TRUE}
+map_layer(mltplctv_clas_eq$f_t_hz, shown = TRUE) +
+  hih_sites_lyr +
+  Map$addLegend( visParams = viz, color_map = 'character', name = NA)
+```
+
+## `r mltplctv_clas_eq$fb_humz$name` 
+
+```{r, eval = TRUE}
+map_layer(mltplctv_clas_eq$fb_humz, shown = TRUE) +
+  hih_sites_lyr +
+  Map$addLegend( visParams = viz, color_map = 'character', name = NA)
+```
+
+## HIH sites: Terra do Meio
+
+```{r, eval = TRUE}
+# Set a region of interest and center map display
+Map$centerObject(tdm, 5)
+
+# Display
+map_layer(addtv_clas_eq$fi_c_bio_hm_dti_hc_zs, shown = TRUE) +
+  map_layer(mltplctv_clas_eq$f_t_hz, shown = TRUE) +
+  map_layer(mltplctv_clas_eq$fb_humz, shown = TRUE) +
+  hih_sites_lyr +
+  Map$addLegend( visParams = viz, color_map = 'character', name = NA)
+```
+
+## HIH sites: Manombo
+
+```{r, eval = TRUE}
+# Set a region of interest and center map display
+Map$centerObject(manombo, 7)
+
+# Display
+map_layer(addtv_clas_eq$fi_c_bio_hm_dti_hc_zs) +
+  map_layer(mltplctv_clas_eq$f_t_hz) +
+  map_layer(mltplctv_clas_eq$fb_humz, shown = TRUE) +
+  hih_sites_lyr +
+  Map$addLegend( visParams = viz, color_map = 'character', name = NA)
+```
+
+## HIH sites: Borneo
+
+```{r, eval = TRUE}
+# Set a region of interest and center map display
+Map$centerObject(bbbr, 7)
+
+# Display
+map_layer(addtv_clas_eq$fi_c_bio_hm_dti_hc_zs) +
+  map_layer(mltplctv_clas_eq$f_t_hz) +
+  map_layer(mltplctv_clas_eq$fb_humz, shown = TRUE) +
+  hih_sites_lyr +
+  Map$addLegend( visParams = viz, color_map = 'character', name = NA)
+```
+
+## New Guinea
+
+```{r, eval = TRUE}
+# Set a region of interest and center map display
+Map$setCenter(140.9, -5.6, 6)
+
+# Display
+map_layer(addtv_clas_eq$fi_c_bio_hm_dti_hc_zs) +
+  map_layer(mltplctv_clas_eq$f_t_hz) +
+  map_layer(mltplctv_clas_eq$fb_humz, shown = TRUE) +
+  hih_sites_lyr +
+  Map$addLegend( visParams = viz, color_map = 'character', name = NA)
+
+indicators
+```
+
+## All indicators
+
+```{r, eval = TRUE}
+# Set a region of interest and center map display
+Map$setCenter(140.9, -5.6, 6)
+
+# Display
+viz <- list(min = 0, max = 1, 
+            palette = BlueToRed
+            )
+
+# Display
+map_layer(indicators[[1]]) +
+  map_layer(indicators[[2]]) +
+  map_layer(indicators[[3]]) +
+  map_layer(indicators[[4]]) +
+  map_layer(indicators[[5]]) +
+  map_layer(indicators[[6]]) +
+  map_layer(indicators[[7]]) +
+  map_layer(indicators[[8]]) +
+  map_layer(indicators[[9]]) +
+  map_layer(indicators[[10]]) +
+  map_layer(indicators[[11]]) +
+  map_layer(indicators[[12]]) +
+  map_layer(indicators[[13]]) +
+  map_layer(indicators[[14]]) +
+  map_layer(indicators[[15]]) +
+  map_layer(indicators[[16]]) +
+  hih_sites_lyr +
+  Map$addLegend( visParams = viz, color_map = 'numeric', name = NA)
+```

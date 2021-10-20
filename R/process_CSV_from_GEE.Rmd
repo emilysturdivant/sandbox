@@ -16,6 +16,7 @@ library(tmap)
 # tmap_mode('view')
 library(sf)
 library(patchwork)
+library(segmented)
 library(tidyverse)
 ```
 
@@ -68,28 +69,130 @@ tidy_forest_loss_df <- function(df) {
   return(df_tidy)
 }
 
-plot_loss <- function(df, title, y_name, facet_scales = 'free_y') {
+plot_loss <- function(df, title, y_name, facet_scales = 'free_y', 
+                      segment =  FALSE,
+                      breakpoints = c(), 
+                      control = seg.control(display = FALSE)) {
   
-  p <- ggplot(df, aes(x = year, y = value)) +
+  if(segment & is_empty(breakpoints) ) {
+    set.seed(12)
+    out.lm <- lm(value ~ year, data = df)
+    # os <- selgmented(out.lm) ## selects number of breakpoints via the Score test
+    os <-selgmented(out.lm, Kmax=3, type="bic") #BIC-based selection
+
+    dat2 = data.frame(x = df$year, y = broken.line(os)$fit)
+    df$piecewise <- dat2$y
+    
+    npsi <- nrow(os$psi)
+    segment = npsi > 0
+  }
+  
+  # if(segment & is.vector(breakpoints)) {
+  #   o <- segmented(out.lm, seg.Z = ~ year, 
+  #                  psi = list(year = breakpoints),
+  #                  # control = control)
+  #                  control = seg.control(display = FALSE, 
+  #                                        fix.npsi = FALSE,
+  #                                        K = npsi,
+  #                                        # quant = FALSE, 
+  #                                        # random = TRUE, 
+  #                                        # conv.psi = TRUE
+  #                                        ))
+  #   dat2 = data.frame(x = df$year, y = broken.line(o)$fit)
+  #   df$piecewise <- dat2$y
+  # }
+  
+
+  p <- df %>% 
+    # mutate(mov_avgL = zoo::rollmean(value, 3, align="left", fill=0)) %>%
+    # mutate(mov_avgC = zoo::rollmean(value, 3, align="center", fill=0)) %>%
+    # mutate(mov_avgR = zoo::rollmean(value, 3, align="right", fill=0)) %>%
+    ggplot(aes(x = year, y = value)) +
     geom_point(size = .3, color = 'grey30') +
-    geom_line(color = 'grey30') +
-    # tidyquant::geom_ma(ma_fun = SMA, n = 3, color = "red") +
+    geom_line(color = 'grey30', size = .5)
+    # geom_line(aes(y = mov_avgL), color = 'steelblue3', size = .5) +
+    # geom_line(aes(y = mov_avgC), color = 'tomato3', size = .4) +
+    # geom_line(aes(y = mov_avgR), color = 'seagreen4', size = .4) +
   	# geom_hline(yintercept = 0, color = 'grey30', size = 0.4, linetype = 'solid') +
-    geom_smooth(method = 'lm', 
-                se = FALSE, 
-                size = .4,
-                color= 'steelblue3',
-                linetype= 'solid',
-                show.legend = FALSE) +
+    # geom_smooth(method = 'loess',
+    #             se = FALSE,
+    #             size = .4,
+    #             color= 'steelblue3',
+    #             linetype= 'solid',
+    #             show.legend = FALSE, 
+    #             span = 0.4) +
+    
+  if(segment) {
+    p <- p + geom_line(aes(y = piecewise), color = 'steelblue3', size = .5)
+  }
+  
+  p <- p +
     scale_x_continuous(name = "Year",
                        breaks = 2001:2020,
-                       expand = c(0, 0)) +
+                       expand = c(0.01, 0.01)) +
   	scale_y_continuous(name = y_name,
   	                   labels = scales::comma) +
     labs(title = title) +
-    facet_grid(rows = vars(zone),
-               # rows = vars(name), 
-               scales = facet_scales) +
+    # facet_grid(rows = vars(zone),
+    #            # rows = vars(name), 
+    #            scales = facet_scales) +
+    theme_bw() +
+    theme(
+      axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+      panel.grid.minor = element_blank()) 
+  
+  return(p)
+}
+
+
+plot_loss_piecewise <- function(df, title, y_name, facet_scales = 'free_y', 
+                      segment =  FALSE, 
+                      control = seg.control(display = FALSE)) {
+  
+  if(segment ) {
+    set.seed(12)
+    out.lm <- lm(value ~ year, data = df)
+    # os <- selgmented(out.lm) ## selects number of breakpoints via the Score test
+    os <-selgmented(out.lm, Kmax=3, type="bic", control = control) #BIC-based selection
+
+    dat2 = data.frame(x = df$year, y = broken.line(os)$fit)
+    df$piecewise <- dat2$y
+    
+    # npsi <- nrow(os$psi)
+    # segment = npsi > 0
+  }
+  
+  # if(segment & is.vector(breakpoints)) {
+  #   o <- segmented(out.lm, seg.Z = ~ year, 
+  #                  psi = list(year = breakpoints),
+  #                  # control = control)
+  #                  control = seg.control(display = FALSE, 
+  #                                        fix.npsi = FALSE,
+  #                                        K = npsi,
+  #                                        # quant = FALSE, 
+  #                                        # random = TRUE, 
+  #                                        # conv.psi = TRUE
+  #                                        ))
+  #   dat2 = data.frame(x = df$year, y = broken.line(o)$fit)
+  #   df$piecewise <- dat2$y
+  # }
+  
+  p <- df %>% 
+    ggplot(aes(x = year, y = value)) +
+    geom_point(size = .3, color = 'grey30') +
+    geom_line(color = 'grey30', size = .5)
+    
+  if(segment) {
+    p <- p + geom_line(aes(y = piecewise), color = 'steelblue3', size = .5)
+  }
+  
+  p <- p +
+    scale_x_continuous(name = "Year",
+                       breaks = 2001:2020,
+                       expand = c(0.01, 0.01)) +
+  	scale_y_continuous(name = y_name,
+  	                   labels = scales::comma) +
+    labs(title = title) +
     theme_bw() +
     theme(
       axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
@@ -113,10 +216,12 @@ df <- st_read(here::here('data/gee_exports/GPNP_annual_deforestation.geojson')) 
 df_tidy <- tidy_forest_loss_df(df)
 
 # Plot 
-pc <- df_tidy %>% 
+(pc <- df_tidy %>% 
    rename(value = carbon_loss_MgC) %>%
   plot_loss(title = 'Forest carbon loss', 
-            y_name = 'Aboveground carbon (metric tons)')
+            y_name = 'Aboveground carbon (metric tons)', 
+            segment = TRUE,
+            breakpoints = c(2005, 2010, 2015)))
 pf <- df_tidy %>% 
    rename(value = forest_loss_ha) %>% 
   plot_loss(title = 'Forest area loss', 
@@ -126,20 +231,49 @@ pc / pf
 ```
 
 ```{r}
-
 # BBBR ----
 site <- 'BBBR'
 df <- st_read(here::here('data/gee_exports/BBBR_annual_deforestation.geojson')) %>% 
   filter(zone != '')
 
 #tm_shape(df) + tm_polygons()
-
 df_tidy <- tidy_forest_loss_df(df)
+
+df <- df_tidy %>% 
+  rename(value = carbon_loss_MgC) %>% 
+  filter(str_detect(zone, regex('experiment', ignore_case = TRUE)))
+pc1 <- df %>% 
+  plot_loss_piecewise(title = 'Experimental', 
+            y_name = 'Aboveground carbon (metric tons)',
+            facet_scales = 'fixed', 
+            segment = TRUE)#c(2017))
+
+df <- df_tidy %>% 
+  rename(value = carbon_loss_MgC) %>% 
+  filter(str_detect(zone, regex('control 1', ignore_case = TRUE)))
+pc2 <- df %>% 
+  plot_loss_piecewise(title = 'Control 1', 
+            y_name = 'Aboveground carbon (metric tons)',
+            facet_scales = 'fixed', 
+            segment = TRUE)
+
+df <- df_tidy %>% 
+  rename(value = carbon_loss_MgC) %>% 
+  filter(str_detect(zone, regex('control 2', ignore_case = TRUE)))
+pc3 <- df %>% 
+  plot_loss(title = 'Control 2', 
+            y_name = 'Aboveground carbon (metric tons)',
+            facet_scales = 'fixed', 
+            segment = TRUE,
+            breakpoints = c(2007, 2012))
+
+pc1 / pc2 / pc3 
 
 # Plot forest carbon and area loss ----
 # Plot
 pc <- df_tidy %>% 
    rename(value = carbon_loss_MgC) %>% 
+  filter(str_detect(zone, regex('experiment', ignore_case = TRUE))) %>% 
   # filter(!str_detect(name, 'forest')) %>%
   plot_loss(title = 'Forest carbon loss', 
             y_name = 'Aboveground carbon (metric tons)',
@@ -161,40 +295,6 @@ df <- st_read(here::here('data/gee_exports/Manombo_annual_deforestation.geojson'
   summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE))) %>% 
   mutate(zone = site)
 
-# Troubleshoot Manombo polygon ----
-class(st_geometry(df))
-st_crs(df)
-# Get area of each polygon
-df %>% 
-  st_area() %>% 
-  units::set_units('ha') %>% 
-  units::set_units(NULL)
-  
-mdg3 <- raster::getData('GADM', country = 'MDG', level = 3)
-mdg <- st_read('/Users/emilysturdivant/data/context/gadm36_MDG_gpkg/gadm36_MDG.gpkg')
-
-tmap_mode('view')
-tm_shape(df) + tm_polygons(alpha = 0.5) +
-tm_shape(mdg) + tm_polygons(alpha = 0.5)
-
-# pas <- st_read('/Users/emilysturdivant/data/protected_areas/WDPA/WDPA_Oct2021_polygons_tropics_simp001.gpkg') %>% 
-#   filter(ISO3 == 'MDG')
-# pas_wpts <- st_read('/Users/emilysturdivant/data/protected_areas/WDPA/WDPA_Oct2021_tropics_simp001_buff0085.gpkg') %>% 
-#   filter(ISO3 == 'MDG')
-# # including points adds 4 PAs in Madagascar
-# oecm <- st_read('/Users/emilysturdivant/data/protected_areas/WDOECM/WDOECM_Oct2021_tropics_simp001_buff0085.gpkg')
-# man_pa <- pas %>% 
-#   filter(str_detect(NAME, regex('manombo', ignore_case = TRUE)))
-# tm_shape(df) + tm_polygons(alpha = 0.5) +
-# tm_shape(man_pa) + tm_polygons(alpha = 0.5)
-# 
-# man_pa %>% 
-#   st_area() %>% 
-#   units::set_units('ha') %>% 
-#   units::set_units(NULL)
-  
-
-# Back to business
 df_tidy <- tidy_forest_loss_df(df)
 
 # Plot forest carbon and area loss
