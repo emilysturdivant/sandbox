@@ -122,7 +122,9 @@ task_vector <- fc_carbon_2000_mgc %>%
                     timePrefix = FALSE)
 task_vector$start()
 ee_monitoring(task_vector, quiet = TRUE) # optional
-
+local_fp <- ee_drive_to_local(task_vector, 
+                  dsn = file.path('outputs', str_c(task_name, '.geojson')), 
+                  overwrite = TRUE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Use Hansens's 2000-2020 loss to mask our 30m AGC ----
@@ -170,29 +172,70 @@ Map$addLayer(eeObject = loss_year,
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load new sf ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+site <- 'Bukit Baka Bukit Raya National Park'
+site_code <- 'BBBR'
 df <- st_read(out_fp)
 
-# Tidy
+# Tidy 
 df_tidy <- tidy_forest_loss_df(df)
 
 # Sites
 (div_names <- df_tidy %>% distinct(name) %>% deframe())
 
-div_name <- div_names[[1]]
-df_zone <- df_tidy %>% filter(name == div_name)
-pw_fit <- df_zone %>% get_piecewise_line()
-p1 <- plot_pw_fit(df_zone, div_name, pw_fit)
-
 plots_bbbr <- list()
 for (i in 1:length(div_names)) {
   div_name <-  div_names[[i]]
-  df_zone <- df_tidy %>% filter(zone == div_name)
+  df_zone <- df_tidy %>% filter(name == div_name)
   pw_fit <- df_zone %>% get_piecewise_line()
   p <- plot_pw_fit(df_zone, div_name, pw_fit)
   plots_bbbr[[i]] <- p
 }
 
-(bbbr_plots <- plots_bbbr %>% wrap_plots(ncol = 2))
+cap_text <- str_c("The plots show annual AGC loss attributable to complete ", 
+                  "biomass removal. They were produced by converting annual ", 
+                  "forest cover loss at 30-m pixels to carbon stock using our ", 
+                  "30-m biomass product for 2000.")
+bbbr_plots <- plots_bbbr %>% 
+  wrap_plots(ncol = 2)+
+  plot_annotation(
+    title = site,
+    caption = cap_text,
+    theme = theme(plot.title = element_text(size = 18))
+  ) & 
+  theme(title = element_text(size = 10)) 
+bbbr_plots
+
+ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')), 
+       plot = bbbr_plots,
+       width = 9, height = 6)
+"
+For each forest cover loss event, we determine the carbon lost at the 
+given pixel using our 2000 baseline estimates.
+
+We determine the carbon lost at each pixel where
+a gross forest cover loss event in a given year. 
+
+For each pixel that experienced forest loss, we assume a loss of the amount of 
+carbon indicated at that pixel by our 2000 biomass estimates. Thus, the annual AGC 
+loss is the total carbon loss each year within the region indicated. 
+
+Annual gross forest cover loss events are converted to carbon loss by
+determining the carbon lost for a given pixel indicated as experiencing
+a gross forest cover loss event.
+
+Annual carbon loss was calculated from a baseline of 2000 biomass 
+density at 30m resolution.
+
+AGC loss as indicated by stand replacement disturbance. 
+Annual AGC loss attributed to tree cover loss
+
+The plots show annual AGC loss attributable to complete biomass removal.
+
+They were produced by converting annual forest cover loss at 30-m pixels 
+to carbon stock using our 30-m biomass product for 2000.
+"
+
+
 ggsave(file.path(cr_hansen_dir, str_c(site_code, '_2001_2020_piecewise.png')), 
        plot = bbbr_plots,
        width = 9, height = 6)
