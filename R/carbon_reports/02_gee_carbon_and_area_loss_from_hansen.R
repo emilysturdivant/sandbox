@@ -189,79 +189,8 @@ df_tidy <- df_tidy %>% mutate(carbon_loss_MgC = carbon_loss_MgC / 100)
 (site_names <- df_tidy %>% distinct(HIH_site) %>% deframe())
 hih_sites <- abbreviate(site_names, minlength = 3)
 
-# Functions ---
-create_pw_plot_list <- function(div_names, df_site) {
-
-  if (length(div_names) == 1) {
-    df_zone <- df_site %>% filter(name == div_names)
-    pw_fit <- df_zone %>% get_piecewise_line()
-    p <- plot_pw_fit(df_zone, NULL, pw_fit)
-    plots <- p
-    return(plots)
-  } 
-  
-  plots <- list()
-  for (i in 1:length(div_names)) {
-    div_name <-  div_names[[i]]
-    print('')
-    print('')
-    print(div_name)
-    df_zone <- filter(df_site, name == div_name)
-    try(rm(pw_fit))
-    pw_fit <- get_piecewise_line(df_zone)
-    p <- plot_pw_fit(df_zone, div_name, pw_fit)
-    try(rm(pw_fit))
-    plots[[i]] <- p
-  }
-  
-  return(plots)
-}
-
-get_params <- function(div_names) {
-  if(length(div_names) < 4) {
-    
-    ncol <- 1
-    png_width <- 4.5
-    png_height <- length(div_names) * 2
-    
-  } else {
-    
-    ncol <- 2
-    png_width <- 9
-    png_height <- length(div_names)
-    
-  }
-  
-  return(list(ncol=ncol, png_width=png_width, png_height=png_height))
-}
-
-layout_plots <- function(plots, params, title = TRUE) {
-
-  ps <- plots %>% 
-    wrap_plots(ncol = params$ncol) +
-    plot_annotation(
-      # title = site,
-      # # caption = cap_text,
-      # theme = theme(plot.title = element_text(size = 14))
-    ) &
-    theme(title = element_text(size = 10), 
-          axis.title = element_blank())
-  gt <- patchwork::patchworkGrob(ps)
-  
-  if(params$png_height < 3) {
-    y_lab <- grid::textGrob("AGC loss (tC x 1000)", 
-                            gp = grid::gpar(fontsize=10), 
-                            rot = 90)
-  } else {
-    y_lab <- grid::textGrob("Aboveground carbon loss (tC x 1000)", 
-                            gp = grid::gpar(fontsize=10), 
-                            rot = 90)
-  }
-  x_lab <- grid::textGrob("Year", gp = grid::gpar(fontsize=10))
-  gta <- gridExtra::grid.arrange(gt, 
-                                left = y_lab, 
-                                bottom = x_lab)
-}
+# Load functions ---- 
+source('R/carbon_reports/02_report_from_Hansen_data.R')
 
 # Site 1 ----
 site <- site_names[[1]]

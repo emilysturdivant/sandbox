@@ -1,5 +1,4 @@
-library(tmap)
-tmap_mode('view')
+
 library(sf)
 library(patchwork)
 library(segmented)
@@ -92,7 +91,6 @@ get_piecewise_line <- function(df_zone) {
   return(dat2)
 }
 
-
 get_piecewise_line_scorebased <- function(df_zone) {
   
   # Get linear regression
@@ -131,158 +129,78 @@ plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (metric to
     theme(
       axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
       panel.grid.minor = element_blank()) 
+ 
+}
+
+create_pw_plot_list <- function(div_names, df_site) {
   
-  # p
-}
-
-cr_hansen_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/carbon_reports/2001_2020_withHansen'
-
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Terra do Meio ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-site <- 'Terra do Meio'
-site_code <- 'TdM'
-df_tdm <- st_read(here::here('data/gee_exports/TdM_annual_deforestation.geojson')) %>% 
-  rename(zone = nombre)
-
-# Tidy
-df_tidy <- tidy_forest_loss_df(df_tdm)
-
-# TI sites
-(div_names <- df_tidy %>% 
-    filter(str_detect(zone, '^TI')) %>%
-    distinct(zone) %>% deframe())
-
-div_name <- div_names[[1]]
-df_zone <- df_tidy %>% filter(zone == div_name)
-pw_fit <- df_zone %>% get_piecewise_line()
-p1 <- plot_pw_fit(df_zone, div_name, pw_fit)
+  if (length(div_names) == 1) {
+    df_zone <- df_site %>% filter(name == div_names)
+    pw_fit <- df_zone %>% get_piecewise_line()
+    p <- plot_pw_fit(df_zone, NULL, pw_fit)
+    plots <- p
+    return(plots)
+  } 
   
-plots <- list()
-for (i in 1:length(div_names)) {
-  div_name <-  div_names[[i]]
-  df_zone <- df_tidy %>% filter(zone == div_name)
-  pw_fit <- df_zone %>% get_piecewise_line()
-  p <- plot_pw_fit(df_zone, div_name, pw_fit)
-  plots[[i]] <- p
+  plots <- list()
+  for (i in 1:length(div_names)) {
+    div_name <-  div_names[[i]]
+    print('')
+    print('')
+    print(div_name)
+    df_zone <- filter(df_site, name == div_name)
+    try(rm(pw_fit))
+    pw_fit <- get_piecewise_line(df_zone)
+    p <- plot_pw_fit(df_zone, div_name, pw_fit)
+    try(rm(pw_fit))
+    plots[[i]] <- p
+  }
+  
+  return(plots)
 }
 
-(tdm_ti_plots <- plots %>% wrap_plots(ncol = 2))
-ggsave(file.path(cr_hansen_dir, str_c(site_code, '_TI_2001_2020_piecewise.png')), 
-       plot = tdm_ti_plots,
-       width = 9, height = 12)
-
-# Non-TI sites
-(div_names <- df_tidy %>% 
-    filter(str_detect(zone, '^TI', negate = TRUE)) %>%
-    distinct(zone) %>% deframe())
-
-plots_noTI <- list()
-for (i in 1:length(div_names)) {
-  div_name <-  div_names[[i]]
-  df_zone <- df_tidy %>% filter(zone == div_name)
-  pw_fit <- df_zone %>% get_piecewise_line()
-  p <- plot_pw_fit(df_zone, div_name, pw_fit)
-  plots_noTI[[i]] <- p
+get_params <- function(div_names) {
+  if(length(div_names) < 4) {
+    
+    ncol <- 1
+    png_width <- 4.5
+    png_height <- length(div_names) * 2
+    
+  } else {
+    
+    ncol <- 2
+    png_width <- 9
+    png_height <- length(div_names)
+    
+  }
+  
+  return(list(ncol=ncol, png_width=png_width, png_height=png_height))
 }
 
-(tdm_noTI_plots <- plots_noTI %>% wrap_plots(ncol = 2))
-ggsave(file.path(cr_hansen_dir, str_c(site_code, '_noTI_2001_2020_piecewise.png')), 
-       plot = tdm_noTI_plots,
-       width = 9, height = 9)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# BBBR ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-site <- 'Bukit Baka Bukit Raya National Park'
-site_code <- 'BBBR'
-df_bbbr <- st_read(here::here('data/gee_exports/BBBR_annual_deforestation.geojson')) %>% 
-  rename(name = zone) %>% 
-  filter(name != '')
-
-# Tidy
-df_tidy <- tidy_forest_loss_df(df_bbbr)
-
-# Sites
-(div_names <- df_tidy %>% distinct(name) %>% deframe())
-
-div_name <- div_names[[1]]
-df_zone <- df_tidy %>% filter(name == div_name)
-pw_fit <- df_zone %>% get_piecewise_line()
-p1 <- plot_pw_fit(df_zone, div_name, pw_fit)
-
-plots_bbbr <- list()
-for (i in 1:length(div_names)) {
-  div_name <-  div_names[[i]]
-  df_zone <- df_tidy %>% filter(name == div_name)
-  pw_fit <- df_zone %>% get_piecewise_line()
-  p <- plot_pw_fit(df_zone, div_name, pw_fit)
-  plots_bbbr[[i]] <- p
+layout_plots <- function(plots, params, title = TRUE) {
+  
+  ps <- plots %>% 
+    wrap_plots(ncol = params$ncol) +
+    plot_annotation(
+      title = site,
+      # caption = cap_text,
+      theme = theme(plot.title = element_text(size = 14))
+    ) &
+    theme(title = element_text(size = 10), 
+          axis.title = element_blank())
+  gt <- patchwork::patchworkGrob(ps)
+  
+  if(params$png_height < 3) {
+    y_lab <- grid::textGrob("AGC loss (tC x 1000)", 
+                            gp = grid::gpar(fontsize=10), 
+                            rot = 90)
+  } else {
+    y_lab <- grid::textGrob("Aboveground carbon loss (tC x 1000)", 
+                            gp = grid::gpar(fontsize=10), 
+                            rot = 90)
+  }
+  x_lab <- grid::textGrob("Year", gp = grid::gpar(fontsize=10))
+  gta <- gridExtra::grid.arrange(gt, 
+                                 left = y_lab, 
+                                 bottom = x_lab)
 }
-
-(bbbr_plots <- plots_bbbr %>% wrap_plots(ncol = 2))
-ggsave(file.path(cr_hansen_dir, str_c(site_code, '_2001_2020_piecewise.png')), 
-       plot = bbbr_plots,
-       width = 9, height = 6)
-
-# TEST BFAST -----
-# (df_ts <- df_zone %>% 
-#     pull(carbon_loss_MgC) %>% 
-#     ts(frequency = 20) %>% 
-#     bfast::bfast(h = 0.15, season = 'none'))
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# GPNP ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-site <- 'Gunung Palung'
-site_code <- 'GPNP'
-df_gpnp <- st_read(here::here('data/gee_exports/GPNP_annual_deforestation.geojson')) %>% 
-  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE))) %>% 
-  mutate(zone = site)
-
-# Tidy
-df_tidy <- tidy_forest_loss_df(df_gpnp)
-
-# Sites
-(div_names <- df_tidy %>% 
-    distinct(zone) %>% deframe())
-
-div_name <- div_names[[1]]
-df_zone <- df_tidy %>% filter(zone == div_name)
-pw_fit <- df_zone %>% get_piecewise_line()
-p1 <- plot_pw_fit(df_zone, div_name, pw_fit)
-
-(gpnp_plots <- p1 %>% wrap_plots(ncol = 1))
-ggsave(file.path(cr_hansen_dir, str_c(site_code, '_2001_2020_piecewise.png')), 
-       plot = gpnp_plots,
-       width = 5, height = 3)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Manombo ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-site <- 'Manombo'
-df_manombo <- st_read(here::here('data/gee_exports/Manombo_annual_deforestation.geojson')) %>% 
-  # summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE))) %>% 
-  mutate(zone = c('Parcel 2', 'Parcel 1'))
-
-# Tidy
-df_tidy <- tidy_forest_loss_df(df_manombo)
-
-# Sites
-(div_names <- df_tidy %>% 
-    distinct(zone) %>% deframe())
-
-plots_man <- list()
-for (i in 1:length(div_names)) {
-  div_name <-  div_names[[i]]
-  df_zone <- df_tidy %>% filter(zone == div_name)
-  pw_fit <- df_zone %>% get_piecewise_line()
-  p <- plot_pw_fit(df_zone, div_name, pw_fit)
-  plots_man[[i]] <- p
-}
-
-(manombo_plots <- plots_man %>% wrap_plots(ncol = 2))
-ggsave(file.path(cr_hansen_dir, str_c(site, '_2001_2020_piecewise.png')), 
-       width = 9, height = 3)
-
