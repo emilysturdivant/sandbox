@@ -29,7 +29,7 @@ export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
 # Upload shapefile ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 shps <- list.files(polys_dir, 'shp$', full.names = TRUE)
-polys_fp <- shps[[2]]
+(polys_fp <- shps[[1]])
 
 task_name <- tools::file_path_sans_ext(basename(polys_fp))
 out_fp <- file.path(export_path, str_c(task_name, '.geojson'))
@@ -70,8 +70,10 @@ for (year in seq(1, 20)) { # 1-20 = 2001-2020
   # year_str <-'20' + ee$Number(year)$format('%02d')$getInfo()
   year_str <- as.character(2000+year)
   
-  # area loss
+  
   tmp_loss_mask <- loss_year$eq(year)
+  
+  # area loss
   tmp_area <- tmp_loss_mask$
     multiply(hansen_res_m)$
     multiply(hansen_res_m)$
@@ -98,7 +100,7 @@ fc_area_loss_sqkm <- loss_area_sqkm$reduceRegions(
 
 # summarize annual forest carbon loss by district
 fc_carbon_loss_mgc <- loss_carbon_mgc$reduceRegions(
-  collection = fc_area_loss_sqkm, # add to feature class containing area loss results
+  collection = fc_area_loss_sqkm, # add columns carbon_loss_[year]_mgc to FC with area loss results
   reducer = ee$Reducer$sum(),
   scale = agb_res_m
 )
@@ -110,7 +112,7 @@ fc_carbon_2000_mgc <- agb_30m_mgc$reduceRegions(
   scale = agb_res_m
 )
 
-fc_carbon_2000_mgc$first()$getInfo()
+# fc_carbon_2000_mgc$first()$getInfo()
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Convert to GeoJSON ----
@@ -122,9 +124,9 @@ task_vector <- fc_carbon_2000_mgc %>%
                     timePrefix = FALSE)
 task_vector$start()
 ee_monitoring(task_vector, quiet = TRUE) # optional
-local_fp <- ee_drive_to_local(task_vector, 
-                  dsn = file.path('outputs', str_c(task_name, '.geojson')), 
-                  overwrite = TRUE)
+# local_fp <- ee_drive_to_local(task_vector, 
+#                   dsn = file.path('outputs', str_c(task_name, '.geojson')), 
+#                   overwrite = TRUE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Use Hansens's 2000-2020 loss to mask our 30m AGC ----
@@ -170,72 +172,211 @@ Map$addLayer(eeObject = loss_year,
   hih_sites_lyr
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load new sf ----
+# Load new sf for all sites ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-site <- 'Bukit Baka Bukit Raya National Park'
-site_code <- 'BBBR'
 df <- st_read(out_fp)
 
-# Tidy 
-df_tidy <- tidy_forest_loss_df(df)
-
-# Sites
-(div_names <- df_tidy %>% distinct(name) %>% deframe())
-
-plots_bbbr <- list()
-for (i in 1:length(div_names)) {
-  div_name <-  div_names[[i]]
-  df_zone <- df_tidy %>% filter(name == div_name)
-  pw_fit <- df_zone %>% get_piecewise_line()
-  p <- plot_pw_fit(df_zone, div_name, pw_fit)
-  plots_bbbr[[i]] <- p
-}
-
-cap_text <- str_c("The plots show annual AGC loss attributable to complete ", 
+cap_text <- str_c("The plots show annual AGC loss associated with complete ", 
                   "biomass removal. They were produced by converting annual ", 
                   "forest cover loss at 30-m pixels to carbon stock using our ", 
                   "30-m biomass product for 2000.")
-bbbr_plots <- plots_bbbr %>% 
-  wrap_plots(ncol = 2)+
-  plot_annotation(
-    title = site,
-    caption = cap_text,
-    theme = theme(plot.title = element_text(size = 18))
-  ) & 
-  theme(title = element_text(size = 10)) 
-bbbr_plots
+
+# Tidy 
+df_tidy <- tidy_forest_loss_df(df)
+df_tidy <- df_tidy %>% mutate(carbon_loss_MgC = carbon_loss_MgC / 100)
+  
+# All sites
+(site_names <- df_tidy %>% distinct(HIH_site) %>% deframe())
+hih_sites <- abbreviate(site_names, minlength = 3)
+
+# Functions ---
+create_pw_plot_list <- function(div_names, df_site) {
+
+  if (length(div_names) == 1) {
+    df_zone <- df_site %>% filter(name == div_names)
+    pw_fit <- df_zone %>% get_piecewise_line()
+    p <- plot_pw_fit(df_zone, NULL, pw_fit)
+    plots <- p
+    return(plots)
+  } 
+  
+  plots <- list()
+  for (i in 1:length(div_names)) {
+    div_name <-  div_names[[i]]
+    print('')
+    print('')
+    print(div_name)
+    df_zone <- filter(df_site, name == div_name)
+    try(rm(pw_fit))
+    pw_fit <- get_piecewise_line(df_zone)
+    p <- plot_pw_fit(df_zone, div_name, pw_fit)
+    try(rm(pw_fit))
+    plots[[i]] <- p
+  }
+  
+  return(plots)
+}
+
+get_params <- function(div_names) {
+  if(length(div_names) < 4) {
+    
+    ncol <- 1
+    png_width <- 4.5
+    png_height <- length(div_names) * 2
+    
+  } else {
+    
+    ncol <- 2
+    png_width <- 9
+    png_height <- length(div_names)
+    
+  }
+  
+  return(list(ncol=ncol, png_width=png_width, png_height=png_height))
+}
+
+layout_plots <- function(plots, params, title = TRUE) {
+
+  ps <- plots %>% 
+    wrap_plots(ncol = params$ncol) +
+    plot_annotation(
+      # title = site,
+      # # caption = cap_text,
+      # theme = theme(plot.title = element_text(size = 14))
+    ) &
+    theme(title = element_text(size = 10), 
+          axis.title = element_blank())
+  gt <- patchwork::patchworkGrob(ps)
+  
+  if(params$png_height < 3) {
+    y_lab <- grid::textGrob("AGC loss (tC x 1000)", 
+                            gp = grid::gpar(fontsize=10), 
+                            rot = 90)
+  } else {
+    y_lab <- grid::textGrob("Aboveground carbon loss (tC x 1000)", 
+                            gp = grid::gpar(fontsize=10), 
+                            rot = 90)
+  }
+  x_lab <- grid::textGrob("Year", gp = grid::gpar(fontsize=10))
+  gta <- gridExtra::grid.arrange(gt, 
+                                left = y_lab, 
+                                bottom = x_lab)
+}
+
+# Site 1 ----
+site <- site_names[[1]]
+site_code <- hih_sites[[1]]
+
+df_site <- df_tidy %>% filter(HIH_site == site)
+(div_types <- df_site %>% distinct(type) %>% deframe())
+(div_names <- df_site %>% distinct(name) %>% deframe())
+
+plots <- create_pw_plot_list(div_names, df_site)
+params <- get_params(div_names)
+formatted_plots <- layout_plots(plots, params)
 
 ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')), 
-       plot = bbbr_plots,
-       width = 9, height = 6)
-"
-For each forest cover loss event, we determine the carbon lost at the 
-given pixel using our 2000 baseline estimates.
+       plot = formatted_plots,
+       width = params$png_width,
+       height = params$png_height)
 
-We determine the carbon lost at each pixel where
-a gross forest cover loss event in a given year. 
+# Site 2 ----
+site <- site_names[[2]]
+site_code <- hih_sites[[2]]
 
-For each pixel that experienced forest loss, we assume a loss of the amount of 
-carbon indicated at that pixel by our 2000 biomass estimates. Thus, the annual AGC 
-loss is the total carbon loss each year within the region indicated. 
+df_site <- df_tidy %>% filter(HIH_site == site)
+(div_types <- df_site %>% distinct(type) %>% deframe())
+(div_names <- df_site %>% distinct(name) %>% deframe())
 
-Annual gross forest cover loss events are converted to carbon loss by
-determining the carbon lost for a given pixel indicated as experiencing
-a gross forest cover loss event.
+plots <- create_pw_plot_list(div_names, df_site)
+params <- get_params(div_names)
+formatted_plots <- layout_plots(plots, params)
 
-Annual carbon loss was calculated from a baseline of 2000 biomass 
-density at 30m resolution.
+ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')), 
+       plot = formatted_plots,
+       width = params$png_width,
+       height = params$png_height)
 
-AGC loss as indicated by stand replacement disturbance. 
-Annual AGC loss attributed to tree cover loss
+# Site 3 ----
+site <- site_names[[3]]
+site_code <- hih_sites[[3]]
 
-The plots show annual AGC loss attributable to complete biomass removal.
+df_site <- df_tidy %>% filter(HIH_site == site)
+(div_types <- df_site %>% distinct(type) %>% deframe())
+(div_names <- df_site %>% distinct(name) %>% deframe())
 
-They were produced by converting annual forest cover loss at 30-m pixels 
-to carbon stock using our 30-m biomass product for 2000.
-"
+plots <- create_pw_plot_list(div_names, df_site)
+params <- get_params(div_names)
+formatted_plots <- layout_plots(plots, params)
 
+ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')), 
+       plot = formatted_plots,
+       width = params$png_width,
+       height = params$png_height)
 
-ggsave(file.path(cr_hansen_dir, str_c(site_code, '_2001_2020_piecewise.png')), 
-       plot = bbbr_plots,
-       width = 9, height = 6)
+# TdM ----
+site <- site_names[[4]]
+site_code <- hih_sites[[4]]
+
+df_site <- df_tidy %>% filter(HIH_site == site)
+
+# TIs
+site_code <- hih_sites[[4]]
+df_type <- df_site %>% filter(type == 'TI')
+(div_names_all <- df_type %>% distinct(name) %>% deframe())
+
+div_names <- div_names_all[1:6]
+site_code <- str_c(site_code, '_TI_p1')
+
+plots <- create_pw_plot_list(div_names, df_site)
+params <- get_params(div_names)
+formatted_plots <- layout_plots(plots, params)
+
+ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')), 
+       plot = formatted_plots,
+       width = params$png_width,
+       height = params$png_height)
+
+# Part 2
+div_names <- div_names_all[7:12]
+site_code <- hih_sites[[4]]
+site_code <- str_c(site_code, '_TI_p2')
+
+plots <- create_pw_plot_list(div_names, df_site)
+params <- get_params(div_names)
+formatted_plots <- layout_plots(plots, params)
+
+ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')), 
+       plot = formatted_plots,
+       width = params$png_width,
+       height = params$png_height)
+
+# non-TIs
+site_code <- hih_sites[[4]]
+df_type <- df_site %>% filter(type == 'RESEX')
+site_code <- str_c(site_code, '_RESEX')
+(div_names <- df_type %>% distinct(name) %>% deframe())
+
+plots <- create_pw_plot_list(div_names, df_site)
+params <- get_params(div_names)
+formatted_plots <- layout_plots(plots, params)
+
+ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')), 
+       plot = formatted_plots,
+       width = params$png_width,
+       height = params$png_height)
+
+# non-TIs
+site_code <- hih_sites[[4]]
+df_type <- df_site %>% filter(!type %in% c('TI', 'RESEX'))
+site_code <- str_c(site_code, '_UC')
+(div_names <- df_type %>% distinct(name) %>% deframe())
+
+plots <- create_pw_plot_list(div_names, df_site)
+params <- get_params(div_names)
+formatted_plots <- layout_plots(plots, params)
+
+ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')), 
+       plot = formatted_plots,
+       width = params$png_width,
+       height = params$png_height)

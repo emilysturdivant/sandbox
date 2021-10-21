@@ -51,22 +51,20 @@ manombo_sr$area_ha <-  manombo_sr %>%
 # tm_shape(df) + tm_polygons(alpha = 0.5) +
 # tm_shape(mdg) + tm_polygons(alpha = 0.5)
 # 
-# # Protected areas
-# pas_wpts <- st_read('/Users/emilysturdivant/data/protected_areas/WDPA/WDPA_Oct2021_tropics_simp001_buff0085.gpkg') %>%
-#   filter(ISO3 == 'MDG')
-# # including points adds 4 PAs in Madagascar
-# oecm <- st_read('/Users/emilysturdivant/data/protected_areas/WDOECM/WDOECM_Oct2021_tropics_simp001_buff0085.gpkg') %>%
-#   filter(ISO3 == 'MDG')
-# tm_shape(df) + tm_polygons(alpha = 0.5) +
-# tm_shape(pas_wpts) + tm_polygons(alpha = 0.5)
-# 
-# man_pa <- pas_wpts %>%
-#   filter(str_detect(NAME, regex('manombo', ignore_case = TRUE))) %>%
-#   select(NAME, DESIG)
-# man_pa$area_ha <- man_pa%>%
-#   st_area() %>%
-#   units::set_units('ha') %>%
-#   units::set_units(NULL)
+# Protected areas
+pas_wpts <- st_read('/Users/emilysturdivant/data/protected_areas/WDPA/WDPA_Oct2021_tropics_simp001_buff0085.gpkg') %>%
+  filter(ISO3 == 'MDG')
+# including points adds 4 PAs in Madagascar
+tm_shape(df) + tm_polygons(alpha = 0.5) +
+tm_shape(pas_wpts) + tm_polygons(alpha = 0.5)
+
+man_pa <- pas_wpts %>%
+  filter(str_detect(NAME, regex('manombo', ignore_case = TRUE))) %>%
+  select(NAME, DESIG)
+man_pa$area_ha <- man_pa%>%
+  st_area() %>%
+  units::set_units('ha') %>%
+  units::set_units(NULL)
 
 # KBAs ----
 man_kbas <- st_read('/Users/emilysturdivant/data/biodiversity/KBAsGlobal_2021_September_02/KBAsGlobal_2021_September_02_POL.shp') %>%
@@ -92,9 +90,9 @@ efatsy$area_ha <-  efatsy %>%
 efatsy <- select(efatsy, ID, name, HIH_site, area_ha)
 manombo_sr <- select(manombo_sr, ID, name, HIH_site, area_ha)
 
-manombo <- rbind(manombo_sr, efatsy)
+manombo <- rbind(manombo_sr, efatsy) %>% st_difference()
 
-manombo %>% st_write(manombo_shp_new)
+manombo %>% st_write(manombo_shp_new, append = FALSE)
 
 #
 tm_shape(manombo) + tm_polygons(alpha = 0.5)
@@ -121,12 +119,6 @@ efatsy$area_ha <- efatsy %>%
   units::set_units('ha') %>%
   units::set_units(NULL)
 
-tm_shape(manombo1) + tm_polygons(alpha = 0.5) +
-tm_shape(man_pa) + tm_polygons(alpha = 0.5) +
-tm_shape(manombos_sr) + tm_polygons(alpha = 0.5) +
-tm_shape(efatsy) + tm_polygons(alpha = 0.5) +
-  tm_shape(manombos_cf) + tm_polygons(alpha = 0.5)
-
 
 # GERP ----
 fps <- list.files(file.path(sites_dir, 'Manombo', 'GERP'), 'shp$', full.names = TRUE)
@@ -141,15 +133,14 @@ areas <- sf_list %>% purrr::map(function(x) {
     units::set_units(NULL)
 })
 
-as_tibble(list(names = flatten_chr(names), areas = flatten_dbl(areas)))
-
 manombo <- st_read(manombo_shp_new)
 
+
+man_diff <- manombo %>% st_difference()
+
+tm_shape(man_diff) + tm_polygons(alpha = 0.5)
+
 names(sf_list) <- flatten_chr(names)
-sf <- sf_list %>% flatten_dfr()
-
-sf_list[[2]] %>% filter(DISTRICT == 'Farafangana')
-
 
 limite_AP_manombo <- sf_list[[3]] %>% 
   filter(NOM_AP == 'Manombo') %>% 
@@ -167,6 +158,13 @@ tm_shape(sf_list[[1]]) + tm_polygons(alpha = 0.4, col = 'purple') + # GERP
   tm_shape(limite_AP_manombo) + tm_borders() +
   tm_shape(manombo) + tm_borders(col = 'black')
   
+
+tm_shape(limite_AP_manombo) + tm_polygons(col = 'seagreen3') + 
+  tm_shape(man_pa) + tm_borders(lwd = 3) +
+  tm_shape(manombos_sr) + tm_polygons(alpha = 0.4, col = 'purple') +
+  tm_shape(manombo_sr) + tm_borders(lwd = 3) +
+  tm_shape(efatsy) + tm_borders()
+
 # BBBR ----
 fp <- list.files(file.path(sites_dir, 'BBBR_divisions', 'final_divisions'), 
                  'BBBR_divisions_v2\\.shp', full.names = TRUE)
@@ -189,12 +187,17 @@ bbbr %>% st_write(file.path(polys_dir, 'BBBR_divisions_v3.shp'),
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Merge all ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-fps <- list.files(polys_dir, '*\\.shp$', full.names = TRUE)
+fps <- list.files(polys_dir, '*\\.shp$', full.names = TRUE) %>% 
+  .[str_detect(., 'all_sites', negate = TRUE)]
+
 df <- fps %>% purrr::map_dfr(function(x) {
   df <- st_read(x)
   df <- st_zm(df, drop = TRUE)
   df %>% select(any_of(c('HIH_site', 'name', 'type')))
-  })
+  }) %>% 
+  mutate(HIH_site = str_replace_all(HIH_site, 'Gunung Palung', 'Gunung Palung National Park'))
+
+tm_shape(df) + tm_polygons(alpha = 0.5)
 
 df <- df %>% 
   mutate(type = case_when(
@@ -205,4 +208,9 @@ df <- df %>%
     str_detect(name, regex('national park', ignore_case = TRUE)) ~ 'NP',
     TRUE ~ type))
 
-df %>% st_write(file.path(polys_dir, 'all_sites.shp'))
+df %>% st_write(file.path(polys_dir, 'all_sites.shp'), append = FALSE)
+
+
+
+df <- st_read(list.files(polys_dir, 'all_sites\\.shp$', full.names = TRUE))
+tm_shape(df) + tm_polygons()

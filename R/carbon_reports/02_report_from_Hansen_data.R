@@ -7,11 +7,15 @@ library(tidyverse)
 
 # Function ----
 tidy_forest_loss_df <- function(df) {
+  # Improve name of sum column
+  df <- df %>% rename(carbon_2000_mgc = sum)
+  
   # Get DF with annual carbon loss
   df_carbon <- df %>% 
     st_drop_geometry() %>% 
-    dplyr::select(starts_with('carbon_loss'), name) %>% 
-    pivot_longer(-name, 
+    dplyr::select(!starts_with('forest')) %>%
+    # dplyr::select(starts_with('carbon_loss'), HIH_site, type, name) %>% 
+    pivot_longer(starts_with('carbon_loss'), 
                  names_to = 'year',
                  values_to = 'carbon_loss_MgC') %>% 
     mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
@@ -20,8 +24,9 @@ tidy_forest_loss_df <- function(df) {
   # Get DF with annual forest area loss
   df_area <- df %>% 
     st_drop_geometry() %>% 
-    dplyr::select(starts_with('forest'), name) %>% 
-    pivot_longer(-name, 
+    dplyr::select(!starts_with('carbon_loss')) %>%
+    # dplyr::select(starts_with('forest'), name) %>% 
+    pivot_longer(starts_with('forest'), 
                  names_to = 'year',
                  values_to = 'forest_loss_ha') %>% 
     mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
@@ -32,11 +37,10 @@ tidy_forest_loss_df <- function(df) {
     left_join(df_area)
   
   # Get carbon stock in 2000
-  mgc_2000 <- df %>% dplyr::select(name, sum)
+  mgc_2000 <- df %>% dplyr::select(name, carbon_2000_mgc)
   
   # Get area of each polygon
   mgc_2000$area_ha  <- mgc_2000 %>% 
-    st_transform(23836) %>% 
     st_area() %>% 
     units::set_units('ha') %>% 
     units::set_units(NULL)
@@ -44,7 +48,7 @@ tidy_forest_loss_df <- function(df) {
   # Get percent of carbon lost annually and percent of the region deforested 
   df_tidy <- df_join %>% 
     left_join(st_drop_geometry(mgc_2000)) %>% 
-    mutate(carbon_loss_pct = carbon_loss_MgC / sum,
+    mutate(carbon_loss_pct = carbon_loss_MgC / carbon_2000_mgc,
            forest_loss_pct = forest_loss_ha / area_ha)
   
   # Return
@@ -54,41 +58,58 @@ tidy_forest_loss_df <- function(df) {
 get_piecewise_line <- function(df_zone) {
   
   # Get linear regression
-  # df_for_lm <- data.frame(x = df_zone$year, y = df_zone$carbon_loss_MgC)
   out.lm <- lm(carbon_loss_MgC ~ year, data = df_zone)
   dat2 = data.frame(x = df_zone$year, y = out.lm$fitted.values)
   
-  set.seed(12)
-  
   # BIC-based selection - throws error when 0 breakpoints are found
-  os <- try(selgmented(out.lm, Kmax=3, type="bic"), silent = TRUE)
+  try(dev.off)
+  try(rm(os_bicc))
+  set.seed(1)
+  os_bic <- try(selgmented(out.lm, Kmax=4, type="bic", 
+                           return.fit = TRUE, msg = FALSE))
   
-  if(any(class(os) == 'try-error')) {
+  if(any(class(os_bic) == 'try-error')) {
     print('**** BIC-based selection threw error so running Score-based. ****')
-    # Score-based breakpoint selection - returns 0 breakpoints without error
-    os <- selgmented(out.lm)  
-    npsi <- os$selection.psi$npsi
     
-    # Use linear regression if there are no breakpoints
-    if( npsi > 0 ) {
+    # Score-based breakpoint selection - returns 0 breakpoints without error
+    set.seed(1)
+    os <- selgmented(out.lm)  
+    
+    # Use selgmented fit if there are breakpoints
+    if( os$selection.psi$npsi > 0 ) {
       print('**** Getting line from score-based breakpoints. ****')
       dat2 = data.frame(x = df_zone$year, y = os$fitted.values)
     } 
     
   } else {
     print('**** Getting line from BIC-based breakpoints. ****')
-    # Get piecewise trend from os BIC results
-    npsi <- nrow(os$psi)
-    # dat2 = data.frame(x = df_zone$year, y = broken.line(os)$fit)
-    dat2 = data.frame(x = df_zone$year, y = os$fitted.values)
+    # Get piecewise trend from os_bic BIC results
+    # npsi <- nrow(os_bic$psi)
+    # dat2 = data.frame(x = df_zone$year, y = broken.line(os_bic)$fit)
+    dat2 = data.frame(x = df_zone$year, y = os_bic$fitted.values)
   }
+
+  return(dat2)
+}
+
+
+get_piecewise_line_scorebased <- function(df_zone) {
   
-  # Use linear regression if there are no breakpoints
-  if( npsi == 0 ) {
-    print('**** Using linear regression because no breakpoints selected. ****')
-    dat2 = data.frame(x = df_zone$year, y = out.lm$fitted.values)
+  # Get linear regression
+  out.lm <- lm(carbon_loss_MgC ~ year, data = df_zone)
+  dat2 = data.frame(x = df_zone$year, y = out.lm$fitted.values)
+  
+  # Score-based breakpoint selection - returns 0 breakpoints without error
+  set.seed(12)
+  os <- selgmented(out.lm)  
+  npsi <- os$selection.psi$npsi
+    
+  # Use selgmented fit if there are breakpoints
+  if( npsi > 0 ) {
+    print('**** Getting line from score-based breakpoints. ****')
+    dat2 = data.frame(x = df_zone$year, y = os$fitted.values)
   } 
-  
+
   return(dat2)
 }
 
@@ -99,7 +120,7 @@ plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (metric to
     ggplot(aes(x = year, y = carbon_loss_MgC)) +
     geom_point(size = .3, color = 'grey30') +
     geom_line(color = 'grey30', size = .5) + 
-    geom_line(data = pw_fit, aes(x = x, y = y), color = 'steelblue3', size = .5) +
+    geom_line(data = pw_fit, aes(x = x, y = y), color = 'firebrick3', size = .6) +
     scale_x_continuous(name = "Year",
                        breaks = 2001:2020,
                        expand = c(0.01, 0.01)) +
@@ -177,24 +198,24 @@ ggsave(file.path(cr_hansen_dir, str_c(site_code, '_noTI_2001_2020_piecewise.png'
 site <- 'Bukit Baka Bukit Raya National Park'
 site_code <- 'BBBR'
 df_bbbr <- st_read(here::here('data/gee_exports/BBBR_annual_deforestation.geojson')) %>% 
-  filter(zone != '')
+  rename(name = zone) %>% 
+  filter(name != '')
 
 # Tidy
 df_tidy <- tidy_forest_loss_df(df_bbbr)
 
 # Sites
-(div_names <- df_tidy %>% 
-    distinct(zone) %>% deframe())
+(div_names <- df_tidy %>% distinct(name) %>% deframe())
 
 div_name <- div_names[[1]]
-df_zone <- df_tidy %>% filter(zone == div_name)
+df_zone <- df_tidy %>% filter(name == div_name)
 pw_fit <- df_zone %>% get_piecewise_line()
 p1 <- plot_pw_fit(df_zone, div_name, pw_fit)
 
 plots_bbbr <- list()
 for (i in 1:length(div_names)) {
   div_name <-  div_names[[i]]
-  df_zone <- df_tidy %>% filter(zone == div_name)
+  df_zone <- df_tidy %>% filter(name == div_name)
   pw_fit <- df_zone %>% get_piecewise_line()
   p <- plot_pw_fit(df_zone, div_name, pw_fit)
   plots_bbbr[[i]] <- p
