@@ -1,3 +1,13 @@
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Script to:
+#     * Functions for 02_gee_carbon_and_area_loss_from_hansen.R
+# Requires:
+#     * GEE account with access to global_AGB_2000_30m_Mgha_V4
+#     * site polygon
+#     * 02_report_from_Hansen_data.R for functions following the GEE section
+# Author:
+#     * esturdivant@woodwellclimate.org, 2021-10-10
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 library(sf)
 library(patchwork)
@@ -145,7 +155,6 @@ create_pw_plot_list <- function(div_names, df_site) {
   plots <- list()
   for (i in 1:length(div_names)) {
     div_name <-  div_names[[i]]
-    print('')
     print('')
     print(div_name)
     df_zone <- filter(df_site, name == div_name)

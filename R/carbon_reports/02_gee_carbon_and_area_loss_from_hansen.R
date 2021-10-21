@@ -4,6 +4,7 @@
 # Requires:
 #     * GEE account with access to global_AGB_2000_30m_Mgha_V4
 #     * site polygon
+#     * 02_report_from_Hansen_data.R for functions following the GEE section
 # Author:
 #     * esturdivant@woodwellclimate.org, 2021-10-10
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -254,6 +255,27 @@ site_code <- hih_sites[[4]]
 df_type <- df_site %>% filter(type == 'TI')
 (div_names_all <- df_type %>% distinct(name) %>% deframe())
 
+div_names <- div_names_all
+site_code <- str_c(site_code, '_TI')
+
+plots <- create_pw_plot_list(div_names, df_site)
+params <- get_params(div_names)
+
+names(plots) <- div_names
+plots <- plots[order(names(plots))]
+formatted_plots <- layout_plots(plots, params)
+
+ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')), 
+       plot = formatted_plots,
+       width = params$png_width,
+       height = params$png_height)
+
+
+# TIs part 1
+site_code <- hih_sites[[4]]
+df_type <- df_site %>% filter(type == 'TI')
+(div_names_all <- df_type %>% distinct(name) %>% deframe())
+
 div_names <- div_names_all[1:6]
 site_code <- str_c(site_code, '_TI_p1')
 
@@ -280,7 +302,7 @@ ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')),
        width = params$png_width,
        height = params$png_height)
 
-# non-TIs
+# RESEX
 site_code <- hih_sites[[4]]
 df_type <- df_site %>% filter(type == 'RESEX')
 site_code <- str_c(site_code, '_RESEX')
@@ -295,7 +317,7 @@ ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')),
        width = params$png_width,
        height = params$png_height)
 
-# non-TIs
+# non-RESEX UCs
 site_code <- hih_sites[[4]]
 df_type <- df_site %>% filter(!type %in% c('TI', 'RESEX'))
 site_code <- str_c(site_code, '_UC')
@@ -303,6 +325,25 @@ site_code <- str_c(site_code, '_UC')
 
 plots <- create_pw_plot_list(div_names, df_site)
 params <- get_params(div_names)
+formatted_plots <- layout_plots(plots, params)
+
+ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')), 
+       plot = formatted_plots,
+       width = params$png_width,
+       height = params$png_height)
+
+
+# non-TIs
+site_code <- hih_sites[[4]]
+df_type <- df_site %>% filter(!type %in% c('TI'))
+site_code <- str_c(site_code, '_UCall')
+(div_names <- df_type %>% distinct(name) %>% deframe())
+
+plots <- create_pw_plot_list(div_names, df_site)
+params <- get_params(div_names)
+
+names(plots) <- div_names
+plots <- plots[order(names(plots))]
 formatted_plots <- layout_plots(plots, params)
 
 ggsave(file.path('outputs', str_c(site_code, '_2001_2020_piecewise.png')), 
