@@ -1,3 +1,12 @@
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Script to:
+#     * Pre-process HIH site polygons
+# Requires:
+#     * input files indicated
+# Author:
+#     * esturdivant@woodwellclimate.org, 2021-10-10
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 library(tmap)
 tmap_mode('view')
 library(sf)
@@ -5,11 +14,12 @@ library(terra)
 library(tidyverse)
 
 
-sites_dir <- '/Volumes/GoogleDrive-105942041423621298895/My Drive/2_Work/Woodwell/HIH/site_polys'
+sites_dir <- '~/data/hih_sites'
 polys_dir <- file.path(sites_dir, 'final_sites')
+final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
 
 # Get area for site polygons ----
-tdm_shp <- file.path(polys_dir, 'TdM_all_dissolved_gapfilled.shp')
+tdm_shp <- file.path(final_polys_dir, 'TdM_all_dissolved_gapfilled.shp')
 tdm <- st_read(tdm_shp)
 tdm %>% tbl_vars()
 
@@ -34,7 +44,7 @@ tdm_union %>%
 
 # Troubleshoot Manombo polygon ----
 site <- 'Manombo'
-manombo_shp_new <- file.path(polys_dir, 'ManomboNP_all.shp')
+manombo_shp_new <- file.path(final_polys_dir, 'ManomboNP_all.shp')
 
 # Original Special Reserve ---
 manombo_shp <- file.path(sites_dir, 'Manombo', 'ManomboNP_SRGpolys.shp')
@@ -165,9 +175,32 @@ tm_shape(limite_AP_manombo) + tm_polygons(col = 'seagreen3') +
   tm_shape(manombo_sr) + tm_borders(lwd = 3) +
   tm_shape(efatsy) + tm_borders()
 
+# Manombo from Centre ValBio ----
+dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/Manombo/Centre_ValBio'
+fps <- list.files(dir, 'kml$', full.names = TRUE)
+
+sf_list <- fps %>% purrr::map_dfr(st_read)
+
+sf_list$area_ha <- sf_list  %>% 
+    st_area() %>%
+    units::set_units('ha') %>%
+    units::set_units(NULL)
+
+out <- sf_list %>% 
+  st_drop_geometry %>% 
+  select(Name, area_ha)
+  
+sf_list <- sf_list %>% mutate(name_abbr = abbreviate(Name))
+tm_shape(sf_list) + tm_polygons(alpha = 0.5, col = 'Name') +
+  tm_shape(sf_list) + tm_text('name_abbr', shadow = TRUE)
+  
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # BBBR ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 fp <- list.files(file.path(sites_dir, 'BBBR_divisions', 'final_divisions'), 
                  'BBBR_divisions_v2\\.shp', full.names = TRUE)
+new_fp <- file.path(final_polys_dir, 'BBBR_divisions_v3.shp')
+
 bbbr <- st_read(fp) %>% filter(zone != '')
 bbbr$area_ha <- st_area(bbbr) %>%
   units::set_units('ha') %>%
@@ -181,15 +214,37 @@ bbbr <- bbbr %>%
 
 tmap_mode('view')
 tm_shape(bbbr) + tm_polygons()
-bbbr %>% st_write(file.path(polys_dir, 'BBBR_divisions_v3.shp'), 
-                  append = FALSE)
+bbbr %>% st_write(new_fp, append = FALSE)
+
+bbbr <- st_read(new_fp)
+tm_shape(bbbr) + tm_polygons(alpha = 0.5) +
+  tm_shape(bbbr) + tm_text('name')
+
+bbbr %>% 
+  st_drop_geometry %>% 
+  select(name, area_ha) %>% 
+  clipr::write_clip()
+
+st_crs(bbbr)
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Papua ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+papua <- st_read(file.path(sites_dir, 'Papua', 'papua_rough_sketch.shp')) %>% 
+  select(-id)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Merge all ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-fps <- list.files(polys_dir, '*\\.shp$', full.names = TRUE) %>% 
-  .[str_detect(., 'all_sites', negate = TRUE)]
+out_fp <- file.path(final_polys_dir, 'all_sites.shp')
 
+# List all shapefiles in final_sites dir except for all_sites
+fps <- list.files(final_polys_dir, '*\\.shp$', full.names = TRUE) %>% 
+  .[str_detect(., 'all_sites', negate = TRUE)] %>% 
+  .[str_detect(., 'HIH_sites', negate = TRUE)]
+
+# Merge them into one
 df <- fps %>% purrr::map_dfr(function(x) {
   df <- st_read(x)
   df <- st_zm(df, drop = TRUE)
@@ -197,8 +252,10 @@ df <- fps %>% purrr::map_dfr(function(x) {
   }) %>% 
   mutate(HIH_site = str_replace_all(HIH_site, 'Gunung Palung', 'Gunung Palung National Park'))
 
+# View
 tm_shape(df) + tm_polygons(alpha = 0.5)
 
+# Set types
 df <- df %>% 
   mutate(type = case_when(
     str_detect(name, regex('special reserve', ignore_case = TRUE)) ~ 'SR', 
@@ -208,9 +265,23 @@ df <- df %>%
     str_detect(name, regex('national park', ignore_case = TRUE)) ~ 'NP',
     TRUE ~ type))
 
-df %>% st_write(file.path(polys_dir, 'all_sites.shp'), append = FALSE)
+# Save
+df %>% st_write(out_fp, append = FALSE)
 
 
+# Read and add Papua scouting sites ----
+df <- st_read(out_fp)
 
-df <- st_read(list.files(polys_dir, 'all_sites\\.shp$', full.names = TRUE))
-tm_shape(df) + tm_polygons()
+df_out <- bind_rows(df, papua)
+
+tm_shape(df_out) + tm_polygons(alpha = 0.5)
+
+df_out %>% st_write(file.path(final_polys_dir, 'hih_sites_polys.shp'), append = FALSE)
+pts <- df_out %>% 
+  group_by(HIH_site) %>% summarize() %>%
+  st_centroid()
+
+pts %>% st_write(file.path(final_polys_dir, 'hih_sites_pts.shp'), append = FALSE)
+# tm_shape(df_out) + tm_polygons() +
+#   tm_shape(pts) + tm_dots()
+
