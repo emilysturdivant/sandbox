@@ -22,6 +22,8 @@ viridis <- c('#440154', '#433982', '#30678D', '#218F8B', '#36B677', '#8ED542', '
 BlueToRed <- c('#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c')
 OrRd <- c('#fef0d9', '#fdcc8a', '#fc8d59', '#e34a33', '#b30000')
 indexViz <- list(min = 0, max = 1, palette = viridis)
+viz_clssfd_idx <- list(min = 10, max = 90, palette = BlueToRed, 
+                       values = c('0-20', '20-40', '40-60', '60-80', '80-100'))
 
 # Set a region of interest and center map display
 region <- ee$Geometry$BBox(43, -22, 50, -20)
@@ -54,13 +56,13 @@ get_quantiles <- function(img, percentiles = c(0, 25, 50, 75, 100)) {
 }
 
 # Get 99th percentile
-get_pctl <- function(img, geometry, pctl = 99) {
+get_pctl <- function(img, pctl = 99) {
   
   p <- img$
     rename('b1')$
     reduceRegion(
       reducer = ee$Reducer$percentile(c(98, pctl)),
-      geometry = geometry,
+      geometry = tropics_bb,
       bestEffort = TRUE)$
     get(str_c('b1_p', pctl))$
     getInfo()
@@ -69,10 +71,10 @@ get_pctl <- function(img, geometry, pctl = 99) {
 }
 
 # Rescale to 99th percentile
-rescale_to_pctl <- function(img, geometry, pctl = 99) {
+rescale_to_pctl <- function(img, pctl = 99) {
   
   # Get 99th percentile
-  pctl_val <- get_pctl(img, geometry, pctl)
+  pctl_val <- get_pctl(img, pctl)
   
   # Divide by 99th percentile and reclass values outside of 0-1 range
   img1 <- img$divide(ee$Image$constant(pctl_val))
@@ -82,6 +84,82 @@ rescale_to_pctl <- function(img, geometry, pctl = 99) {
     where(img1$lt(0.0), 0.0)
   
   return( img )
+}
+
+# Classify image to 10 equal-area ranked classes
+classify_index_quants10 <- function(img) {
+  qs <- get_quantiles(img, c(10, 20, 30, 40, 50, 60, 70, 80, 90))
+  
+  ee$Image(0)$
+    where(img$lt(qs$p10), 0)$
+    where(img$gte(qs$p10), 10)$
+    where(img$gte(qs$p20), 20)$
+    where(img$gte(qs$p30), 30)$
+    where(img$gte(qs$p40), 40)$
+    where(img$gte(qs$p50), 50)$
+    where(img$gte(qs$p60), 60)$
+    where(img$gte(qs$p70), 70)$
+    where(img$gte(qs$p80), 80)$
+    where(img$gte(qs$p90), 90)$
+    updateMask(img$mask())
+}
+
+# Mask and rescale to 0-1
+rescale_index_in_list <- function(lst) {
+  
+  # Get index and mask
+  idx <- lst$index$
+    updateMask(tropics_r$neq(0))
+  
+  # Rescale
+  idx <- rescale_to_pctl(idx)
+  
+  # Return as list 
+  return( list(name = lst$name, 
+               index = idx))
+}
+
+# Classify index to equal intervals
+classify_index <- function(img) {
+  ee$Image(0)$
+    where(img$lt(0.2), 10)$
+    where(img$gte(0.2), 30)$
+    where(img$gte(0.4), 50)$
+    where(img$gte(0.6), 70)$
+    where(img$gte(0.8), 90)$
+    where(img$gte(0.95), 100)$
+    updateMask(img$mask())
+}
+
+# Classify to equal-area rank / percentiles
+classify_index_quants <- function(img) {
+  qs <- get_quantiles(img, c(20, 40, 60, 80))
+  
+  ee$Image(0)$
+    where(img$lt(qs$p20), 10)$
+    where(img$gte(qs$p20), 30)$
+    where(img$gte(qs$p40), 50)$
+    where(img$gte(qs$p60), 70)$
+    where(img$gte(qs$p80), 90)$
+    updateMask(img$mask())
+}
+
+# Apply classification to indices in list 
+classify_index_in_list <- function(lst, classification = 'equal') {
+  if(classification == 'equal')  {
+    lst_out <- list(
+      name = lst$name, 
+      index = classify_index(lst$index)
+    )
+  }
+  if(classification == 'quantile') {
+    lst_out <- list(
+      name = str_c(lst$name, ', ', classification, ' breaks'), 
+      index = classify_index_quants(lst$index)
+    )
+  } 
+  
+  return(lst_out)
 }
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -212,10 +290,10 @@ flii <- flii$map(function(img) {img$updateMask(img$neq(-9999))})
 flii <- flii$mosaic()$
   setDefaultProjection(crs = 'EPSG:4326', scale = 300)
 
-# get_pctl(flii, tropics_bb)
+# get_pctl(flii)
 
 # Scale values to 0-1 scale
-flii <- rescale_to_pctl(flii, tropics_bb)
+flii <- rescale_to_pctl(flii)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Total biomass density ----
@@ -232,9 +310,9 @@ carbon_mgcha <- biomass_mgha$divide(2)
 # # Reclass values above 1 to 1
 # carbon_idx <- carbon_idx$where(carbon_idx$gt(1), 1)
 
-# get_pctl(carbon_mgcha, tropics_bb)
+# get_pctl(carbon_mgcha)
 
-carbon_idx <- rescale_to_pctl(carbon_mgcha, tropics_bb)
+carbon_idx <- rescale_to_pctl(carbon_mgcha)
 # Map$addLayer(eeObject = carbon_idx, visParams = indexViz)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -246,8 +324,8 @@ gHM <- ee$ImageCollection("CSP/HM/GlobalHumanModification")$
   rename('b1')
 
 # Rescale
-# get_pctl(gHM, tropics_bb)
-gHM <- rescale_to_pctl(gHM, tropics_bb)
+# get_pctl(gHM)
+gHM <- rescale_to_pctl(gHM)
 
 # View
 # Map$addLayer(
@@ -266,7 +344,7 @@ dti <- ee$Image(addm("development-threat-index_geographic"))
 dti <- dti$updateMask(dti$neq(0))
 
 # Rescale
-dti <- rescale_to_pctl(dti, tropics_bb)
+dti <- rescale_to_pctl(dti)
 
 # Test mask
 # dti_m <- dti$updateMask(tropics_r$neq(0))
@@ -283,8 +361,8 @@ infant_mort <- ee$Image(addm("subnational_infant_mortality_rates_v2_01"))
 infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
 
 # Rescale
-# get_pctl(infant_mort, tropics_bb)
-infant_mort <- rescale_to_pctl(infant_mort, tropics_bb)
+# get_pctl(infant_mort)
+infant_mort <- rescale_to_pctl(infant_mort)
 # Map$addLayer(eeObject = infant_mort, visParams = indexViz)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -296,8 +374,8 @@ hc_access <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
   rename('b1')
 
 # Rescale
-get_pctl(hc_access, tropics_bb,  95)
-hc_access <- rescale_to_pctl(hc_access, tropics_bb, 95)
+get_pctl(hc_access,  95)
+hc_access <- rescale_to_pctl(hc_access, 95)
 # Map$addLayer(eeObject = hc_access, visParams = indexViz)
 
 # Load 
@@ -306,8 +384,8 @@ hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
   rename('b1')
 
 # Rescale
-# get_pctl(hc_motor, tropics_bb,  95)
-hc_motor <- rescale_to_pctl(hc_motor, tropics_bb, 95)
+# get_pctl(hc_motor,  95)
+hc_motor <- rescale_to_pctl(hc_motor, 95)
 Map$addLayer(eeObject = hc_motor, visParams = viz)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -317,30 +395,43 @@ Map$addLayer(eeObject = hc_motor, visParams = viz)
 hf <- ee$Image(addm("wildareas-v3-2009-human-footprint"))
 
 # Rescale
-# get_pctl(hf, tropics_bb)
-hf <- rescale_to_pctl(hf, tropics_bb)
+# get_pctl(hf)
+hf <- rescale_to_pctl(hf)
 # Map$addLayer(eeObject = hf, visParams = indexViz)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Zoonotic spillover risk (from Allen et al. 2017) ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load 
-zoonotic_risk <- ee$Image(addm("zoonotic_eid_risk"))$
-  select('b3')$
-  rename('b1')$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 100000)
+zoonotic_risk_all <- ee$Image(addm("zoonotic_eid_risk"))$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 100000)$
+  
+  # Downsample zoonotic risk to smooth
+  resample()
 
-# Rescale
-# get_pctl(zoonotic_risk, tropics_bb)
-zoonotic_risk <- rescale_to_pctl(zoonotic_risk, tropics_bb)
+# raw model output
+zs_response <- zoonotic_risk_all$select('b1')$rename('b1') 
+zs_resp_q10 <- classify_index_quants10(zs_response)
+zs_resp_q10 <- zs_resp_q10$updateMask(tropics_r$neq(0))
 
-# Downsample zoonotic risk to smooth
-zoonotic_risk <- zoonotic_risk$resample()
+# weighted by publications, not reweighted by population
+zs_weight_pubs <- zoonotic_risk_all$select('b2')$rename('b1') 
+zs_wpubs_q10 <- classify_index_quants10(zs_weight_pubs)
+zs_wpubs_q10 <- zs_wpubs_q10$updateMask(tropics_r$neq(0))
 
-# Map$addLayer(eeObject = zoonotic_risk, visParams = indexViz)
+# Reweighted by population
+zs_weight_pop <- zoonotic_risk_all$select('b3')$rename('b1')
+zs_wpop_q10 <- classify_index_quants10(zs_weight_pop)
+zs_wpop_q10 <- zs_wpop_q10$updateMask(tropics_r$neq(0))
 
 
-
+# View
+viz_pctls_idx <- list(min = 0, max = 90, palette = BlueToRed, 
+                       values = c('0', '10', '20', '30', '40', '50', '60', '70', '80', '90'))
+Map$addLayer(eeObject = zs_wpop_q10, visParams = viz_pctls_idx) +
+  Map$addLayer(eeObject = zs_wpubs_q10, visParams = viz_pctls_idx) +
+  Map$addLayer(eeObject = zs_resp_q10, visParams = viz_pctls_idx) +
+  Map$addLegend( visParams = viz_pctls_idx, color_map = 'character', name = 'Percentile')
 
 # # Create masks ----
 # # Get only FLII > 0.96
@@ -428,61 +519,6 @@ zoonotic_risk <- zoonotic_risk$resample()
 # #   visParams = indexViz,
 # #   name = "Tree cover"
 # # )
-
-# Mask and rescale to 0-1
-rescale_index_in_list <- function(lst) {
-  
-  # Get index and mask
-  idx <- lst$index$
-    updateMask(tropics_r$neq(0))
-  
-  # Rescale
-  idx <- rescale_to_pctl(idx, tropics_bb)
-  
-  # Return as list 
-  return( list(name = lst$name, 
-               index = idx))
-}
-
-classify_index <- function(img) {
-  ee$Image(0)$
-    where(img$lt(0.2), 10)$
-    where(img$gte(0.2), 30)$
-    where(img$gte(0.4), 50)$
-    where(img$gte(0.6), 70)$
-    where(img$gte(0.8), 90)$
-    where(img$gte(0.95), 100)$
-    updateMask(img$mask())
-}
-
-classify_index_quants <- function(img) {
-  qs <- get_quantiles(img, c(20, 40, 60, 80))
-  
-  ee$Image(0)$
-    where(img$lt(qs$p20), 10)$
-    where(img$gte(qs$p20), 30)$
-    where(img$gte(qs$p40), 50)$
-    where(img$gte(qs$p60), 70)$
-    where(img$gte(qs$p80), 90)$
-    updateMask(img$mask())
-}
-
-classify_index_in_list <- function(lst, classification = 'equal') {
-  if(classification == 'equal')  {
-    lst_out <- list(
-      name = lst$name, 
-      index = classify_index(lst$index)
-    )
-  }
-  if(classification == 'quantile') {
-    lst_out <- list(
-      name = str_c(lst$name, ', ', classification, ' breaks'), 
-      index = classify_index_quants(lst$index)
-    )
-  } 
-  
-  return(lst_out)
-}
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Combine ----
@@ -778,6 +814,7 @@ mltplctv_clas_eq <- multiplicative_01 %>% purrr::map(classify_index_in_list)
 # # Quantiles
 # addtv_clas_quant <- additive_01 %>% purrr::map(classify_index_in_list, 'quantile')
 # mltplctv_clas_quant <- multiplicative_01 %>% purrr::map(classify_index_in_list, 'quantile')
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Export ----
