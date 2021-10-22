@@ -30,7 +30,9 @@ Map$centerObject(region, 6)
 # Prep to get paths to assets
 user <- ee_get_assethome()
 
+# Local paths
 data_dir <- '/Users/emilysturdivant/data'
+final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Functions ----
@@ -85,36 +87,16 @@ rescale_to_pctl <- function(img, geometry, pctl = 99) {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Tropics extent ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# # Basic tropics
-# e <- terra::ext(c(xmin = -180, xmax = 180, ymin = -23.3, ymax = 23.3))
-# bb <- c(e$xmin, e$ymin, e$xmax, e$ymax)
-# tropics_rect <- st_as_sfc(st_bbox(bb, crs = st_crs(4326)))
-# 
-# tropics_rect_shp <- file.path(data_dir, 'context', 'tropics_rect.shp')
-# if(!file.exists(tropics_rect_shp)) {
-#   tropics_rect %>% st_write(tropics_rect_shp)
-# }
-# 
-# # Expanded tropics
-# e <- terra::ext(c(xmin = -180, xmax = 180, ymin = -26, ymax = 26))
-# bb <- c(e$xmin, e$ymin, e$xmax, e$ymax)
-# tropics_rect <- sf::st_as_sfc(st_bbox(bb, crs = st_crs(4326)))
-# 
-# tropics_rect_shp <- file.path(data_dir, 'context', 'tropics_26.shp')
-# if(!file.exists(tropics_rect_shp)) {
-#   tropics_rect %>% st_write(tropics_rect_shp)
-# }
-
-# Perform in GEE ----
-geometry <- ee$Geometry$Rectangle(
+# Create tropics extent rectangle ----
+tropics_bb <- ee$Geometry$Rectangle(
   coords = c(-117, -26, 180, 26),
   proj = "EPSG:4326",
   geodesic = FALSE
 )
 
+# Convert to raster for masking ----
 # Set property of 1 for the polygon
-tropics_r <- ee$FeatureCollection(geometry)$
-  map(function(f) {f$set("tropics", 1)})
+tropics_r <- ee$FeatureCollection(tropics_bb)$map(function(f) {f$set("tropics", 1)})
 
 # Convert to raster
 tropics_r <- tropics_r$
@@ -123,40 +105,24 @@ tropics_r <- tropics_r$
     reducer = ee$Reducer$first()
   )
 
-# Get uploaded FC ----
-tropics_bb <- ee$FeatureCollection(addm('tropics_26'))
-
-# Convert to tropics mask
-# Set property of 1 for the polygon
-tropics_r <- tropics_bb$
-  map(function(f) {f$set("tropics", 1)})
-
-# Convert to raster
-tropics_r <- tropics_r$
-  reduceToImage(
-    properties = list('tropics'), 
-    reducer = ee$Reducer$first()
-  )
-
 # # Test
 # Map$addLayer(eeObject = tropics_r, visParams = indexViz, name = "Tropics", opacity = 0.5) +
-#   Map$addLayer(eeObject = geometry, name = "Tropics", opacity = 0.5)
+#   Map$addLayer(eeObject = tropics_bb, name = "Tropics", opacity = 0.5)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # HIH sites ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Combine FCs for all sites
-tdm <- ee$FeatureCollection("users/esturdivant/HIH_sites/TdM_all_dissolved")
-bbbr <- ee$FeatureCollection("users/esturdivant/HIH_sites/BBBR_divisions_v2")
-gpnp <- ee$FeatureCollection("users/esturdivant/HIH_sites/GPNP_Border")
-manombo <- ee$FeatureCollection("users/esturdivant/HIH_sites/ManomboNP_SRGpolys")
+polys_fp <- file.path(final_polys_dir, 'hih_sites_polys.shp')
+pts_fp <- file.path(final_polys_dir, 'hih_sites_pts.shp')
 
-hih_sites <- ee$FeatureCollection(c(tdm, bbbr, gpnp, manombo))$flatten()
+# Upload shapefile ----
+hih_sites <- st_read(polys_fp) %>% select(-id) %>% sf_as_ee()
+fc_pts <- st_read(pts_fp) %>% sf_as_ee()
 
 # Paint all the polygon edges with the same number and width, display.
-outline <- ee$Image()$byte()$
-  paint(featureCollection = hih_sites, color = 1, width = 2)
+outline <- ee$Image()$byte()$paint(featureCollection = hih_sites, color = 1, width = 2)
 hih_sites_lyr <- Map$addLayer(outline, name = 'HIH sites')
+hih_pts_lyr <- Map$addLayer(fc_pts, name = 'HIH sites')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Tropical biomes ----

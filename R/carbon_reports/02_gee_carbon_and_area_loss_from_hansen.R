@@ -21,15 +21,14 @@ library(segmented)
 library(tidyverse)
 
 # Prep paths
-polys_dir <- file.path('/Volumes/GoogleDrive-105942041423621298895/My Drive',
-                       '2_Work/Woodwell/HIH/site_polys', 
-                       'final_sites')
+final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
+
 export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Upload shapefile ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-shps <- list.files(polys_dir, 'shp$', full.names = TRUE)
+shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
 (polys_fp <- shps[[1]])
 
 task_name <- tools::file_path_sans_ext(basename(polys_fp))
