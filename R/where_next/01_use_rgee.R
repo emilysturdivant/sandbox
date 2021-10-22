@@ -246,7 +246,8 @@ flii <- flii$map(function(img) {img$updateMask(img$neq(-9999))})
 flii <- flii$mosaic()$
   setDefaultProjection(crs = 'EPSG:4326', scale = 300)
 
-get_pctl(flii, tropics_bb)
+# get_pctl(flii, tropics_bb)
+
 # Scale values to 0-1 scale
 flii <- rescale_to_pctl(flii, tropics_bb)
 
@@ -265,7 +266,8 @@ carbon_mgcha <- biomass_mgha$divide(2)
 # # Reclass values above 1 to 1
 # carbon_idx <- carbon_idx$where(carbon_idx$gt(1), 1)
 
-get_pctl(carbon_mgcha, tropics_bb)
+# get_pctl(carbon_mgcha, tropics_bb)
+
 carbon_idx <- rescale_to_pctl(carbon_mgcha, tropics_bb)
 # Map$addLayer(eeObject = carbon_idx, visParams = indexViz)
 
@@ -278,7 +280,7 @@ gHM <- ee$ImageCollection("CSP/HM/GlobalHumanModification")$
   rename('b1')
 
 # Rescale
-get_pctl(gHM, tropics_bb)
+# get_pctl(gHM, tropics_bb)
 gHM <- rescale_to_pctl(gHM, tropics_bb)
 
 # View
@@ -315,7 +317,7 @@ infant_mort <- ee$Image(addm("subnational_infant_mortality_rates_v2_01"))
 infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
 
 # Rescale
-get_pctl(infant_mort, tropics_bb)
+# get_pctl(infant_mort, tropics_bb)
 infant_mort <- rescale_to_pctl(infant_mort, tropics_bb)
 # Map$addLayer(eeObject = infant_mort, visParams = indexViz)
 
@@ -338,7 +340,7 @@ hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
   rename('b1')
 
 # Rescale
-get_pctl(hc_motor, tropics_bb,  95)
+# get_pctl(hc_motor, tropics_bb,  95)
 hc_motor <- rescale_to_pctl(hc_motor, tropics_bb, 95)
 Map$addLayer(eeObject = hc_motor, visParams = viz)
 
@@ -349,7 +351,7 @@ Map$addLayer(eeObject = hc_motor, visParams = viz)
 hf <- ee$Image(addm("wildareas-v3-2009-human-footprint"))
 
 # Rescale
-get_pctl(hf, tropics_bb)
+# get_pctl(hf, tropics_bb)
 hf <- rescale_to_pctl(hf, tropics_bb)
 # Map$addLayer(eeObject = hf, visParams = indexViz)
 
@@ -363,7 +365,7 @@ zoonotic_risk <- ee$Image(addm("zoonotic_eid_risk"))$
   setDefaultProjection(crs = 'EPSG:4326', scale = 100000)
 
 # Rescale
-get_pctl(zoonotic_risk, tropics_bb)
+# get_pctl(zoonotic_risk, tropics_bb)
 zoonotic_risk <- rescale_to_pctl(zoonotic_risk, tropics_bb)
 
 # Downsample zoonotic risk to smooth
@@ -810,3 +812,24 @@ mltplctv_clas_eq <- multiplicative_01 %>% purrr::map(classify_index_in_list)
 # # Quantiles
 # addtv_clas_quant <- additive_01 %>% purrr::map(classify_index_in_list, 'quantile')
 # mltplctv_clas_quant <- multiplicative_01 %>% purrr::map(classify_index_in_list, 'quantile')
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Export ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# task_img <- mltplctv_clas_eq$fb_humz$index %>% 
+#   ee_image_to_asset(assetId = addm('hih_index/v1_mult_FCB_HmDtHcImZ'),
+#                     region = geometry, 
+#                     scale = 1000, 
+#                     maxPixels = 191434780)
+# 
+# task_img$start()
+# ee_monitoring(task_img)
+# 
+# task_img_to_drive <- mltplctv_clas_eq$fb_humz$index %>% 
+#   ee_image_to_drive(description = 'v1_mult_FCB_HmDtHcImZ_10km',
+#                     folder = 'Earth Engine Exports',
+#                     region = geometry, 
+#                     scale = 10000)
+# 
+# task_img_to_drive$start()
+# ee_monitoring(task_img_to_drive)
