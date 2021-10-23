@@ -26,6 +26,11 @@ if(!file.exists(tropics_rect_shp)) {
   tropics_rect %>% st_write(tropics_rect_shp)
 }
 
+# Create tropics extent ----
+e <- ext(c(xmin = -180, xmax = 180, ymin = -26, ymax = 26))
+bb <- c(e$xmin, e$ymin, e$xmax, e$ymax)
+tropics_26 <- st_as_sfc(st_bbox(bb, crs = st_crs(4326)))
+
 # Extract countries in tropics and add MSF flag ----
 standardize_text <- function(x){
   x %>% as.character() %>% 
@@ -62,6 +67,7 @@ countries <- countries %>%
   group_by(NAME_0) %>% 
   summarize()
 
+# Join with MSF
 countries <- countries %>% 
   mutate(country = standardize_text(NAME_0)) %>% 
   left_join(msf_countries, by = 'country')
@@ -447,3 +453,169 @@ tm_shape(flii_subr) + tm_raster()
 
 library(mapview)
 mapview::mapview(flii_sub)
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Global Data Lab ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+gdl_dir <- file.path(data_dir, 'human_health', 'GDL_2019')
+shp <- file.path(gdl_dir, 'GDL Shapefiles V4', 'GDL Shapefiles V4.shp')
+sf <- st_read(shp)
+
+# Simplify and subset to those that intersect tropics
+sfs <- sf %>% st_simplify(dTolerance = 0.01)
+sf.st <- sfs[unlist(st_intersects(tropics_26, sfs)),]
+
+tm_shape(sf.st) + tm_polygons(col = 'shdi')
+
+# Load other indicators
+csv <- file.path(gdl_dir, 'GDL-Life-expectancy-data.csv')
+le <- read_csv(csv) %>% 
+  select(GDLcode = GDLCODE,
+         LE = `2019`)
+
+csv <- file.path(gdl_dir, 'GDL-Health-index-data.csv')
+hi <- read_csv(csv) %>% 
+  select(GDLcode = GDLCODE,
+         HI = `2019`)
+
+# Join to GDL subnational units ----
+sf.le <- sf.st %>% left_join(le, by = 'GDLcode')
+sf.ind <- sf.le %>% left_join(hi, by = 'GDLcode')
+
+tm_shape(sf.ind) + tm_polygons(col = 'shdi', lwd = NA)
+tm_shape(sf.ind) + tm_polygons(col = 'LE', lwd = NA)
+tm_shape(sf.ind) + tm_polygons(col = 'HI', lwd = NA)
+
+sf.ind %>% st_write(file.path(gdl_dir, 'GDL_subnational_hdi_le_hi.shp'), 
+                    append = FALSE)
+# sf.ind %>% sf_as_ee('getInfo_to_asset', addm('GDL_subnational_hdi_le_hi'))
+# ee_monitoring()
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Global Burden of Disease ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+gbd_dir <- file.path(data_dir, 'human_health', 'GBD_2019')
+dalys <- read_csv(file.path(gbd_dir, 'DALYs_2019_tropics_subnational.csv'))
+dalys <- dalys %>% 
+  mutate(location_name = location_name %>% 
+           str_replace_all('United Republic of Tanzania', 'Tanzania') %>% 
+           str_replace_all('Bolivia \\(P.*', 'Bolivia') %>% 
+           str_replace_all('Venezuela \\(.*', 'Venezuela') %>% 
+           str_replace_all('^Congo$', 'Republic of Congo') %>% 
+           str_replace_all('^Viet Nam$', 'Vietnam'))
+
+# Join to spatial data (various attempts) ----
+
+# Load GADM country boundaries as singlepart
+prep_gadm <- function(fp, grp_var = 'NAME_0') {
+  # Load
+  adm <- st_read(fp, promote_to_multi = TRUE) %>%
+    st_cast("POLYGON")
+  
+  # Simplify and subset to those that intersect tropics
+  adm <- adm %>% st_simplify(dTolerance = 0.01)
+  adm <- adm[unlist(st_intersects(tropics_26, adm)),]
+  
+  # Remove parts of countries < 2km2
+  adm['area'] <- adm %>% st_area()
+  adm <- adm %>% 
+    filter(area > units::set_units(2, 'km^2')) %>% 
+    group_by(.dots = grp_var) %>% 
+    summarize()
+
+}
+
+# Level 1 ----
+adm_l1_fp <- file.path(data_dir, 'gadm', 'gadm36_1.shp')
+adm_l1 <- prep_gadm(adm_l1_fp, c('NAME_0', 'NAME_1'))
+
+adml1_simp_fp <- file.path(data_dir, 'gadm', 'gadm36_1_tropics_simp01big4.rds')
+adm_l1 %>% saveRDS(adml1_simp_fp)
+
+tm_shape(st_as_sf(as.data.frame(adm_l1))) + tm_polygons(col = 'NAME_0')
+
+# Left join DALYs to countries and subnational units
+adm1_dalys <- adm_l1 %>% 
+  inner_join(select(dalys, location_name, val), by = c('NAME_1' = 'location_name'))
+
+adm0_dalys <- adm_l1 %>% 
+  inner_join(select(dalys, location_name, val), by = c('NAME_0' = 'location_name')) %>% 
+  anti_join(st_drop_geometry(adm1_dalys), by = 'NAME_1')
+
+# Combine
+dalys_sf <- bind_rows(adm0_dalys, adm1_dalys)
+
+dalys_sf %>% st_write(here::here(gbd_dir, 'processed', 'DALYs_2019.shp'))
+
+
+
+
+
+# In GEE --- 
+# First-level administrative units in 500m raster
+adm_l1 <- ee$FeatureCollection("FAO/GAUL_SIMPLIFIED_500m/2015/level1")
+dalys <- ee$FeatureCollection(addm("tables/DALYs_2019_tropics_subnational"))
+
+# Look at one administrative unit
+x <- adm_l1$first()
+
+join_dalys <- function(x) {
+  
+  country <- x$get('ADM0_NAME')$getInfo()
+  region <- x$get('ADM1_NAME')$getInfo()
+  
+  val_x <- df %>% filter(location_name == country) %>% .$val
+  
+  if(length(val_x) == 0){
+    val_x <- df %>% filter(location_name == region) %>% .$val
+  }
+  
+  if(length(val_x) == 0)   val_x <- as.numeric(NA)
+  
+  x$set('DALYs', val_x)
+}
+
+adm_l1 <- adm_l1$
+  filterBounds(tropics_bb)$
+  map(ee_utils_pyfunc(join_dalys))
+
+ee_print(adm_l1)
+
+
+
+# Attempt to join...
+filter <- ee$Filter$equals(leftField = 'ADM0_NAME', rightField = 'location_names')
+simpleJoined <- ee$Join$simple()$apply(adm_l1, dalys, filter)
+ee_print(simpleJoined)
+
+
+
+
+
+shp <- file.path(gdl_dir, 'GDL Shapefiles V4', 'GDL Shapefiles V4.shp')
+sf <- st_read(shp)
+sf %>% 
+  st_drop_geometry() %>% 
+  select(country, region) %>% 
+  group_by(country) %>% 
+  filter(n() == 1)
+
+countries <- sf %>% 
+  st_drop_geometry() %>% 
+  select(country, region) %>% 
+  filter(region == 'Total') %>% 
+  .$country
+
+sf %>% 
+  st_drop_geometry() %>% 
+  select(country, region) %>% 
+  filter(region != 'Total') %>% 
+  filter(country %in% countries)
+
+sf %>% 
+  st_drop_geometry() %>% 
+  mutate()
+  select(country, region) %>% 
+  filter(region != 'Total') %>% 
+  filter(country %in% countries)

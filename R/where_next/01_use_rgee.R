@@ -21,16 +21,15 @@ library(tidyverse)
 viridis <- c('#440154', '#433982', '#30678D', '#218F8B', '#36B677', '#8ED542', '#FDE725')
 BlueToRed <- c('#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c')
 OrRd <- c('#fef0d9', '#fdcc8a', '#fc8d59', '#e34a33', '#b30000')
-indexViz <- list(min = 0, max = 1, palette = viridis)
+viz_idx_norm <- list(min = 0, max = 1, palette = BlueToRed)
 viz_clssfd_idx <- list(min = 10, max = 90, palette = BlueToRed, 
                        values = c('0-20', '20-40', '40-60', '60-80', '80-100'))
+viz_pctls_idx <- list(min = 0, max = 90, palette = BlueToRed,
+                       values = c('0', '10', '20', '30', '40', '50', '60', '70', '80', '90'))
 
 # Set a region of interest and center map display
 region <- ee$Geometry$BBox(43, -22, 50, -20)
 Map$centerObject(region, 6)
-
-# Prep to get paths to assets
-user <- ee_get_assethome()
 
 # Local paths
 data_dir <- '/Users/emilysturdivant/data'
@@ -39,6 +38,8 @@ final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hi
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Functions ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Prep to get paths to assets
+user <- ee_get_assethome()
 addm <- function(x) sprintf("%s/%s", user, x)
 
 # Get quantiles
@@ -58,10 +59,13 @@ get_quantiles <- function(img, percentiles = c(0, 25, 50, 75, 100)) {
 # Get 99th percentile
 get_pctl <- function(img, pctl = 99) {
   
+  pctl_list <- c(0, 99)
+  if (!pctl %in% pctl_list) pctl_list <- sort(c(pctl_list, pctl))
+  
   p <- img$
     rename('b1')$
     reduceRegion(
-      reducer = ee$Reducer$percentile(c(98, pctl)),
+      reducer = ee$Reducer$percentile(pctl_list),
       geometry = tropics_bb,
       bestEffort = TRUE)$
     get(str_c('b1_p', pctl))$
@@ -73,11 +77,22 @@ get_pctl <- function(img, pctl = 99) {
 # Rescale to 99th percentile
 rescale_to_pctl <- function(img, pctl = 99) {
   
-  # Get 99th percentile
-  pctl_val <- get_pctl(img, pctl)
+  pctl_list <- c(0, 98, 100)
+  if (!pctl %in% pctl_list) pctl_list <- sort(c(pctl_list, pctl))
+  
+  p <- img$
+    rename('b1')$
+    reduceRegion(
+      reducer = ee$Reducer$percentile(pctl_list),
+      geometry = tropics_bb,
+      bestEffort = TRUE)
+  
+  pctl_val <- p$get(str_c('b1_p', pctl))$getInfo()
+  min <- p$get(str_c('b1_p0'))$getInfo()
   
   # Divide by 99th percentile and reclass values outside of 0-1 range
-  img1 <- img$divide(ee$Image$constant(pctl_val))
+  # img1 <- img$divide(ee$Image$constant(pctl_val))
+  img1 <- img$unitScale(min, pctl_val)
   
   img <- img1$
     where(img1$gt(1.0), 1.0)$
@@ -120,14 +135,16 @@ rescale_index_in_list <- function(lst) {
 }
 
 # Classify index to equal intervals
-classify_index <- function(img) {
+classify_eq_int <- function(img) {
   ee$Image(0)$
-    where(img$lt(0.2), 10)$
-    where(img$gte(0.2), 30)$
-    where(img$gte(0.4), 50)$
-    where(img$gte(0.6), 70)$
-    where(img$gte(0.8), 90)$
-    where(img$gte(0.95), 100)$
+    where(img$lt(0.2), 0)$
+    where(img$gte(0.2), 20)$
+    where(img$gte(0.4), 40)$
+    where(img$gte(0.6), 60)$
+    where(img$gte(0.8), 80)$
+    where(img$gte(0.85), 85)$
+    where(img$gte(0.9), 90)$
+    where(img$gte(0.95), 95)$
     updateMask(img$mask())
 }
 
@@ -184,14 +201,14 @@ tropics_r <- tropics_r$
   )
 
 # # Test
-# Map$addLayer(eeObject = tropics_r, visParams = indexViz, name = "Tropics", opacity = 0.5) +
+# Map$addLayer(eeObject = tropics_r, visParams = viz_idx_norm, name = "Tropics", opacity = 0.5) +
 #   Map$addLayer(eeObject = tropics_bb, name = "Tropics", opacity = 0.5)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # HIH sites ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-polys_fp <- file.path(final_polys_dir, 'hih_sites_polys.shp')
-pts_fp <- file.path(final_polys_dir, 'hih_sites_pts.shp')
+polys_fp <- here::here(final_polys_dir, 'hih_sites_polys.shp')
+pts_fp <- here::here(final_polys_dir, 'hih_sites_pts.shp')
 
 # Upload shapefile ----
 hih_sites <- st_read(polys_fp) %>% select(-id) %>% sf_as_ee()
@@ -267,13 +284,11 @@ kba_r <- kbas$
   )
 
 # View
-# Map$addLayer(eeObject = kba_r, visParams = indexViz, name = "Key Biodiversity Areas")
+# Map$addLayer(eeObject = kba_r, visParams = viz_idx_norm, name = "Key Biodiversity Areas")
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Forest Landscape Integrity Index ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# ee_manage_assetlist(path_asset = addm("flii"))
-
 # Load 
 flii <- ee$ImageCollection(c(
   "users/esturdivant/flii/flii_Africa",
@@ -290,7 +305,7 @@ flii <- flii$map(function(img) {img$updateMask(img$neq(-9999))})
 flii <- flii$mosaic()$
   setDefaultProjection(crs = 'EPSG:4326', scale = 300)
 
-# get_pctl(flii)
+# get_pctl(flii) # 99th: 9995.569
 
 # Scale values to 0-1 scale
 flii <- rescale_to_pctl(flii)
@@ -310,10 +325,10 @@ carbon_mgcha <- biomass_mgha$divide(2)
 # # Reclass values above 1 to 1
 # carbon_idx <- carbon_idx$where(carbon_idx$gt(1), 1)
 
-# get_pctl(carbon_mgcha)
+get_pctl(carbon_mgcha) # 679.68 MgC/ha
 
 carbon_idx <- rescale_to_pctl(carbon_mgcha)
-# Map$addLayer(eeObject = carbon_idx, visParams = indexViz)
+# Map$addLayer(eeObject = carbon_idx, visParams = viz_idx_norm)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Human modification ----
@@ -324,7 +339,7 @@ gHM <- ee$ImageCollection("CSP/HM/GlobalHumanModification")$
   rename('b1')
 
 # Rescale
-# get_pctl(gHM)
+get_pctl(gHM) # 0.76
 gHM <- rescale_to_pctl(gHM)
 
 # View
@@ -348,8 +363,8 @@ dti <- rescale_to_pctl(dti)
 
 # Test mask
 # dti_m <- dti$updateMask(tropics_r$neq(0))
-# Map$addLayer(eeObject = dti, visParams = indexViz) +
-#   Map$addLayer(eeObject = dti_m, visParams = indexViz) 
+# Map$addLayer(eeObject = dti, visParams = viz_idx_norm) +
+#   Map$addLayer(eeObject = dti_m, visParams = viz_idx_norm) 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Subnational Infant Mortality Rate ----
@@ -361,9 +376,66 @@ infant_mort <- ee$Image(addm("subnational_infant_mortality_rates_v2_01"))
 infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
 
 # Rescale
-# get_pctl(infant_mort)
+# get_pctl(infant_mort) # 99.7
 infant_mort <- rescale_to_pctl(infant_mort)
-# Map$addLayer(eeObject = infant_mort, visParams = indexViz)
+# Map$addLayer(eeObject = infant_mort, visParams = viz_idx_norm)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# DALYs ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# dalys_sf <- here::here(gbd_dir, 'processed', 'DALYs_2019.shp')
+dalys_fc <- ee$FeatureCollection(addm('DALYs_2019_tropics'))
+
+# Convert to raster
+dalys <- dalys_fc$
+  reduceToImage(
+    properties = list('val'), 
+    reducer = ee$Reducer$first()
+  )$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+
+# Rescale
+# get_pctl(dalys, 99) # 83,090 disability-adjusted life years per 100,000 people
+# get_pctl(dalys, 0) # 15,706 disability-adjusted life years per 100,000 people
+dalys_norm <- rescale_to_pctl(dalys, 99)
+
+# Rescale to Percentiles 
+dalys_ea <- classify_index_quants10(dalys)
+
+# # View
+# Map$addLayer(eeObject = dalys, visParams = viz_idx_norm, name = "DALYs") +
+#   Map$addLayer(eeObject = dalys_ea, visParams = viz_pctls_idx, name = "DALYs")
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# GDL Health indicators ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hdi_fc <- ee$FeatureCollection(addm('GDL_subnational_hdi_le_hi'))
+
+# Convert to raster
+le <- hdi_fc$
+  reduceToImage(
+  properties = list('LE'), 
+  reducer = ee$Reducer$first()
+  )$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+
+# Rescale
+# get_pctl(le, 1) # 51.9 years is the 1st percentile and 47.75 is the min
+le <- rescale_to_pctl(le, 100)
+
+# Invert values
+le <- le$multiply(-1)$add(1)
+
+# View
+# Map$addLayer(eeObject = le, visParams = viz_idx_norm, name = "Life expectancy")
+
+hi <- hdi_fc$reduceToImage(properties = list('HI'), reducer = ee$Reducer$first())
+hdi <- hdi_fc$reduceToImage(properties = list('shdi'), reducer = ee$Reducer$first())
+
+Map$addLayer(eeObject = hdi,
+             visParams = list(min = 0, max = 1, palette = viridis), 
+             name = "SHDI")
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Accessibility to Healthcare ----
@@ -374,9 +446,9 @@ hc_access <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
   rename('b1')
 
 # Rescale
-get_pctl(hc_access,  95)
+# get_pctl(hc_access,  95) # 6380 min
 hc_access <- rescale_to_pctl(hc_access, 95)
-# Map$addLayer(eeObject = hc_access, visParams = indexViz)
+# Map$addLayer(eeObject = hc_access, visParams = viz_idx_norm)
 
 # Load 
 hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
@@ -386,7 +458,7 @@ hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
 # Rescale
 # get_pctl(hc_motor,  95)
 hc_motor <- rescale_to_pctl(hc_motor, 95)
-Map$addLayer(eeObject = hc_motor, visParams = viz)
+# Map$addLayer(eeObject = hc_motor, visParams = viz)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Human footprint (from Wild Areas v3) ----
@@ -397,7 +469,7 @@ hf <- ee$Image(addm("wildareas-v3-2009-human-footprint"))
 # Rescale
 # get_pctl(hf)
 hf <- rescale_to_pctl(hf)
-# Map$addLayer(eeObject = hf, visParams = indexViz)
+# Map$addLayer(eeObject = hf, visParams = viz_idx_norm)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Zoonotic spillover risk (from Allen et al. 2017) ----
@@ -405,9 +477,7 @@ hf <- rescale_to_pctl(hf)
 # Load 
 zoonotic_risk_all <- ee$Image(addm("zoonotic_eid_risk"))$
   setDefaultProjection(crs = 'EPSG:4326', scale = 100000)$
-  
-  # Downsample zoonotic risk to smooth
-  resample()
+  resample() # Downsample zoonotic risk to smooth for display
 
 # raw model output
 zs_response <- zoonotic_risk_all$select('b1')$rename('b1') 
@@ -424,21 +494,20 @@ zs_weight_pop <- zoonotic_risk_all$select('b3')$rename('b1')
 zs_wpop_q10 <- classify_index_quants10(zs_weight_pop)
 zs_wpop_q10 <- zs_wpop_q10$updateMask(tropics_r$neq(0))
 
-
-# View
-viz_pctls_idx <- list(min = 0, max = 90, palette = BlueToRed, 
-                       values = c('0', '10', '20', '30', '40', '50', '60', '70', '80', '90'))
-Map$addLayer(eeObject = zs_wpop_q10, visParams = viz_pctls_idx) +
-  Map$addLayer(eeObject = zs_wpubs_q10, visParams = viz_pctls_idx) +
-  Map$addLayer(eeObject = zs_resp_q10, visParams = viz_pctls_idx) +
-  Map$addLegend( visParams = viz_pctls_idx, color_map = 'character', name = 'Percentile')
+# # View
+# viz_pctls_idx <- list(min = 0, max = 90, palette = BlueToRed, 
+#                        values = c('0', '10', '20', '30', '40', '50', '60', '70', '80', '90'))
+# Map$addLayer(eeObject = zs_wpop_q10, visParams = viz_pctls_idx) +
+#   Map$addLayer(eeObject = zs_wpubs_q10, visParams = viz_pctls_idx) +
+#   Map$addLayer(eeObject = zs_resp_q10, visParams = viz_pctls_idx) +
+#   Map$addLegend( visParams = viz_pctls_idx, color_map = 'character', name = 'Percentile')
 
 # # Create masks ----
 # # Get only FLII > 0.96
 # flii96 <- flii$updateMask(flii$gte(0.96))
 # Map$addLayer(
 #   eeObject = flii96,
-#   visParams = indexViz,
+#   visParams = viz_idx_norm,
 #   name = "Sum"
 # )
 # 
@@ -446,7 +515,7 @@ Map$addLayer(eeObject = zs_wpop_q10, visParams = viz_pctls_idx) +
 # gHM_lt50 <- gHM$updateMask(gHM$lt(0.5))
 # Map$addLayer(
 #   eeObject = gHM_lt50,
-#   visParams = indexViz,
+#   visParams = viz_idx_norm,
 #   name = "Sum"
 # )
 # 
@@ -482,7 +551,7 @@ Map$addLayer(eeObject = zs_wpop_q10, visParams = viz_pctls_idx) +
 # # View
 # Map$addLayer(
 #   eeObject = potential_forest,
-#   visParams = indexViz,
+#   visParams = viz_idx_norm,
 #   name = "Forest status"
 # )
 # 
@@ -516,323 +585,6 @@ Map$addLayer(eeObject = zs_wpop_q10, visParams = viz_pctls_idx) +
 # # View
 # # Map$addLayer(
 # #   eeObject = treecover2020,
-# #   visParams = indexViz,
+# #   visParams = viz_idx_norm,
 # #   name = "Tree cover"
 # # )
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Combine ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Sums ----
-additive <- list(
-  fi_hm = list(
-    name = "FLII + HM",
-    index = flii$
-      add(gHM)
-  ),
-  fi_hm_c = list(
-    name = "FLII + C + HM",
-    index = flii$
-      add(carbon_idx)$
-      add(gHM)
-  ),
-  fi_c_hm_dti = list(
-    name = "FLII + C + HM + DTI",
-    index = flii$
-      add(gHM)$
-      add(carbon_idx)$
-      add(dti$unmask())
-  ),
-  fi_c_hm_dti_hc = list(
-    name = "FLII + C + HM + DTI + HC",
-    index = flii$
-      add(gHM)$
-      add(carbon_idx)$
-      add(dti$unmask())$
-      add(hc_access)
-  ),
-  fi_c_hm_dti_hc_zs = list(
-    name = "FLII + C + HM + DTI + HC + ZS",
-    index = flii$
-      add(gHM)$
-      add(carbon_idx)$
-      add(dti$unmask())$
-      add(hc_access)$
-      add(zoonotic_risk)
-  ),
-  fi_c_dti_hc_zs = list(
-    name = "FLII + C + DTI + HC + ZS",
-    index = flii$
-      add(gHM)$
-      add(carbon_idx)$
-      add(dti$unmask())$
-      add(hc_access)$
-      add(zoonotic_risk)
-  ),
-  fi_c_hm_hc_zs = list(
-    name = "FLII + C + HM + HC + ZS",
-    index = flii$
-      add(gHM)$
-      add(carbon_idx)$
-      add(gHM)$
-      add(hc_access)$
-      add(zoonotic_risk)
-  ),
-  fi_c_bio_hm_dti_hc = list(
-    name = "FLII + C + Biodiv + HM + DTI + HC",
-    index = flii$
-      add(gHM)$
-      add(carbon_idx)$
-      add(dti$unmask())$
-      add(hc_access)$
-      add(kba_r$unmask())
-  ),
-  fi_c_bio_hm_dti_hc_zs = list(
-    name = "FLII+ C + Biodiv + HM + DTI + HC + ZS",
-    index = flii$
-      add(carbon_idx)$
-      add(kba_r$unmask())$
-      add(gHM)$
-      add(dti$unmask())$
-      add(hc_access)$
-      add(zoonotic_risk)
-  )
-)
-
-# Run
-additive_01 <- additive %>% purrr::map(rescale_index_in_list)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Create indicators (combinations of inputs) ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Forest ----
-i_forest <- flii$
-  add(carbon_idx)$
-  divide(2)
-
-# Threat ----
-# i_threat <- dti$unmask()$
-#   add(gHM$multiply(2))
-i_threat <- dti$unmask()$
-  add(gHM)$
-  divide(2)
-
-# Health ----
-i_health <- hc_access$
-  add(infant_mort)$
-  divide(2)
-
-# Health+ -----
-i_healthz <- hc_access$
-  add(infant_mort)$
-  add(zoonotic_risk)$
-  divide(3)
-
-# Biodiversity ----
-i_biodiv <- kba_r$unmask()
-
-# (Forest + Biodiversity) ----
-i_forestbio <- flii$
-  add(carbon_idx)$
-  add(kba_r$unmask())$
-  divide(3)
-
-# Humans ----
-i_humans <- dti$unmask()$
-  add(gHM)$
-  add(hc_access)$
-  add(infant_mort)$
-  divide(4)
-
-# Zoonotic risk ----
-i_zs <- zoonotic_risk$multiply(0.5)$add(0.5)
-
-# Humans+ -----
-i_humansz <- dti$unmask()$
-  add(gHM)$
-  add(hc_access)$
-  add(infant_mort)$
-  add(zoonotic_risk)$
-  divide(5)
-
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Create list of indicators ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-indicators <- list(
-  flii = list(
-    name =  "FLII (forest landscape integrity)",
-    index = flii
-  ),
-  cabon = list(
-    name =  "Carbon (above-ground, below-ground, soil)",
-    index = carbon_idx
-  ),
-  kba = list(
-    name =  "Key Biodiversity Areas",
-    index = kba_r$updateMask(flii$mask())
-  ),
-  dti = list(
-    name =  "Development Threats Index",
-    index = dti
-  ),
-  hm = list(
-    name =  "Human modification",
-    index = gHM
-  ),
-  hc = list(
-    name =  "Healthcare accessibility (walking only)",
-    index = hc_access
-  ),
-  imr = list(
-    name =  "Infant Mortality Rate",
-    index = infant_mort
-  ),
-  zs = list(
-    name =  "Zoonotic spillover risk",
-    index = zoonotic_risk
-  ),
-  izs = list(
-    name =  "Zoonotic spillover indicator",
-    index = i_zs
-  ),
-  forests = list(
-    name =  "Forests indicator (FLII + C)",
-    index = i_forest
-  ), 
-  forestbio = list(
-    name =  "Forests indicator (FLII + C + Biodiv)",
-    index = i_forestbio
-  ), 
-  threats = list(
-    name =  "Threats indicator (HM + DTI)",
-    index = i_threat
-  ), 
-  health = list(
-    name =  "Health indicator (HC + IMR)",
-    index = i_health
-  ), 
-  threatshealth = list(
-    name =  "ThreatsHealth indicator (HM + DTI + HC + IMR)",
-    index = i_humans
-  ), 
-  healthz = list(
-    name =  "Health indicator (HC + IMR + Zoonotic)",
-    index = i_healthz
-  ), 
-  humz = list(
-    name =  "Humans indicator (HM + DTI + HC + IMR + Zoonotic)",
-    index = i_humansz
-  )
-)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Combine indicators ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-multiplicative <- list(
-  f_t = list(
-    name = "Forests * Threats",
-    name2 = "(FLII + C) * (HM + DTI)",
-    index = i_forest$
-      multiply(i_threat)$
-      resample()
-  ),
-  f_t_h = list(
-    name = "Forests * Threats * Health",
-    name2 = "(FLII + C) * (HM + DTI) * (HC + IMR)",
-    index = i_forest$
-      multiply(i_threat)$
-      multiply(i_health)$
-      resample()
-  ),
-  f_t_hz = list(
-    name = "Forests * Threats * HealthSpillover",
-    name2 = "(FLII + C) * (HM + DTI) * (HC + IMR + ZS)",
-    index = i_forest$
-      multiply(i_threat)$
-      multiply(i_healthz)$
-      resample()
-  ),
-  f_t_h_b = list(
-    name = "Forests * Threats * Health * Biodiversity",
-    name2 = "(FLII + C) * (HM + DTI) * (HC + IMR) * Biodiv",
-    index = i_forest$
-      multiply(i_threat)$
-      multiply(i_health)$
-      multiply(i_biodiv)$
-      resample()
-  ),
-  fb_t_h = list(
-    name = "ForestsBio * Threats * Health",
-    name2 = "(FLII + C + Biodiv) * (HM + DTI) * (HC + IMR)",
-    index = i_forestbio$
-      multiply(i_threat)$
-      multiply(i_health)$
-      resample()
-  ),
-  fb_hum = list(
-    name = "ForestsBio * ThreatsHealth",
-    name2 = "(FLII + C + Biodiv) * (HM + DTI + HC + IMR)",
-    index = i_forestbio$
-      multiply(i_humans)$
-      resample()
-  ),
-  fb_hum_z = list(
-    name = "ForestsBio * ThreatsHealth * Spillover",
-    name2 = "(FLII + C + Biodiv) * (HM + DTI + HC + IMR) * ZS",
-    index = i_forestbio$
-      multiply(i_humans)$
-      multiply(i_zs)$
-      resample()
-  ),
-  fb_humz = list(
-    name = "ForestsBio * ThreatsHealthSpillover",
-    name2 = "(FLII + C + Biodiv) * (HM + DTI + HC + IMR + ZS)",
-    index = i_forestbio$
-      multiply(i_humansz)$
-      resample()
-  ),
-  f_humz = list(
-    name = "Forests * ThreatsHealthSpillover",
-    name2 = "(FLII + C) * (HM + DTI + HC + IMR + ZS)",
-    index = i_forest$
-      multiply(i_humansz)$
-      resample()
-  )
-)
-
-# Run
-multiplicative_01 <- multiplicative %>% purrr::map(rescale_index_in_list)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Classify ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Run
-addtv_clas_eq <- additive_01 %>% purrr::map(classify_index_in_list)
-mltplctv_clas_eq <- multiplicative_01 %>% purrr::map(classify_index_in_list)
-
-# # Quantiles
-# addtv_clas_quant <- additive_01 %>% purrr::map(classify_index_in_list, 'quantile')
-# mltplctv_clas_quant <- multiplicative_01 %>% purrr::map(classify_index_in_list, 'quantile')
-
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Export ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# task_img <- mltplctv_clas_eq$fb_humz$index %>% 
-#   ee_image_to_asset(assetId = addm('hih_index/v1_mult_FCB_HmDtHcImZ'),
-#                     region = geometry, 
-#                     scale = 1000, 
-#                     maxPixels = 191434780)
-# 
-# task_img$start()
-# ee_monitoring(task_img)
-# 
-# task_img_to_drive <- mltplctv_clas_eq$fb_humz$index %>% 
-#   ee_image_to_drive(description = 'v1_mult_FCB_HmDtHcImZ_10km',
-#                     folder = 'Earth Engine Exports',
-#                     region = geometry, 
-#                     scale = 10000)
-# 
-# task_img_to_drive$start()
-# ee_monitoring(task_img_to_drive)

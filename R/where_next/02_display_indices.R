@@ -1,5 +1,6 @@
 
-source('R/01_use_rgee.R')
+source('R/where_next/01_use_rgee.R')
+source('R/where_next/02_construct_index_v1.R')
 
 # Function to map layer ----
 map_layer <- function(lst, shown = FALSE) {
