@@ -18,11 +18,9 @@ library(sf)
 library(tidyverse)
 
 # Initialize variables 
-viridis <- c('#440154', '#433982', '#30678D', '#218F8B', '#36B677', '#8ED542', '#FDE725')
 BlueToRed <- c('#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c')
-OrRd <- c('#fef0d9', '#fdcc8a', '#fc8d59', '#e34a33', '#b30000')
 viz_idx_norm <- list(min = 0, max = 1, palette = BlueToRed)
-viz_clssfd_idx <- list(min = 10, max = 90, palette = BlueToRed, 
+viz_clssfd_idx <- list(min = 0, max = .8, palette = BlueToRed, 
                        values = c('0-20', '20-40', '40-60', '60-80', '80-100'))
 viz_pctls_idx <- list(min = 0, max = 90, palette = BlueToRed,
                        values = c('0', '10', '20', '30', '40', '50', '60', '70', '80', '90'))
@@ -107,15 +105,15 @@ classify_index_quants10 <- function(img) {
   
   ee$Image(0)$
     where(img$lt(qs$p10), 0)$
-    where(img$gte(qs$p10), 10)$
-    where(img$gte(qs$p20), 20)$
-    where(img$gte(qs$p30), 30)$
-    where(img$gte(qs$p40), 40)$
-    where(img$gte(qs$p50), 50)$
-    where(img$gte(qs$p60), 60)$
-    where(img$gte(qs$p70), 70)$
-    where(img$gte(qs$p80), 80)$
-    where(img$gte(qs$p90), 90)$
+    where(img$gte(qs$p10), .10)$
+    where(img$gte(qs$p20), .20)$
+    where(img$gte(qs$p30), .30)$
+    where(img$gte(qs$p40), .40)$
+    where(img$gte(qs$p50), .50)$
+    where(img$gte(qs$p60), .60)$
+    where(img$gte(qs$p70), .70)$
+    where(img$gte(qs$p80), .80)$
+    where(img$gte(qs$p90), .90)$
     updateMask(img$mask())
 }
 
@@ -138,13 +136,13 @@ rescale_index_in_list <- function(lst) {
 classify_eq_int <- function(img) {
   ee$Image(0)$
     where(img$lt(0.2), 0)$
-    where(img$gte(0.2), 20)$
-    where(img$gte(0.4), 40)$
-    where(img$gte(0.6), 60)$
-    where(img$gte(0.8), 80)$
-    where(img$gte(0.85), 85)$
-    where(img$gte(0.9), 90)$
-    where(img$gte(0.95), 95)$
+    where(img$gte(0.2), .20)$
+    where(img$gte(0.4), .40)$
+    where(img$gte(0.6), .60)$
+    where(img$gte(0.8), .80)$
+    where(img$gte(0.85), .85)$
+    where(img$gte(0.9), .90)$
+    where(img$gte(0.95), .95)$
     updateMask(img$mask())
 }
 
@@ -166,7 +164,7 @@ classify_index_in_list <- function(lst, classification = 'equal') {
   if(classification == 'equal')  {
     lst_out <- list(
       name = lst$name, 
-      index = classify_index(lst$index)
+      index = classify_eq_int(lst$index)
     )
   }
   if(classification == 'quantile') {
@@ -211,13 +209,13 @@ polys_fp <- here::here(final_polys_dir, 'hih_sites_polys.shp')
 pts_fp <- here::here(final_polys_dir, 'hih_sites_pts.shp')
 
 # Upload shapefile ----
-hih_sites <- st_read(polys_fp) %>% select(-id) %>% sf_as_ee()
-fc_pts <- st_read(pts_fp) %>% sf_as_ee()
+hih_sites <- st_read(polys_fp) %>% sf_as_ee()
+hih_pts <- st_read(pts_fp) %>% sf_as_ee()
 
 # Paint all the polygon edges with the same number and width, display.
 outline <- ee$Image()$byte()$paint(featureCollection = hih_sites, color = 1, width = 2)
-hih_sites_lyr <- Map$addLayer(outline, name = 'HIH sites')
-hih_pts_lyr <- Map$addLayer(fc_pts, name = 'HIH sites')
+hih_sites_lyr <- Map$addLayer(outline, name = 'HIH sites', shown = FALSE)
+hih_pts_lyr <- Map$addLayer(hih_pts, name = 'HIH points')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Tropical biomes ----
@@ -226,7 +224,7 @@ hih_pts_lyr <- Map$addLayer(fc_pts, name = 'HIH sites')
 ecoregions <- ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")
 
 # Filter to tropical and merge
-tropics <- ee$FeatureCollection(
+biomes <- ee$FeatureCollection(
   c(
     ecoregions$
       filter(ee$Filter$eq('BIOME_NAME', 'Tropical & Subtropical Coniferous Forests')),
@@ -241,10 +239,21 @@ tropics <- ee$FeatureCollection(
   flatten()
 
 # Dissolve
-tropics <- tropics$union()
+biomes <- biomes$union()$
+  map(function(f) {f$set("tropics", 1)})
 
-# View 
-# Map$addLayer(eeObject = tropics, name = "Tropical biomes", opacity = 0.5)
+# Convert to raster
+biomes_r <- biomes$
+  reduceToImage(
+    properties = list('tropics'), 
+    reducer = ee$Reducer$first()
+  )$
+  unmask()$
+  selfMask()
+
+# # View 
+# Map$addLayer(eeObject = biomes, name = "Tropical biomes", opacity = 0.5, shown = FALSE) + 
+# Map$addLayer(eeObject = biomes_r, name = "Tropical")
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Protected Areas ----
@@ -271,7 +280,7 @@ aze_true <- kbas$
   map(function(f) {f$set("sig_level", 1)})
 aze_false <- kbas$
   filter(ee$Filter$neq('AzeStatus', 'confirmed'))$
-  map(function(f) {f$set("sig_level", 0.75)})
+  map(function(f) {f$set("sig_level", 0.95)})
 
 # Merge the subsets
 kbas <- aze_true$merge(aze_false)
@@ -281,7 +290,9 @@ kba_r <- kbas$
   reduceToImage(
     properties = list('sig_level'), 
     reducer = ee$Reducer$first()
-  )
+  )$
+  unmask()$
+  updateMask(tropics_r)
 
 # View
 # Map$addLayer(eeObject = kba_r, visParams = viz_idx_norm, name = "Key Biodiversity Areas")
@@ -305,13 +316,14 @@ flii <- flii$map(function(img) {img$updateMask(img$neq(-9999))})
 flii <- flii$mosaic()$
   setDefaultProjection(crs = 'EPSG:4326', scale = 300)
 
-# get_pctl(flii) # 99th: 9995.569
+# get_pctl(flii, 99) # 99th: 9996
+# get_pctl(flii, 78) # 78th: 9666
 
 # Scale values to 0-1 scale
-flii <- rescale_to_pctl(flii)
+flii_norm <- rescale_to_pctl(flii, 78)$updateMask(tropics_r)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Total biomass density ----
+# Carbon density ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load Total biomass density
 biomass_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_BGB_SOC_Mgha")
@@ -319,15 +331,9 @@ biomass_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB
 # Convert to carbon density
 carbon_mgcha <- biomass_mgha$divide(2)
 
-# # Stretch and scale values to 0-1 scale, using 98th percentile as highest
-# carbon_idx <- carbon_mgcha$divide(carbon_info$upper98)
-# 
-# # Reclass values above 1 to 1
-# carbon_idx <- carbon_idx$where(carbon_idx$gt(1), 1)
-
-get_pctl(carbon_mgcha) # 679.68 MgC/ha
-
-carbon_idx <- rescale_to_pctl(carbon_mgcha)
+# Rescale
+# get_pctl(carbon_mgcha, 98) # 599.6 MgC/ha is 98th percentile
+carbon_idx <- rescale_to_pctl(carbon_mgcha, 98)$updateMask(tropics_r)
 # Map$addLayer(eeObject = carbon_idx, visParams = viz_idx_norm)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -339,15 +345,33 @@ gHM <- ee$ImageCollection("CSP/HM/GlobalHumanModification")$
   rename('b1')
 
 # Rescale
-get_pctl(gHM) # 0.76
-gHM <- rescale_to_pctl(gHM)
+# get_pctl(gHM, 100) # 99th: 0.76; 98th: 0.72; 95th: 0.66; max: 0.99
+gHM <- rescale_to_pctl(gHM)$updateMask(tropics_r)
 
-# View
-# Map$addLayer(
-#   eeObject = gHM, 
-#   visParams = list(min = 0, max = 1, palette = c('0c0c0c', '071aff', 'ff0000', 'ffbd03', 'fbff05', 'fffdfd')),
-#   name = "Human modification"
-# )
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Human footprint (from Wild Areas v3) ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Load 
+hf <- ee$Image(addm("wildareas-v3-2009-human-footprint"))
+
+# Rescale
+# get_pctl(hf, 98) # max: 50; 99th: 24.6; 98th: 20.7
+hf <- rescale_to_pctl(hf, 98)$updateMask(tropics_r)
+# Map$addLayer(eeObject = hf, visParams = viz_idx_norm)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Population density ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Load 
+popd <- ee$ImageCollection("CIESIN/GPWv411/GPW_UNWPP-Adjusted_Population_Density")$
+  first()$
+  rename('b1')
+
+# Rescale
+# get_pctl(popd, 100) # 98th: 36 p/km2; max: 162974.2
+popd_norm <- rescale_to_pctl(popd)$updateMask(tropics_r)
+# Map$addLayer(eeObject = popd, visParams = viz_idx_norm) +
+#   Map$addLayer(eeObject = popd_norm, visParams = viz_idx_norm)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Development Threat Index ----
@@ -355,11 +379,12 @@ gHM <- rescale_to_pctl(gHM)
 # Load 
 dti <- ee$Image(addm("development-threat-index_geographic"))
 
-# Mask each image
-dti <- dti$updateMask(dti$neq(0))
+# Mask out 0s
+# dti <- dti$updateMask(dti$neq(0))
+dti <- dti$updateMask(carbon_mgcha$mask())
 
 # Rescale
-dti <- rescale_to_pctl(dti)
+dti <- rescale_to_pctl(dti)$updateMask(tropics_r)
 
 # Test mask
 # dti_m <- dti$updateMask(tropics_r$neq(0))
@@ -377,19 +402,21 @@ infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
 
 # Rescale
 # get_pctl(infant_mort) # 99.7
-infant_mort <- rescale_to_pctl(infant_mort)
+imr_norm <- rescale_to_pctl(infant_mort)$
+  updateMask(carbon_mgcha$mask())$
+  updateMask(tropics_r)
 # Map$addLayer(eeObject = infant_mort, visParams = viz_idx_norm)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# DALYs ----
+# GBD health metrics ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # dalys_sf <- here::here(gbd_dir, 'processed', 'DALYs_2019.shp')
-dalys_fc <- ee$FeatureCollection(addm('DALYs_2019_tropics'))
+gbd_fc <- ee$FeatureCollection(addm('GBD_2019_tropics'))
 
 # Convert to raster
-dalys <- dalys_fc$
+dalys <- gbd_fc$
   reduceToImage(
-    properties = list('val'), 
+    properties = list('dalys'), 
     reducer = ee$Reducer$first()
   )$
   setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
@@ -397,10 +424,26 @@ dalys <- dalys_fc$
 # Rescale
 # get_pctl(dalys, 99) # 83,090 disability-adjusted life years per 100,000 people
 # get_pctl(dalys, 0) # 15,706 disability-adjusted life years per 100,000 people
-dalys_norm <- rescale_to_pctl(dalys, 99)
+dalys_norm <- rescale_to_pctl(dalys, 99)$updateMask(tropics_r)
 
 # Rescale to Percentiles 
-dalys_ea <- classify_index_quants10(dalys)
+dalys_ea <- classify_index_quants10(dalys)$updateMask(tropics_r)
+
+# Under-5 mortality with shocks ----
+mort_u5 <- gbd_fc$
+  reduceToImage(
+    properties = list('u5mort'), 
+    reducer = ee$Reducer$first()
+  )$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+
+# Rescale
+# get_pctl(dalys, 99) # 83,090 disability-adjusted life years per 100,000 people
+# get_pctl(dalys, 0) # 15,706 disability-adjusted life years per 100,000 people
+mortu5_norm <- rescale_to_pctl(mort_u5, 99)$updateMask(tropics_r)
+
+# Rescale to Percentiles 
+mortu5_ea <- classify_index_quants10(mort_u5)$updateMask(tropics_r)
 
 # # View
 # Map$addLayer(eeObject = dalys, visParams = viz_idx_norm, name = "DALYs") +
@@ -411,7 +454,7 @@ dalys_ea <- classify_index_quants10(dalys)
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 hdi_fc <- ee$FeatureCollection(addm('GDL_subnational_hdi_le_hi'))
 
-# Convert to raster
+# Life expectancy ----
 le <- hdi_fc$
   reduceToImage(
   properties = list('LE'), 
@@ -421,21 +464,31 @@ le <- hdi_fc$
 
 # Rescale
 # get_pctl(le, 1) # 51.9 years is the 1st percentile and 47.75 is the min
-le <- rescale_to_pctl(le, 100)
+le <- rescale_to_pctl(le, 100)$updateMask(tropics_r)
 
 # Invert values
-le <- le$multiply(-1)$add(1)
+le_norm <- le$multiply(-1)$add(1)
+
+# Rescale to Percentiles 
+le_ea <- classify_index_quants10(le_norm)$updateMask(tropics_r)
 
 # View
 # Map$addLayer(eeObject = le, visParams = viz_idx_norm, name = "Life expectancy")
+# Health index ----
+hi <- hdi_fc$
+  reduceToImage(properties = list('HI'), reducer = ee$Reducer$first())$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+hi_norm <- rescale_to_pctl(hi, 100)$updateMask(tropics_r)
 
-hi <- hdi_fc$reduceToImage(properties = list('HI'), reducer = ee$Reducer$first())
-hdi <- hdi_fc$reduceToImage(properties = list('shdi'), reducer = ee$Reducer$first())
+# Human development index ----
+hdi <- hdi_fc$
+  reduceToImage(properties = list('shdi'), reducer = ee$Reducer$first())$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+hdi_norm <- rescale_to_pctl(hdi, 100)$updateMask(tropics_r)
 
-Map$addLayer(eeObject = hdi,
-             visParams = list(min = 0, max = 1, palette = viridis), 
-             name = "SHDI")
-
+# Map$addLayer(eeObject = hdi,
+#              visParams = list(min = 0, max = 1, palette = viridis), 
+#              name = "SHDI")
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Accessibility to Healthcare ----
@@ -447,7 +500,8 @@ hc_access <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
 
 # Rescale
 # get_pctl(hc_access,  95) # 6380 min
-hc_access <- rescale_to_pctl(hc_access, 95)
+hc_access <- rescale_to_pctl(hc_access, 95)$
+  updateMask(tropics_r)
 # Map$addLayer(eeObject = hc_access, visParams = viz_idx_norm)
 
 # Load 
@@ -457,19 +511,10 @@ hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
 
 # Rescale
 # get_pctl(hc_motor,  95)
-hc_motor <- rescale_to_pctl(hc_motor, 95)
+hc_motor <- rescale_to_pctl(hc_motor, 95)$
+  updateMask(tropics_r)
 # Map$addLayer(eeObject = hc_motor, visParams = viz)
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Human footprint (from Wild Areas v3) ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load 
-hf <- ee$Image(addm("wildareas-v3-2009-human-footprint"))
-
-# Rescale
-# get_pctl(hf)
-hf <- rescale_to_pctl(hf)
-# Map$addLayer(eeObject = hf, visParams = viz_idx_norm)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Zoonotic spillover risk (from Allen et al. 2017) ----
@@ -481,18 +526,18 @@ zoonotic_risk_all <- ee$Image(addm("zoonotic_eid_risk"))$
 
 # raw model output
 zs_response <- zoonotic_risk_all$select('b1')$rename('b1') 
-zs_resp_q10 <- classify_index_quants10(zs_response)
-zs_resp_q10 <- zs_resp_q10$updateMask(tropics_r$neq(0))
+zs_resp_norm <- rescale_to_pctl(zs_response)$updateMask(tropics_r)
+zs_resp_ea <- classify_index_quants10(zs_response)$updateMask(tropics_r)
 
 # weighted by publications, not reweighted by population
 zs_weight_pubs <- zoonotic_risk_all$select('b2')$rename('b1') 
-zs_wpubs_q10 <- classify_index_quants10(zs_weight_pubs)
-zs_wpubs_q10 <- zs_wpubs_q10$updateMask(tropics_r$neq(0))
+zs_wpubs_norm <- rescale_to_pctl(zs_weight_pubs)$updateMask(tropics_r)
+zs_wpubs_ea <- classify_index_quants10(zs_weight_pubs)$updateMask(tropics_r)
 
 # Reweighted by population
 zs_weight_pop <- zoonotic_risk_all$select('b3')$rename('b1')
-zs_wpop_q10 <- classify_index_quants10(zs_weight_pop)
-zs_wpop_q10 <- zs_wpop_q10$updateMask(tropics_r$neq(0))
+zs_wpop_norm <- rescale_to_pctl(zs_weight_pop)$updateMask(tropics_r)
+zs_wpop_ea <- classify_index_quants10(zs_weight_pop)$updateMask(tropics_r)
 
 # # View
 # viz_pctls_idx <- list(min = 0, max = 90, palette = BlueToRed, 

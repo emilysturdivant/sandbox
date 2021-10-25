@@ -15,47 +15,171 @@
 
 source('R/where_next/01_use_rgee.R')
 
+# Set center
+Map$setCenter(20, 0, zoom = 3)
+Map$setCenter(-53, -5, 5) # Brazil
+Map$setCenter(46, -21, 7) # Manombo
+Map$setCenter(112, 0, 7) # Borneo
+Map$setCenter(136, -2, 6)  # Papua
+
+# Function to map layer ----
+map_norm_idx <- function(img, name, shown = FALSE) {
+  
+  Map$addLayer(eeObject = img, 
+               visParams = viz_idx_norm, 
+               name = name, 
+               shown = shown)
+}
+
+map_eq_int <- function(img, name, shown = FALSE) {
+  
+  img <- classify_eq_int(img)
+  
+  Map$addLayer(eeObject = img, 
+               visParams = viz_clssfd_idx, 
+               name = name, 
+               shown = shown)
+}
+
+legend <- Map$addLegend(
+  visParams = viz_idx_norm,
+  name = NA,
+  position = c("bottomright", "topright", "bottomleft", "topleft"),
+  color_mapping = "numeric",
+  opacity = 1
+)
+
+lgnd_eq_int <- Map$addLegend(
+  visParams = viz_clssfd_idx,
+  name = NA,
+  position = c("bottomright", "topright", "bottomleft", "topleft"),
+  color_mapping = "character",
+  opacity = 1
+)
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create indicators (combinations of inputs) ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # (Forest + Biodiversity) ----
-i_forestbio <- flii$
-  add(carbon_idx)$
-  add(kba_r$unmask()$multiply(0.25))$
-  divide(2.25)
+map_norm_idx(carbon_idx, 'Carbon') +
+  map_norm_idx(flii_norm, 'FLII') +
+  map_norm_idx(kba_r, 'KBAs') +
+  map_norm_idx(carbon_idx$multiply(0.9)$add(kba_r$multiply(0.1)), '.9*Carbon + .1*KBA') +
+  map_norm_idx(flii_norm$multiply(0.5)$add(carbon_idx$multiply(0.5)), '.5*FLII + .5*Carbon') +
+  map_norm_idx(flii_norm$multiply(0.45)$add(carbon_idx$multiply(0.45))$add(kba_r$multiply(0.1)), 
+               '.45*FLII + .45*Carbon + .1*Bio') +
+  map_eq_int(flii_norm$multiply(0.45)$add(carbon_idx$multiply(0.45))$add(kba_r$multiply(0.1)), 
+               '.45*FLII + .45*Carbon + .1*Bio (classified)') +
+  hih_sites_lyr + hih_pts_lyr + legend + lgnd_eq_int
 
-# Humans+ -----
-zoonotic_risk <- zs_wpop_q10$unitScale(0, 50)
+# Human impacts ----
+map_norm_idx(dti, 'DTI') +
+  map_norm_idx(gHM, 'Human Modification') +
+  map_norm_idx(hf, 'Human Footprint') +
+  map_norm_idx(dti$multiply(0.5)$add(gHM$multiply(0.5)), '.5*DTI + .5*HM') +
+  map_norm_idx(dti$multiply(0.5)$add(hf$multiply(0.5)), '.5*DTI + .5*HF') +
+  map_norm_idx(rescale_to_pctl(dti$add(0.001)$multiply(gHM)), 'DTI * HM') +
+  map_norm_idx(rescale_to_pctl(dti$add(0.001)$multiply(hf)), 'DTI * HF') +
+  hih_sites_lyr + hih_pts_lyr + legend
 
-Map$addLayer(eeObject = zoonotic_risk, 
-             visParams = list(min = 0, max = 1, palette = viridis), 
-             name = 'ZS', 
-             shown = TRUE) +
-  Map$addLayer(eeObject = zoonotic_risk, 
-               visParams = list(min = 0, max = 1.5, palette = viridis), 
-               name = 'ZS', 
-               shown = TRUE)
+# Zoonotic spillover ----
+map_norm_idx(zs_resp_ea$unitScale(0, .90), 'Spillover risk - raw model response') +
+  map_norm_idx(zs_wpubs_norm, 'Spillover risk - weighted by publications') +
+  map_norm_idx(zs_wpubs_ea$unitScale(0, .90), 'Spillover risk - weighted by pubs - equal area') +
+  map_norm_idx(zs_wpop_norm, 'Spillover risk - reweighted by population') +
+  map_norm_idx(zs_wpop_ea$unitScale(0, .90), 'Spillover risk - reweighted by pop - equal area')   +
+  hih_sites_lyr + hih_pts_lyr + legend
+  
+# Human health ----
+zoonotic_risk <- zs_wpop_q10$unitScale(0, .90)
+dalys_ea_idx <- dalys_ea$unitScale(0, .90)
+map_norm_idx(imr_norm, 'Infant mortality rate') +
+  map_norm_idx(hc_access, 'HC access walking') +
+  map_norm_idx(hc_motor, 'HC access motorized') +
+  map_norm_idx(le_norm, 'Life expectancy') +
+  map_norm_idx(le_ea, 'Life expectancy') +
+  map_norm_idx(hi_norm, 'Health index') +
+  map_norm_idx(hdi_norm, 'Human development index') +
+  map_norm_idx(dalys_ea_idx, 'DALYs (equal-area rank)') +
+  map_norm_idx(mortu5_ea, 'Under-5 mortality (equal-area rank)') +
+  map_norm_idx(zoonotic_risk, 'Zoonotic Spillover') +
+  map_norm_idx(imr_norm$multiply(0.5)$add(hc_access$multiply(0.5)), '.5*IMR + .5*HC access walking') +
+  map_norm_idx(imr_norm$multiply(0.5)$add(le_norm$multiply(0.5)), '.5*IMR + .5*LE') +
+  map_norm_idx(imr_norm$multiply(0.5)$add(dalys_ea_idx$multiply(0.5)), '.5*IMR + .5*DALYs') +
+  map_norm_idx(imr_norm$multiply(0.5)$add(zoonotic_risk$multiply(0.5)), '.5*IMR + .5*ZS') +
+  map_norm_idx(rescale_to_pctl(imr_norm$multiply(dalys_ea)), 'IMR * DALYs') +
+  map_norm_idx(rescale_to_pctl(imr_norm$multiply(zoonotic_risk)), 'IMR * ZS') +
+  hih_sites_lyr + hih_pts_lyr + legend
 
-i_tmiz <- dti$unmask()$
-  add(gHM)$
-  add(infant_mort)$
-  add(zoonotic_risk)$
-  divide(4)
+# Human health and impacts ----
+map_norm_idx(popd_norm, 'Population density') +
+  map_norm_idx(dti, 'DTI') +
+  map_norm_idx(gHM, 'Human Modification') +
+  map_norm_idx(hf, 'Human Footprint') +
+  map_norm_idx(imr_norm, 'Infant mortality rate') +
+  map_norm_idx(le, 'Life expectancy') +
+  map_norm_idx(dalys_ea_idx, 'DALYs (equal-area rank)') +
+  map_norm_idx(zoonotic_risk, 'Zoonotic Spillover') +
+  map_norm_idx(le$multiply(0.33)$add(dti$multiply(0.33))$add(zoonotic_risk$multiply(0.33)), 
+               '.33*DTI + .33*LE + .3*ZS') +
+  map_norm_idx(imr_norm$multiply(0.33)$add(dti$multiply(0.33))$add(zoonotic_risk$multiply(0.33)), 
+               '.33*DTI + .33*IMR + .3*ZS') +
+  map_norm_idx(imr_norm$multiply(0.5)$add(dalys_ea_idx$multiply(0.5)), '.5*IMR + .5*DALYs') +
+  map_norm_idx(imr_norm$multiply(0.5)$add(zoonotic_risk$multiply(0.5)), '.5*IMR + .5*ZS') +
+  map_norm_idx(rescale_to_pctl(imr_norm$multiply(dalys_ea_idx)), 'IMR * DALYs') +
+  map_norm_idx(rescale_to_pctl(le$multiply(zoonotic_risk)$multiply(dti)), 'LE * ZS * DTI') +
+  map_norm_idx(rescale_to_pctl(imr_norm$multiply(zoonotic_risk)$multiply(dti)), 'IMR * ZS * DTI') +
+  hih_sites_lyr + hih_pts_lyr + legend
 
-i_humansz <- dti$unmask()$
-  add(gHM)$
-  add(le)$
-  add(infant_mort)$
-  add(zoonotic_risk)$
-  divide(5)
+# Combine all ----
+i_forestbio <- flii_norm$multiply(0.45)$
+  add(carbon_idx$multiply(0.45))$
+  add(kba_r$multiply(0.1))
+
+i_humz <- imr_norm$multiply(0.33)$
+  add(dti$multiply(0.33))$
+  add(zoonotic_risk$multiply(0.33))
+
+map_norm_idx(popd_norm, 'Population density') +
+  map_norm_idx(dti, 'DTI') +
+  map_norm_idx(gHM, 'Human Modification') +
+  map_norm_idx(hf, 'Human Footprint') +
+  map_norm_idx(imr_norm, 'Infant mortality rate') +
+  map_norm_idx(le_norm, 'Life expectancy') +
+  map_norm_idx(dalys_ea_idx, 'DALYs (equal-area rank)') +
+  map_norm_idx(zoonotic_risk, 'Zoonotic Spillover') +
+  map_norm_idx(carbon_idx, 'Carbon') +
+  map_norm_idx(flii_norm, 'FLII') +
+  map_norm_idx(kba_r, 'KBAs') +
+  map_norm_idx(carbon_idx$multiply(0.9)$add(kba_r$multiply(0.1)), '.9*Carbon + .1*KBA') +
+  map_norm_idx(flii_norm$multiply(0.5)$add(carbon_idx$multiply(0.5)), '.5*FLII + .5*Carbon') +
+  map_norm_idx(flii_norm$multiply(0.45)$add(carbon_idx$multiply(0.45))$add(kba_r$multiply(0.1)), 
+               '.45*FLII + .45*Carbon + .1*Bio') +
+  map_eq_int(flii_norm$multiply(0.45)$add(carbon_idx$multiply(0.45))$add(kba_r$multiply(0.1)), 
+             '.45*FLII + .45*Carbon + .1*Bio (classified)') +
+  map_norm_idx(flii_norm$multiply(0.45)$add(carbon_idx$multiply(0.45))$add(kba_r$multiply(0.1)), 
+               '.45*FLII + .45*Carbon + .1*Bio') +
+  map_eq_int(flii_norm$multiply(0.45)$add(carbon_idx$multiply(0.45))$add(kba_r$multiply(0.1)), 
+             '.45*FLII + .45*Carbon + .1*Bio (classified)') +
+  map_norm_idx(le$multiply(0.33)$add(dti$multiply(0.33))$add(zoonotic_risk$multiply(0.33)), 
+               '.33*DTI + .33*LE + .3*ZS') +
+  map_norm_idx(imr_norm$multiply(0.33)$add(dti$multiply(0.33))$add(zoonotic_risk$multiply(0.33)), 
+               '.33*DTI + .33*IMR + .3*ZS') +
+  map_eq_int(imr_norm$multiply(0.33)$add(dti$multiply(0.33))$add(zoonotic_risk$multiply(0.33)), 
+               '.33*DTI + .33*IMR + .3*ZS (classified)') +
+  map_norm_idx(rescale_to_pctl(rescale_to_pctl(i_forestbio)$add(rescale_to_pctl(i_humz)), 95), 
+                'Forest quality * Human health and impacts') +
+  map_eq_int(rescale_to_pctl(i_forestbio)$multiply(rescale_to_pctl(i_humz)), 
+               'Forest quality * Human health and impacts (classified)') +
+  hih_sites_lyr + hih_pts_lyr + legend
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create list of indicators ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 indicators <- list(
-  flii = list(
+  flii_norm = list(
     name =  "FLII (forest landscape integrity)",
-    index = flii
+    index = flii_norm
   ),
   cabon = list(
     name =  "Carbon (above-ground, below-ground, soil)",
@@ -63,7 +187,7 @@ indicators <- list(
   ),
   kba = list(
     name =  "Key Biodiversity Areas",
-    index = kba_r$updateMask(flii$mask())
+    index = kba_r$updateMask(flii_norm$mask())
   ),
   dti = list(
     name =  "Development Threats Index",
@@ -79,7 +203,7 @@ indicators <- list(
   ),
   imr = list(
     name =  "Infant Mortality Rate",
-    index = infant_mort
+    index = imr_norm
   ),
   zs = list(
     name =  "Zoonotic spillover risk",
@@ -135,28 +259,6 @@ mltplctv_eq_int <- mltplctv_idx %>% purrr::map(classify_index_in_list)
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # View ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-map_flii <- Map$addLayer(eeObject = flii, visParams = viz_idx_norm, name = "FLII (forest landscape integrity)", shown = FALSE)
-map_carbon <- Map$addLayer(eeObject = carbon_idx, visParams = viz_idx_norm, name = "Carbon", shown = FALSE)
-map_kba <- Map$addLayer(eeObject = kba_r, visParams = viz_idx_norm, name = "Biodiversity areas", shown = FALSE)
-map_dti <- Map$addLayer(eeObject = dti, visParams = viz_idx_norm, name = "DTI", shown = FALSE)
-map_hm <- Map$addLayer(eeObject = gHM, visParams = viz_idx_norm, name = "Human Mod", shown = FALSE)
-map_hc <- Map$addLayer(eeObject = hc_access, visParams = viz_idx_norm, name = "Healthcare access", shown = FALSE)
-map_imr <- Map$addLayer(eeObject = infant_mort, visParams = viz_idx_norm, name = "Infant Mortality", shown = FALSE)
-map_spillover <- Map$addLayer(eeObject = zoonotic_risk, visParams = viz_idx_norm, name = "Zoonotic spillover risk", shown = FALSE)
-map_dalys <- Map$addLayer(eeObject = dalys, visParams = viz_idx_norm, name = "DALYs") 
-map_dalys <- Map$addLayer(eeObject = dalys_ea, visParams = viz_pctls_idx, name = "DALYs")
-
-# Function to map layer ----
-map_layer <- function(lst, shown = FALSE) {
-  
-  Map$addLayer(eeObject = lst$index, 
-               visParams = viz_clssfd_idx, 
-               name = lst$name, 
-               shown = shown)
-}
-
-# Set center
-Map$setCenter(20, 0, zoom = 3)
 
 # Display final options
 Map$addLayer(eeObject = mltplctv_idx[[1]]$index, visParams = viz_idx_norm, 
