@@ -16,7 +16,7 @@
 source('R/where_next/01_use_rgee.R')
 
 # Set center
-Map$setCenter(20, 0, zoom = 3)
+Map$setCenter(30, 0, zoom = 3)
 Map$setCenter(-53, -5, 5) # Brazil
 Map$setCenter(46, -21, 7) # Manombo
 Map$setCenter(112, 0, 7) # Borneo
@@ -24,17 +24,18 @@ Map$setCenter(136, -2, 6)  # Papua
 
 # Function to map layer ----
 map_norm_idx <- function(img, name, shown = FALSE) {
-  
   Map$addLayer(eeObject = img, 
                visParams = viz_idx_norm, 
                name = name, 
                shown = shown)
 }
 
+rescale_and_map <- function(img, name, shown = FALSE) {
+  map_norm_idx(rescale_to_pctl(img), name, shown)
+}
+
 map_eq_int <- function(img, name, shown = FALSE) {
-  
   img <- classify_eq_int(img)
-  
   Map$addLayer(eeObject = img, 
                visParams = viz_clssfd_idx, 
                name = name, 
@@ -126,153 +127,42 @@ map_norm_idx(popd_norm, 'Population density') +
                '.33*DTI + .33*IMR + .3*ZS') +
   map_norm_idx(imr_norm$multiply(0.5)$add(dalys_ea_idx$multiply(0.5)), '.5*IMR + .5*DALYs') +
   map_norm_idx(imr_norm$multiply(0.5)$add(zoonotic_risk$multiply(0.5)), '.5*IMR + .5*ZS') +
-  map_norm_idx(rescale_to_pctl(imr_norm$multiply(dalys_ea_idx)), 'IMR * DALYs') +
-  map_norm_idx(rescale_to_pctl(le$multiply(zoonotic_risk)$multiply(dti)), 'LE * ZS * DTI') +
-  map_norm_idx(rescale_to_pctl(imr_norm$multiply(zoonotic_risk)$multiply(dti)), 'IMR * ZS * DTI') +
+  rescale_and_map(imr_norm$multiply(dalys_ea_idx), 'IMR * DALYs') +
+  rescale_and_map(le$multiply(zoonotic_risk)$multiply(dti), 'LE * ZS * DTI') +
+  rescale_and_map(imr_norm$multiply(zoonotic_risk)$multiply(dti), 'IMR * ZS * DTI') +
   hih_sites_lyr + hih_pts_lyr + legend
 
 # Combine all ----
 i_forestbio <- flii_norm$multiply(0.45)$
   add(carbon_idx$multiply(0.45))$
-  add(kba_r$multiply(0.1))
+  add(kba_r$multiply(0.1)) %>% 
+  rescale_to_pctl()
 
 i_humz <- imr_norm$multiply(0.33)$
   add(dti$multiply(0.33))$
-  add(zoonotic_risk$multiply(0.33))
+  add(zoonotic_risk$multiply(0.33)) %>% 
+  rescale_to_pctl()
 
 map_norm_idx(popd_norm, 'Population density') +
   map_norm_idx(dti, 'DTI') +
-  map_norm_idx(gHM, 'Human Modification') +
-  map_norm_idx(hf, 'Human Footprint') +
   map_norm_idx(imr_norm, 'Infant mortality rate') +
-  map_norm_idx(le_norm, 'Life expectancy') +
-  map_norm_idx(dalys_ea_idx, 'DALYs (equal-area rank)') +
   map_norm_idx(zoonotic_risk, 'Zoonotic Spillover') +
   map_norm_idx(carbon_idx, 'Carbon') +
   map_norm_idx(flii_norm, 'FLII') +
   map_norm_idx(kba_r, 'KBAs') +
-  map_norm_idx(carbon_idx$multiply(0.9)$add(kba_r$multiply(0.1)), '.9*Carbon + .1*KBA') +
-  map_norm_idx(flii_norm$multiply(0.5)$add(carbon_idx$multiply(0.5)), '.5*FLII + .5*Carbon') +
-  map_norm_idx(flii_norm$multiply(0.45)$add(carbon_idx$multiply(0.45))$add(kba_r$multiply(0.1)), 
-               '.45*FLII + .45*Carbon + .1*Bio') +
-  map_eq_int(flii_norm$multiply(0.45)$add(carbon_idx$multiply(0.45))$add(kba_r$multiply(0.1)), 
-             '.45*FLII + .45*Carbon + .1*Bio (classified)') +
-  map_norm_idx(flii_norm$multiply(0.45)$add(carbon_idx$multiply(0.45))$add(kba_r$multiply(0.1)), 
-               '.45*FLII + .45*Carbon + .1*Bio') +
-  map_eq_int(flii_norm$multiply(0.45)$add(carbon_idx$multiply(0.45))$add(kba_r$multiply(0.1)), 
-             '.45*FLII + .45*Carbon + .1*Bio (classified)') +
-  map_norm_idx(le$multiply(0.33)$add(dti$multiply(0.33))$add(zoonotic_risk$multiply(0.33)), 
-               '.33*DTI + .33*LE + .3*ZS') +
-  map_norm_idx(imr_norm$multiply(0.33)$add(dti$multiply(0.33))$add(zoonotic_risk$multiply(0.33)), 
-               '.33*DTI + .33*IMR + .3*ZS') +
-  map_eq_int(imr_norm$multiply(0.33)$add(dti$multiply(0.33))$add(zoonotic_risk$multiply(0.33)), 
-               '.33*DTI + .33*IMR + .3*ZS (classified)') +
-  map_norm_idx(rescale_to_pctl(rescale_to_pctl(i_forestbio)$add(rescale_to_pctl(i_humz)), 95), 
-                'Forest quality * Human health and impacts') +
-  map_eq_int(rescale_to_pctl(i_forestbio)$multiply(rescale_to_pctl(i_humz)), 
-               'Forest quality * Human health and impacts (classified)') +
+  rescale_and_map(i_forestbio$multiply(i_humz), 'Forest quality * Human health and impacts') +
+  map_eq_int(i_forestbio$multiply(i_humz), 'Forest quality * Human health and impacts (classified)') +
+  rescale_and_map(i_forestbio$add(i_humz), 'Forest quality + Human health and impacts') +
+  map_eq_int(i_forestbio$add(i_humz), 'Forest quality + Human health and impacts (classified)') +
+  rescale_and_map(i_forestbio$multiply(0.6)$add(i_humz$multiply(0.4)), 
+                  'Forest quality + Human health and impacts') +
+  map_eq_int(i_forestbio$multiply(0.6)$add(i_humz$multiply(0.4)), 
+             'Forest Q + Human H&I (class)') +
+  rescale_and_map(i_forestbio$multiply(0.7)$add(i_humz$multiply(0.3)), 
+                  'Forest quality + Human health and impacts') +
+  map_eq_int(i_forestbio$multiply(0.7)$add(i_humz$multiply(0.3)), 
+             '7 Forest Q + 3 Human H&I (class)') +
   hih_sites_lyr + hih_pts_lyr + legend
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Create list of indicators ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-indicators <- list(
-  flii_norm = list(
-    name =  "FLII (forest landscape integrity)",
-    index = flii_norm
-  ),
-  cabon = list(
-    name =  "Carbon (above-ground, below-ground, soil)",
-    index = carbon_idx
-  ),
-  kba = list(
-    name =  "Key Biodiversity Areas",
-    index = kba_r$updateMask(flii_norm$mask())
-  ),
-  dti = list(
-    name =  "Development Threats Index",
-    index = dti
-  ),
-  hm = list(
-    name =  "Human modification",
-    index = gHM
-  ),
-  hc = list(
-    name =  "Healthcare accessibility (walking only)",
-    index = hc_access
-  ),
-  imr = list(
-    name =  "Infant Mortality Rate",
-    index = imr_norm
-  ),
-  zs = list(
-    name =  "Zoonotic spillover risk",
-    index = zoonotic_risk
-  ),
-  forestbio = list(
-    name =  "Forests indicator (FLII + C + Biodiv)",
-    index = i_forestbio
-  ), 
-  tmiz = list(
-    name =  "Humans indicator (HM + DTI + IMR + Zoonotic)",
-    index = i_tmiz
-  ),
-  humz = list(
-    name =  "Humans indicator (HM + DTI + IMR + Zoonotic)",
-    index = i_humansz
-  )
-)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Combine indicators ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-multiplicative <- list(
-  fb_tmiz = list(
-    name = "ForestsBio * ThreatsHealthSpillover",
-    name2 = "(FLII + C + Biodiv) * (HM + DTI + IMR + ZS)",
-    index = i_forestbio$
-      multiply(i_tmiz)$
-      resample()
-  ),
-  fb_humz = list(
-    name = "ForestsBio * ThreatsHealthSpillover",
-    name2 = "(FLII + C + Biodiv) * (HM + DTI + LE + IMR + ZS)",
-    index = i_forestbio$
-      multiply(i_humansz)$
-      resample()
-  )
-)
-
-# Run
-mltplctv_idx <- multiplicative %>% purrr::map(rescale_index_in_list)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Classify ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Run
-mltplctv_eq_int <- mltplctv_idx %>% purrr::map(classify_index_in_list)
-
-# # Quantiles
-# addtv_clas_quant <- additive_01 %>% purrr::map(classify_index_in_list, 'quantile')
-# mltplctv_clas_quant <- multiplicative_01 %>% purrr::map(classify_index_in_list, 'quantile')
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# View ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# Display final options
-Map$addLayer(eeObject = mltplctv_idx[[1]]$index, visParams = viz_idx_norm, 
-             name = mltplctv_idx[[1]]$name, shown = TRUE) +
-  Map$addLayer(eeObject = mltplctv_eq_int[[1]]$index, visParams = viz_clssfd_idx, 
-               name = mltplctv_eq_int[[1]]$name, shown = TRUE) +
-  Map$addLayer(eeObject = mltplctv_idx[[2]]$index, visParams = viz_idx_norm, 
-               name = mltplctv_idx[[2]]$name, shown = TRUE) +
-  Map$addLayer(eeObject = mltplctv_eq_int[[2]]$index, visParams = viz_clssfd_idx, 
-               name = mltplctv_eq_int[[2]]$name, shown = TRUE) +
-  hih_sites_lyr +
-  Map$addLegend( visParams = viz_idx_norm, color_map = 'numeric', name = 'Index') +
-  Map$addLegend( visParams = viz_clssfd_idx, color_map = 'character', name = 'Percentile')
-
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Export ----

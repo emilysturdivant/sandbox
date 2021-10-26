@@ -256,6 +256,30 @@ biomes_r <- biomes$
 # Map$addLayer(eeObject = biomes_r, name = "Tropical")
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Forest Landscape Integrity Index ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Load 
+flii <- ee$ImageCollection(c(
+  "users/esturdivant/flii/flii_Africa",
+  "users/esturdivant/flii/flii_Asia",
+  "users/esturdivant/flii/flii_NorthAmerica",
+  "users/esturdivant/flii/flii_Oceania",
+  "users/esturdivant/flii/flii_SouthAmerica"
+))
+
+# Mask each image
+flii <- flii$map(function(img) {img$updateMask(img$neq(-9999))})
+
+# Mosaic
+flii <- flii$mosaic()$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 300)
+
+# get_pctl(flii, 99) # 99th: 9996 # 78th: 9666
+
+# Scale values to 0-1 scale
+flii_norm <- rescale_to_pctl(flii, 78)$updateMask(tropics_r)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Protected Areas ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load
@@ -292,49 +316,67 @@ kba_r <- kbas$
     reducer = ee$Reducer$first()
   )$
   unmask()$
-  updateMask(tropics_r)
+  # updateMask(tropics_r)$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
+  updateMask(flii_norm$mask())
 
 # View
 # Map$addLayer(eeObject = kba_r, visParams = viz_idx_norm, name = "Key Biodiversity Areas")
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Forest Landscape Integrity Index ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load 
-flii <- ee$ImageCollection(c(
-  "users/esturdivant/flii/flii_Africa",
-  "users/esturdivant/flii/flii_Asia",
-  "users/esturdivant/flii/flii_NorthAmerica",
-  "users/esturdivant/flii/flii_Oceania",
-  "users/esturdivant/flii/flii_SouthAmerica"
-))
-
-# Mask each image
-flii <- flii$map(function(img) {img$updateMask(img$neq(-9999))})
-
-# Mosaic
-flii <- flii$mosaic()$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 300)
-
-# get_pctl(flii, 99) # 99th: 9996
-# get_pctl(flii, 78) # 78th: 9666
-
-# Scale values to 0-1 scale
-flii_norm <- rescale_to_pctl(flii, 78)$updateMask(tropics_r)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Carbon density ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load Total biomass density
-biomass_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_BGB_SOC_Mgha")
-
-# Convert to carbon density
-carbon_mgcha <- biomass_mgha$divide(2)
+# Aboveground carbon density ----
+agb_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_Mgha")
+acd_mgha <- agb_mgha$divide(2)
 
 # Rescale
-# get_pctl(carbon_mgcha, 98) # 599.6 MgC/ha is 98th percentile
-carbon_idx <- rescale_to_pctl(carbon_mgcha, 98)$updateMask(tropics_r)
-# Map$addLayer(eeObject = carbon_idx, visParams = viz_idx_norm)
+# get_pctl(agc_mgha, 0) # max: 248 MgC/ha; 98th: 168.2; 99th: 176.2
+acd_idx <- rescale_to_pctl(acd_mgha, 99)$updateMask(tropics_r)
+
+# Belowground carbon ----
+bgb_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_BGB_Mgha")
+bcd_mgha <- bgb_mgha$divide(2)
+
+# Rescale
+# get_pctl(bcd_mgha, 100) # max: 67.5 MgC/ha; 98th: 40; 99th: 42
+bcd_idx <- rescale_to_pctl(bcd_mgha, 99)$updateMask(tropics_r)
+
+# Combine ACD and BCD ----
+wcd_mgha <- acd_mgha$add(bcd_mgha)
+
+# Rescale
+# get_pctl(wcd_mgha, 0) # max: 306.5 MgC/ha; 98th: 209; 99th: 217
+wcd_idx <- rescale_to_pctl(wcd_mgha, 99)$updateMask(tropics_r)
+
+# Soil organic carbon ----
+soc_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_SOC_Mgha")
+soc_mgcha <- soc_mgha$divide(2)$updateMask(wcd_idx$mask())
+
+# Rescale
+# get_pctl(soc_mgcha, 99) # max: 2,399 MgC/ha; 98th: 535; 99th: 631
+soc_idx <- rescale_to_pctl(soc_mgcha, 99)$updateMask(tropics_r)
+
+# Combine 1:1 ----
+carbon_idx <- wcd_idx$multiply(0.5)$add(soc_idx$multiply(0.5))
+# get_pctl(carbon_idx, 98) # max: 1; 98th: .73; 99th: 0.79
+carbon_idx <- rescale_to_pctl(carbon_idx, 99)$updateMask(tropics_r)
+
+# # Total carbon density ----
+# biomass_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_BGB_SOC_Mgha")
+# carbon_mgcha <- biomass_mgha$divide(2)$updateMask(wcd_idx$mask())
+# 
+# # Rescale
+# # get_pctl(carbon_mgcha, 98) # 98th: 648 MgC/ha; 99th: 744
+# tcarbon_idx <- rescale_to_pctl(carbon_mgcha, 98)$updateMask(tropics_r)
+
+# View
+map_norm_idx(soc_idx, 'SOC', shown = TRUE) +
+  map_norm_idx(bcd_idx, 'Below-ground') +
+  map_norm_idx(acd_idx, 'Above-ground') +
+  map_norm_idx(wcd_idx, 'Woody biomass carbon') +
+  map_norm_idx(tcarbon_idx, 'Total') +
+  map_norm_idx(carbon_idx, 'Carbon index (.5*Woody Carbon + .5*SOC)')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Human modification ----
@@ -500,8 +542,7 @@ hc_access <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
 
 # Rescale
 # get_pctl(hc_access,  95) # 6380 min
-hc_access <- rescale_to_pctl(hc_access, 95)$
-  updateMask(tropics_r)
+hc_access <- rescale_to_pctl(hc_access, 95)$updateMask(tropics_r)
 # Map$addLayer(eeObject = hc_access, visParams = viz_idx_norm)
 
 # Load 
@@ -511,8 +552,7 @@ hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
 
 # Rescale
 # get_pctl(hc_motor,  95)
-hc_motor <- rescale_to_pctl(hc_motor, 95)$
-  updateMask(tropics_r)
+hc_motor <- rescale_to_pctl(hc_motor, 95)$updateMask(tropics_r)
 # Map$addLayer(eeObject = hc_motor, visParams = viz)
 
 
