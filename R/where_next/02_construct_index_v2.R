@@ -22,42 +22,6 @@ Map$setCenter(46, -21, 7) # Manombo
 Map$setCenter(112, 0, 7) # Borneo
 Map$setCenter(136, -2, 6)  # Papua
 
-# Function to map layer ----
-map_norm_idx <- function(img, name, shown = FALSE) {
-  Map$addLayer(eeObject = img, 
-               visParams = viz_idx_norm, 
-               name = name, 
-               shown = shown)
-}
-
-rescale_and_map <- function(img, name, shown = FALSE) {
-  map_norm_idx(rescale_to_pctl(img), name, shown)
-}
-
-map_eq_int <- function(img, name, shown = FALSE) {
-  img <- classify_eq_int(img)
-  Map$addLayer(eeObject = img, 
-               visParams = viz_clssfd_idx, 
-               name = name, 
-               shown = shown)
-}
-
-legend <- Map$addLegend(
-  visParams = viz_idx_norm,
-  name = NA,
-  position = c("bottomright", "topright", "bottomleft", "topleft"),
-  color_mapping = "numeric",
-  opacity = 1
-)
-
-lgnd_eq_int <- Map$addLegend(
-  visParams = viz_clssfd_idx,
-  name = NA,
-  position = c("bottomright", "topright", "bottomleft", "topleft"),
-  color_mapping = "character",
-  opacity = 1
-)
-
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create indicators (combinations of inputs) ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -92,8 +56,6 @@ map_norm_idx(zs_resp_ea$unitScale(0, .90), 'Spillover risk - raw model response'
   hih_sites_lyr + hih_pts_lyr + legend
   
 # Human health ----
-zoonotic_risk <- zs_wpop_q10$unitScale(0, .90)
-dalys_ea_idx <- dalys_ea$unitScale(0, .90)
 map_norm_idx(imr_norm, 'Infant mortality rate') +
   map_norm_idx(hc_access, 'HC access walking') +
   map_norm_idx(hc_motor, 'HC access motorized') +
@@ -143,25 +105,45 @@ i_humz <- imr_norm$multiply(0.33)$
   add(zoonotic_risk$multiply(0.33)) %>% 
   rescale_to_pctl()
 
+i_humz <- imr_norm$multiply(0.2)$
+  add(gHM$multiply(0.2))$
+  add(dti$multiply(0.2))$
+  add(zoonotic_risk$multiply(0.2)) %>% 
+  rescale_to_pctl()
+
+additive1 <- flii_norm$multiply(0.45)$
+  add(carbon_idx$multiply(0.45))$
+  add(kba_r$multiply(0.1))$
+  add(imr_norm$multiply(0.33))$
+  add(dti$multiply(0.33))$
+  add(zoonotic_risk$multiply(0.33))
+
+additive1 <- i_forestbio$multiply(0.5)$add(i_humz$multiply(0.5)) %>% rescale_to_pctl()
+additive2 <- i_forestbio$multiply(0.6)$add(i_humz$multiply(0.4)) %>% rescale_to_pctl()
+additive3 <- i_forestbio$multiply(0.7)$add(i_humz$multiply(0.3)) %>% rescale_to_pctl()
+additive4 <- i_forestbio$multiply(0.8)$add(i_humz$multiply(0.2)) %>% rescale_to_pctl()
+
 map_norm_idx(popd_norm, 'Population density') +
   map_norm_idx(dti, 'DTI') +
   map_norm_idx(imr_norm, 'Infant mortality rate') +
   map_norm_idx(zoonotic_risk, 'Zoonotic Spillover') +
+  map_norm_idx(wcd_idx, 'Woody biomass carbon') +
+  map_norm_idx(soc_idx, 'Soil organic carbon') +
   map_norm_idx(carbon_idx, 'Carbon') +
   map_norm_idx(flii_norm, 'FLII') +
   map_norm_idx(kba_r, 'KBAs') +
-  rescale_and_map(i_forestbio$multiply(i_humz), 'Forest quality * Human health and impacts') +
-  map_eq_int(i_forestbio$multiply(i_humz), 'Forest quality * Human health and impacts (classified)') +
-  rescale_and_map(i_forestbio$add(i_humz), 'Forest quality + Human health and impacts') +
-  map_eq_int(i_forestbio$add(i_humz), 'Forest quality + Human health and impacts (classified)') +
-  rescale_and_map(i_forestbio$multiply(0.6)$add(i_humz$multiply(0.4)), 
-                  'Forest quality + Human health and impacts') +
-  map_eq_int(i_forestbio$multiply(0.6)$add(i_humz$multiply(0.4)), 
-             'Forest Q + Human H&I (class)') +
-  rescale_and_map(i_forestbio$multiply(0.7)$add(i_humz$multiply(0.3)), 
-                  'Forest quality + Human health and impacts') +
-  map_eq_int(i_forestbio$multiply(0.7)$add(i_humz$multiply(0.3)), 
-             '7 Forest Q + 3 Human H&I (class)') +
+  map_norm_idx(i_forestbio, 'Forest quality indicator') +
+  map_norm_idx(i_humz, 'Human health and impacts indicator') +
+  rescale_and_map(i_forestbio$multiply(i_humz), 'FQ * HHI') +
+  rescale_and_map(additive1, 'FQ + HHI (1:1)') +
+  rescale_and_map(additive2, 'FQ + HHI (3:2)') +
+  rescale_and_map(additive3, 'FQ + HHI (7:3)') +
+  rescale_and_map(additive3, 'FQ + HHI (4:1)') +
+  map_eq_int(i_forestbio$multiply(i_humz), 'FQ * HHI, eq. int.') +
+  map_eq_int(additive1, 'FQ + HHI (1:1), eq. int.') +
+  map_eq_int(additive2, 'FQ + HHI (3:2), eq. int.') +
+  map_eq_int(additive3, 'FQ + HHI (7:3), eq. int.') +
+  map_eq_int(additive4, 'FQ + HHI (4:1), eq. int.') +
   hih_sites_lyr + hih_pts_lyr + legend
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

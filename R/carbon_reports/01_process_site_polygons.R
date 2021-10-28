@@ -242,7 +242,7 @@ out_fp <- file.path(final_polys_dir, 'all_sites.shp')
 # List all shapefiles in final_sites dir except for all_sites
 fps <- list.files(final_polys_dir, '*\\.shp$', full.names = TRUE) %>% 
   .[str_detect(., 'all_sites', negate = TRUE)] %>% 
-  .[str_detect(., 'HIH_sites', negate = TRUE)]
+  .[str_detect(., 'hih_sites', negate = TRUE)]
 
 # Merge them into one
 df <- fps %>% purrr::map_dfr(function(x) {

@@ -10,7 +10,7 @@
 library(sf)
 library(terra)
 library(tmap)
-tmap_mode('view')
+# tmap_mode('view')
 library(tidyverse)
 
 # Initialize ----
@@ -576,3 +576,37 @@ gbd_sf %>% st_write(fp_out, append = FALSE)
 gbd_sf <- st_read(fp_out)
 tm_shape(st_as_sf(as.data.frame(gbd_sf))) + tm_polygons(col = 'dalys')
 
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Development threat ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+dpi_dir <- here::here(data_dir, 'Dev_Threat_Index', 'dev_potential_indices_2016')
+fps <- list.files(dpi_dir, 'lulc.*dpi_g.*\\.tif$', full.names = TRUE, recursive = TRUE)
+
+# Reduce file
+(fp <- fps[[1]])
+fp_out <- here::here(dpi_dir, 
+                     fp %>% 
+                       str_remove_all('.*lulc-development-potential-indices_') %>% 
+                       str_replace_all('_geographic', '_geo_int'))
+
+r <- terra::rast(fp)
+{r * 100} %>% terra::writeRaster(fp_out, datatype = 'INT1U', overwrite = TRUE)
+
+
+
+# fps <- list.files(dpi_dir, '*dpi_g.*\\.tif$', full.names = TRUE, recursive = TRUE)
+# (fp <- fps[[2]])
+# r <- terra::rast(fp)
+# r %>% terra::writeRaster(
+#   "/Users/emilysturdivant/data/Dev_Threat_Index/dev_potential_indices_2016/convgas_dpi_geo_int.tif",
+#   datatype = 'INT1U', overwrite = TRUE)
+# 
+# 
+# # Unzip to temp dir
+# miao <- tempfile()
+# unzip(z, exdir = miao)
+# 
+# # Load shapefile (polygons)
+# (shp_fp <- list.files(miao, pattern = "polygons\\.shp$", full.names=TRUE, recursive = TRUE))
+# pa <- st_read(shp_fp[[1]])

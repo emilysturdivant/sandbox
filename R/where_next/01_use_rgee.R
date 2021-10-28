@@ -177,6 +177,42 @@ classify_index_in_list <- function(lst, classification = 'equal') {
   return(lst_out)
 }
 
+# Functions to map layers ----
+map_norm_idx <- function(img, name, shown = FALSE) {
+  Map$addLayer(eeObject = img, 
+               visParams = viz_idx_norm, 
+               name = name, 
+               shown = shown)
+}
+
+rescale_and_map <- function(img, name, shown = FALSE) {
+  map_norm_idx(rescale_to_pctl(img), name, shown)
+}
+
+map_eq_int <- function(img, name, shown = FALSE) {
+  img <- classify_eq_int(img)
+  Map$addLayer(eeObject = img, 
+               visParams = viz_clssfd_idx, 
+               name = name, 
+               shown = shown)
+}
+
+legend <- Map$addLegend(
+  visParams = viz_idx_norm,
+  name = NA,
+  position = c("bottomright", "topright", "bottomleft", "topleft"),
+  color_mapping = "numeric",
+  opacity = 1
+)
+
+lgnd_eq_int <- Map$addLegend(
+  visParams = viz_clssfd_idx,
+  name = NA,
+  position = c("bottomright", "topright", "bottomleft", "topleft"),
+  color_mapping = "character",
+  opacity = 1
+)
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Tropics extent ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -189,7 +225,8 @@ tropics_bb <- ee$Geometry$Rectangle(
 
 # Convert to raster for masking ----
 # Set property of 1 for the polygon
-tropics_r <- ee$FeatureCollection(tropics_bb)$map(function(f) {f$set("tropics", 1)})
+tropics_r <- ee$FeatureCollection(tropics_bb)$
+  map(function(f) {f$set("tropics", 1)})
 
 # Convert to raster
 tropics_r <- tropics_r$
@@ -208,7 +245,7 @@ tropics_r <- tropics_r$
 polys_fp <- here::here(final_polys_dir, 'hih_sites_polys.shp')
 pts_fp <- here::here(final_polys_dir, 'hih_sites_pts.shp')
 
-# Upload shapefile ----
+# Upload shapefile
 hih_sites <- st_read(polys_fp) %>% sf_as_ee()
 hih_pts <- st_read(pts_fp) %>% sf_as_ee()
 
@@ -268,7 +305,9 @@ flii <- ee$ImageCollection(c(
 ))
 
 # Mask each image
-flii <- flii$map(function(img) {img$updateMask(img$neq(-9999))})
+flii <- flii$map(function(img) {
+  img$updateMask(img$neq(-9999))
+  })
 
 # Mosaic
 flii <- flii$mosaic()$
@@ -326,49 +365,28 @@ kba_r <- kbas$
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Carbon density ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Aboveground carbon density ----
 agb_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_Mgha")
-acd_mgha <- agb_mgha$divide(2)
-
-# Rescale
-# get_pctl(agc_mgha, 0) # max: 248 MgC/ha; 98th: 168.2; 99th: 176.2
-acd_idx <- rescale_to_pctl(acd_mgha, 99)$updateMask(tropics_r)
-
-# Belowground carbon ----
 bgb_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_BGB_Mgha")
-bcd_mgha <- bgb_mgha$divide(2)
+soc_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_SOC_Mgha")
+
+# Combine AGB and BGB and convert to carbon density (woody biomass)
+wcd_mgha <- agb_mgha$add(bgb_mgha)$divide(2)
 
 # Rescale
-# get_pctl(bcd_mgha, 100) # max: 67.5 MgC/ha; 98th: 40; 99th: 42
-bcd_idx <- rescale_to_pctl(bcd_mgha, 99)$updateMask(tropics_r)
-
-# Combine ACD and BCD ----
-wcd_mgha <- acd_mgha$add(bcd_mgha)
-
-# Rescale
-# get_pctl(wcd_mgha, 0) # max: 306.5 MgC/ha; 98th: 209; 99th: 217
+# get_pctl(wcd_mgha, 99) # max: 306.5 MgC/ha; 98th: 209; 99th: 217
 wcd_idx <- rescale_to_pctl(wcd_mgha, 99)$updateMask(tropics_r)
 
-# Soil organic carbon ----
-soc_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_SOC_Mgha")
+# Soil organic carbon 
 soc_mgcha <- soc_mgha$divide(2)$updateMask(wcd_idx$mask())
 
 # Rescale
 # get_pctl(soc_mgcha, 99) # max: 2,399 MgC/ha; 98th: 535; 99th: 631
 soc_idx <- rescale_to_pctl(soc_mgcha, 99)$updateMask(tropics_r)
 
-# Combine 1:1 ----
+# Combine 1:1
 carbon_idx <- wcd_idx$multiply(0.5)$add(soc_idx$multiply(0.5))
 # get_pctl(carbon_idx, 98) # max: 1; 98th: .73; 99th: 0.79
 carbon_idx <- rescale_to_pctl(carbon_idx, 99)$updateMask(tropics_r)
-
-# # Total carbon density ----
-# biomass_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_BGB_SOC_Mgha")
-# carbon_mgcha <- biomass_mgha$divide(2)$updateMask(wcd_idx$mask())
-# 
-# # Rescale
-# # get_pctl(carbon_mgcha, 98) # 98th: 648 MgC/ha; 99th: 744
-# tcarbon_idx <- rescale_to_pctl(carbon_mgcha, 98)$updateMask(tropics_r)
 
 # View
 map_norm_idx(soc_idx, 'SOC', shown = TRUE) +
@@ -423,7 +441,7 @@ dti <- ee$Image(addm("development-threat-index_geographic"))
 
 # Mask out 0s
 # dti <- dti$updateMask(dti$neq(0))
-dti <- dti$updateMask(carbon_mgcha$mask())
+dti <- dti$updateMask(carbon_idx$mask())
 
 # Rescale
 dti <- rescale_to_pctl(dti)$updateMask(tropics_r)
@@ -432,6 +450,46 @@ dti <- rescale_to_pctl(dti)$updateMask(tropics_r)
 # dti_m <- dti$updateMask(tropics_r$neq(0))
 # Map$addLayer(eeObject = dti, visParams = viz_idx_norm) +
 #   Map$addLayer(eeObject = dti_m, visParams = viz_idx_norm) 
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Development Potential Indices ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+dpi_eelist <- ee_manage_assetlist(path_asset = addm("DPI_v1"))
+ee_manage_quota()
+
+# Create ImageCollection
+ee_manage_create(
+  path_asset = addm("DPI"),
+  asset_type = "ImageCollection"
+)
+
+# Move images from DPI_v1 folder into ImageCollection
+ee_manage_move(
+  path_asset = addm("DPI_v1"),
+  final_path = addm("DPI")
+)
+
+# Load ImageCollection 
+dpi_eelist <- ee_manage_assetlist(path_asset = addm("DPI"))
+
+# Reclass each index to tropics - doesn't work with map...
+dpi <- dpi_eelist$ID %>% purrr::map(
+  function(x) {
+    img <- ee$Image(x)
+    img <- rescale_to_pctl(img, 100)
+  }
+) %>% 
+  ee$ImageCollection()
+
+# Additive 
+dti2 <- dpi$sum()$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
+  updateMask(tropics_r)
+
+dti2 <- rescale_to_pctl(dti2, 100)
+
+# View
+# Map$addLayer(eeObject = dti2, visParams = viz_idx_norm)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Subnational Infant Mortality Rate ----
@@ -445,116 +503,9 @@ infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
 # Rescale
 # get_pctl(infant_mort) # 99.7
 imr_norm <- rescale_to_pctl(infant_mort)$
-  updateMask(carbon_mgcha$mask())$
+  updateMask(carbon_idx$mask())$
   updateMask(tropics_r)
 # Map$addLayer(eeObject = infant_mort, visParams = viz_idx_norm)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# GBD health metrics ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# dalys_sf <- here::here(gbd_dir, 'processed', 'DALYs_2019.shp')
-gbd_fc <- ee$FeatureCollection(addm('GBD_2019_tropics'))
-
-# Convert to raster
-dalys <- gbd_fc$
-  reduceToImage(
-    properties = list('dalys'), 
-    reducer = ee$Reducer$first()
-  )$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-
-# Rescale
-# get_pctl(dalys, 99) # 83,090 disability-adjusted life years per 100,000 people
-# get_pctl(dalys, 0) # 15,706 disability-adjusted life years per 100,000 people
-dalys_norm <- rescale_to_pctl(dalys, 99)$updateMask(tropics_r)
-
-# Rescale to Percentiles 
-dalys_ea <- classify_index_quants10(dalys)$updateMask(tropics_r)
-
-# Under-5 mortality with shocks ----
-mort_u5 <- gbd_fc$
-  reduceToImage(
-    properties = list('u5mort'), 
-    reducer = ee$Reducer$first()
-  )$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-
-# Rescale
-# get_pctl(dalys, 99) # 83,090 disability-adjusted life years per 100,000 people
-# get_pctl(dalys, 0) # 15,706 disability-adjusted life years per 100,000 people
-mortu5_norm <- rescale_to_pctl(mort_u5, 99)$updateMask(tropics_r)
-
-# Rescale to Percentiles 
-mortu5_ea <- classify_index_quants10(mort_u5)$updateMask(tropics_r)
-
-# # View
-# Map$addLayer(eeObject = dalys, visParams = viz_idx_norm, name = "DALYs") +
-#   Map$addLayer(eeObject = dalys_ea, visParams = viz_pctls_idx, name = "DALYs")
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# GDL Health indicators ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-hdi_fc <- ee$FeatureCollection(addm('GDL_subnational_hdi_le_hi'))
-
-# Life expectancy ----
-le <- hdi_fc$
-  reduceToImage(
-  properties = list('LE'), 
-  reducer = ee$Reducer$first()
-  )$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-
-# Rescale
-# get_pctl(le, 1) # 51.9 years is the 1st percentile and 47.75 is the min
-le <- rescale_to_pctl(le, 100)$updateMask(tropics_r)
-
-# Invert values
-le_norm <- le$multiply(-1)$add(1)
-
-# Rescale to Percentiles 
-le_ea <- classify_index_quants10(le_norm)$updateMask(tropics_r)
-
-# View
-# Map$addLayer(eeObject = le, visParams = viz_idx_norm, name = "Life expectancy")
-# Health index ----
-hi <- hdi_fc$
-  reduceToImage(properties = list('HI'), reducer = ee$Reducer$first())$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-hi_norm <- rescale_to_pctl(hi, 100)$updateMask(tropics_r)
-
-# Human development index ----
-hdi <- hdi_fc$
-  reduceToImage(properties = list('shdi'), reducer = ee$Reducer$first())$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-hdi_norm <- rescale_to_pctl(hdi, 100)$updateMask(tropics_r)
-
-# Map$addLayer(eeObject = hdi,
-#              visParams = list(min = 0, max = 1, palette = viridis), 
-#              name = "SHDI")
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Accessibility to Healthcare ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load 
-hc_access <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
-  select('accessibility_walking_only')$
-  rename('b1')
-
-# Rescale
-# get_pctl(hc_access,  95) # 6380 min
-hc_access <- rescale_to_pctl(hc_access, 95)$updateMask(tropics_r)
-# Map$addLayer(eeObject = hc_access, visParams = viz_idx_norm)
-
-# Load 
-hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
-  select('accessibility')$
-  rename('b1')
-
-# Rescale
-# get_pctl(hc_motor,  95)
-hc_motor <- rescale_to_pctl(hc_motor, 95)$updateMask(tropics_r)
-# Map$addLayer(eeObject = hc_motor, visParams = viz)
-
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Zoonotic spillover risk (from Allen et al. 2017) ----
@@ -578,6 +529,8 @@ zs_wpubs_ea <- classify_index_quants10(zs_weight_pubs)$updateMask(tropics_r)
 zs_weight_pop <- zoonotic_risk_all$select('b3')$rename('b1')
 zs_wpop_norm <- rescale_to_pctl(zs_weight_pop)$updateMask(tropics_r)
 zs_wpop_ea <- classify_index_quants10(zs_weight_pop)$updateMask(tropics_r)
+
+zoonotic_risk <- zs_wpop_ea$unitScale(0, .90)
 
 # # View
 # viz_pctls_idx <- list(min = 0, max = 90, palette = BlueToRed, 
@@ -673,3 +626,110 @@ zs_wpop_ea <- classify_index_quants10(zs_weight_pop)$updateMask(tropics_r)
 # #   visParams = viz_idx_norm,
 # #   name = "Tree cover"
 # # )
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# GBD health metrics ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# dalys_sf <- here::here(gbd_dir, 'processed', 'DALYs_2019.shp')
+gbd_fc <- ee$FeatureCollection(addm('GBD_2019_tropics'))
+
+# Convert to raster
+dalys <- gbd_fc$
+  reduceToImage(
+    properties = list('dalys'), 
+    reducer = ee$Reducer$first()
+  )$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+
+# Rescale
+# get_pctl(dalys, 99) # 83,090 disability-adjusted life years per 100,000 people
+# get_pctl(dalys, 0) # 15,706 disability-adjusted life years per 100,000 people
+dalys_norm <- rescale_to_pctl(dalys, 99)$updateMask(tropics_r)
+
+# Rescale to Percentiles 
+dalys_ea <- classify_index_quants10(dalys)$updateMask(tropics_r)
+
+# Under-5 mortality with shocks ----
+mort_u5 <- gbd_fc$
+  reduceToImage(
+    properties = list('u5mort'), 
+    reducer = ee$Reducer$first()
+  )$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+
+# Rescale
+# get_pctl(dalys, 99) # 83,090 disability-adjusted life years per 100,000 people
+# get_pctl(dalys, 0) # 15,706 disability-adjusted life years per 100,000 people
+mortu5_norm <- rescale_to_pctl(mort_u5, 99)$updateMask(tropics_r)
+
+# Rescale to Percentiles 
+mortu5_ea <- classify_index_quants10(mort_u5)$updateMask(tropics_r)
+
+# # View
+# Map$addLayer(eeObject = dalys, visParams = viz_idx_norm, name = "DALYs") +
+#   Map$addLayer(eeObject = dalys_ea, visParams = viz_pctls_idx, name = "DALYs")
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# GDL Health indicators ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hdi_fc <- ee$FeatureCollection(addm('GDL_subnational_hdi_le_hi'))
+
+# Life expectancy ----
+le <- hdi_fc$
+  reduceToImage(
+    properties = list('LE'), 
+    reducer = ee$Reducer$first()
+  )$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+
+# Rescale
+# get_pctl(le, 1) # 51.9 years is the 1st percentile and 47.75 is the min
+le <- rescale_to_pctl(le, 100)$updateMask(tropics_r)
+
+# Invert values
+le_norm <- le$multiply(-1)$add(1)
+
+# Rescale to Percentiles 
+le_ea <- classify_index_quants10(le_norm)$updateMask(tropics_r)
+
+# View
+# Map$addLayer(eeObject = le, visParams = viz_idx_norm, name = "Life expectancy")
+# Health index ----
+hi <- hdi_fc$
+  reduceToImage(properties = list('HI'), reducer = ee$Reducer$first())$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+hi_norm <- rescale_to_pctl(hi, 100)$updateMask(tropics_r)
+
+# Human development index ----
+hdi <- hdi_fc$
+  reduceToImage(properties = list('shdi'), reducer = ee$Reducer$first())$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+hdi_norm <- rescale_to_pctl(hdi, 100)$updateMask(tropics_r)
+
+# Map$addLayer(eeObject = hdi,
+#              visParams = list(min = 0, max = 1, palette = viridis), 
+#              name = "SHDI")
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Accessibility to Healthcare ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Load 
+hc_access <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
+  select('accessibility_walking_only')$
+  rename('b1')
+
+# Rescale
+# get_pctl(hc_access,  95) # 6380 min
+hc_access <- rescale_to_pctl(hc_access, 95)$updateMask(tropics_r)
+# Map$addLayer(eeObject = hc_access, visParams = viz_idx_norm)
+
+# Load 
+hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
+  select('accessibility')$
+  rename('b1')
+
+# Rescale
+# get_pctl(hc_motor,  95)
+hc_motor <- rescale_to_pctl(hc_motor, 95)$updateMask(tropics_r)
+# Map$addLayer(eeObject = hc_motor, visParams = viz)
+
