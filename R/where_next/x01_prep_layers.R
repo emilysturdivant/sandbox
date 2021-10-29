@@ -10,7 +10,7 @@
 library(sf)
 library(terra)
 library(tmap)
-# tmap_mode('view')
+tmap_mode('view')
 library(tidyverse)
 
 # Initialize ----
@@ -73,7 +73,8 @@ countries <- countries %>%
   left_join(msf_countries, by = 'country')
 
 # Save
-countries %>% st_write(file.path(data_dir, 'gadm', 'gadm36_0_tropics_simp001big3.shp'))
+countries_msf_shp <- file.path(data_dir, 'gadm', 'gadm36_0_tropics_simp001big3.shp')
+countries %>% st_write(countries_msf_shp)
 
 tm_shape(countries) + tm_polygons(col = 'MSF')
 
@@ -548,7 +549,7 @@ gbd_metrics <- gbd_metrics %>%
 
 # Join to administrative units level 1 
 if(!file.exists(adml1_simp_fp)) {
-  adm_l1_fp <- file.path(data_dir, 'gadm', 'gadm36_1.shp')
+  adm_l1_fp <- file.path(data_dir, 'raw_data', 'gadm', 'gadm36_1.shp')
   adm_l1 <- prep_gadm(adm_l1_fp, c('NAME_0', 'NAME_1'))
   adm_l1 %>% saveRDS(adml1_simp_fp)
 } else {
