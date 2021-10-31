@@ -604,7 +604,7 @@ infant_mort <- ee$Image(addm("subnational_infant_mortality_rates_v2_01"))
 
 # Mask 
 infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
-i_indices$imr <- infant_mort
+l_indices$imr <- infant_mort
 
 # Rescale
 # get_pctl(infant_mort) # 99.7
@@ -653,118 +653,6 @@ l_ventiles$zs <- zs_wpop_ea
 #   Map$addLayer(eeObject = zs_resp_q10, visParams = viz_pctls_idx) +
 #   Map$addLegend( visParams = viz_pctls_idx, color_map = 'character', name = 'Percentile')
 #
-# #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# # Forest Status (from WRI) ----
-# #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# # Load 
-# forest_stat <- ee$Image(addm("wri_foreststatus"))
-# 
-# # Create mask of potential closed forest: values 3, 6, 8, 9, 14 
-# potential_forest <- forest_stat$remap(from = c(3, 6, 8, 9, 14,
-#                                                1, 2, 4, 5, 7, 10, 11, 12, 13), 
-#                                       to =   c(1, 1, 1, 1, 1,
-#                                                0, 0, 0, 0, 0, 0, 0, 0, 0))
-# potential_forest <- potential_forest$updateMask(potential_forest$neq(0))
-# potential_forest_mask <- potential_forest$mask()
-# 
-# # Create mask of currently closed forest: values 2, 3, 9, 13, 14 
-# # Intact closed forest: 3
-# # Intact open forests: 2
-# # Partially deforested closed forests: 9
-# # Fragmented/managed closed forests: 14
-# forest_stat <- forest_stat$remap(from = c(2, 9, 14, 3, 
-#                                           8, 1, 6, 4, 5, 7, 10, 11, 12, 13), 
-#                                  to =   c(1, 2, 3, 4, 
-#                                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0))$
-#   rename('b1')
-# forest_stat <- forest_stat$updateMask(forest_stat$neq(0))
-# 
-# # Scale values to 0-1 scale
-# forest_stat <- forest_stat$divide(fs_info$max)
-# 
-# # View
-# Map$addLayer(
-#   eeObject = potential_forest,
-#   visParams = viz_idx_norm,
-#   name = "Forest status"
-# )
-# 
-# #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# # Hansen tree cover ----
-# #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# # Load 
-# tree_cover <- ee$Image("UMD/hansen/global_forest_change_2020_v1_8")
-# bands <- c('treecover2000', 'loss', 'gain', 'lossyear', 'datamask')
-# 
-# treecover2020 <- tree_cover$select('treecover2000')$
-#   updateMask(tree_cover$select('loss')$selfMask())$
-#   rename('b1')
-# 
-# # Get original CRS, resolution, and value distribution
-# pctls <- treecover2020$
-#   reduceRegion(reducer = ee$Reducer$percentile(c(0, 2, 50, 98, 100)),
-#                geometry = tropics_bb,
-#                bestEffort = TRUE)$
-#   getInfo()
-# tc_info <- list(
-#   crs = treecover2020$projection()$getInfo()$crs, 
-#   res = treecover2020$projection()$nominalScale()$getInfo(),
-#   upper98 = signif(pctls$b1_p98, digits = 1),
-#   max = pctls$b1_p100
-# )
-# 
-# # Scale values to 0-1 scale
-# treecover2020 <- treecover2020$divide(tc_info$max)
-# 
-# # View
-# # Map$addLayer(
-# #   eeObject = treecover2020,
-# #   visParams = viz_idx_norm,
-# #   name = "Tree cover"
-# # )
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# GBD health metrics ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# dalys_sf <- here::here(gbd_dir, 'processed', 'DALYs_2019.shp')
-gbd_fc <- ee$FeatureCollection(addm('GBD_2019_tropics'))
-
-# Convert to raster
-dalys <- gbd_fc$
-  reduceToImage(
-    properties = list('dalys'), 
-    reducer = ee$Reducer$first()
-  )$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-
-# Rescale
-# get_pctl(dalys, 99) # 83,090 disability-adjusted life years per 100,000 people
-# get_pctl(dalys, 0) # 15,706 disability-adjusted life years per 100,000 people
-dalys_norm <- rescale_to_pctl(dalys)$updateMask(tropics_r)
-
-# Rescale to Percentiles 
-dalys_ea <- classify_percentiles(dalys)$updateMask(tropics_r)
-
-# Under-5 mortality with shocks ----
-mort_u5 <- gbd_fc$
-  reduceToImage(
-    properties = list('u5mort'), 
-    reducer = ee$Reducer$first()
-  )$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-
-# Rescale
-# get_pctl(dalys, 99) # 83,090 disability-adjusted life years per 100,000 people
-# get_pctl(dalys, 0) # 15,706 disability-adjusted life years per 100,000 people
-mortu5_norm <- rescale_to_pctl(mort_u5)$updateMask(tropics_r)
-
-# Rescale to Percentiles 
-mortu5_ea <- classify_percentiles(mort_u5)$updateMask(tropics_r)
-
-# # View
-# Map$addLayer(eeObject = dalys, visParams = viz_idx_norm, name = "DALYs") +
-#   Map$addLayer(eeObject = dalys_ea, visParams = viz_pctls_idx, name = "DALYs")
-
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # GDL Health indicators ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -849,3 +737,8 @@ pas_lyr <- Map$addLayer(pas_fill, name = 'Protected areas',
                         opacity = 0.5, shown = FALSE)
 
 # Zonal stats for PAs
+$
+  reduceRegion(
+    reducer = ee$Reducer$percentile(percentiles),
+    geometry = tropics_bb,
+    bestEffort = TRUE)
