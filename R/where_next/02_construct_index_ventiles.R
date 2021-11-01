@@ -18,6 +18,10 @@ source('R/where_next/01_use_rgee.R')
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Combine normalized inputs  ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+i_forest_norm <- flii_norm$multiply(0.5)$
+  add(carbon_norm$multiply(0.5)) %>% 
+  rescale_to_pctl()
+
 i_forestbio_norm <- flii_norm$multiply(0.45)$
   add(carbon_norm$multiply(0.45))$
   add(kba_r$multiply(0.1)) %>% 
@@ -39,6 +43,10 @@ norm50_vents <- classify_ventiles(norm50)
 norm60_vents <- classify_ventiles(norm60)
 norm70_vents <- classify_ventiles(norm70)
 norm80_vents <- classify_ventiles(norm80)
+
+# Process without biodiversity
+norm60_nobio <- i_forest_norm$multiply(0.6)$add(i_humz_norm$multiply(0.4)) %>% rescale_to_pctl()
+norm60_nobio_vents <- classify_ventiles(norm60_nobio)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Combine indicators in ventiles ----
@@ -84,7 +92,7 @@ vent80_vents <- classify_ventiles(vent80)
 vent60_nobio <- i_forest$multiply(0.6)$add(i_humz$multiply(0.4)) %>% rescale_to_pctl()
 vent60_nobio_vents <- classify_ventiles(vent60_nobio)
 
-add1_top10 <- classify_top10pctl(additive1)
+vent50_top10 <- classify_top10pctl(vent50)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Look at it all together ----
@@ -96,46 +104,50 @@ Map$setCenter(46, -21, zoom = 7) # Manombo
 Map$setCenter(112, 0, zoom = 7) # Borneo
 Map$setCenter(136, -2, zoom = 6)  # Papua
 
+# Get legend 
+lgnd_80 <- lgnd_top_ventiles(80)
+
 # Input layers
-map_norm_idx(popd_norm, 'Population density') +
-  map_norm_idx(dti_norm, 'DTI normalized') +
-  map_norm_idx(imr_norm, 'Infant mortality rate normalized') +
-  map_norm_idx(zoonotic_risk, 'Zoonotic Spillover') +
-  map_norm_idx(carbon_norm, 'Carbon normalized') +
-  map_norm_idx(flii_norm, 'FLII normalized') +
+# map_norm_idx(popd_norm, 'Population density') +
+  # map_norm_idx(dti_norm, 'DTI normalized') +
+  # map_norm_idx(imr_norm, 'Infant mortality rate normalized') +
+  map_norm_idx(zoonotic_risk, 'Zoonotic spillover risk') +
+  # map_norm_idx(carbon_norm, 'Carbon normalized') +
+  map_norm_idx(carbon_vent, 'Carbon ventiles') +
+  # map_norm_idx(flii_vent, 'FLII ventiles') +
+  map_norm_idx(flii_norm, 'FLII') +
   map_norm_idx(kba_r, 'KBAs') +
   map_norm_idx(dti_vent, 'DTI ventiles') +
   map_norm_idx(imr_vent, 'Infant mortality rate ventiles') +
-  map_norm_idx(carbon_vent, 'Carbon ventiles') +
-  map_norm_idx(flii_vent, 'FLII ventiles') +
   
   # Components
-  map_norm_idx(i_forestbio_norm, 'Forest quality normalized') +
-  map_norm_idx(i_humz_norm, 'Human health and impacts normalized') +
-  map_norm_idx(i_forestbio, 'Forest quality ventiles') +
-  map_norm_idx(i_humz, 'Human health and impacts ventiles') +
-  map_norm_idx(i_humz2, 'Human health and impacts ventiles (with HM)') +
+  # map_norm_idx(i_forestbio_norm, 'Forest quality normalized') +
+  # map_norm_idx(i_forest_norm, 'Forest quality normalized (w/o biodiv)') +
+  map_norm_idx(i_forestbio, 'Forest quality') +
+  map_norm_idx(i_forest, 'Forest quality (w/o biodiv)') +
+  # map_norm_idx(i_humz_norm, 'Human health and impacts normalized') +
+  map_norm_idx(i_humz, 'Human health and impacts') +
+  # map_norm_idx(i_humz2, 'Human health and impacts (with HM)') +
   
   # Combinations, continuous, normalized
-  map_norm_idx(norm_multiply, 'FQ * HHI') +
-  map_norm_idx(norm50, 'FQ + HHI (1:1)') +
+  # map_norm_idx(norm_multiply, 'FQ * HHI') +
+  # map_norm_idx(norm50, 'FQ + HHI (1:1)') +
   map_norm_idx(norm60, 'FQ + HHI (3:2)') +
   map_norm_idx(norm70, 'FQ + HHI (7:3)') +
   map_norm_idx(norm80, 'FQ + HHI (4:1)') +
   
   # Combinations, continuous, ventiles
-  map_norm_idx(mult1, 'FQ * HHI ventiles') +
-  map_norm_idx(vent50, 'FQ + HHI (1:1) ventiles') +
+  # map_norm_idx(mult1, 'FQ * HHI ventiles') +
+  # map_norm_idx(vent50, 'FQ + HHI (1:1) ventiles') +
   map_norm_idx(vent60, 'FQ + HHI (3:2) ventiles') +
   map_norm_idx(vent70, 'FQ + HHI (7:3) ventiles') +
   map_norm_idx(vent80, 'FQ + HHI (4:1) ventiles') +
   
-  # Combinations, equal interval
-  # map_eq_int(norm_multiply, 'FQ * HHI, eq. int.') +
-  # map_eq_int(additive1, 'FQ + HHI (1:1), eq. int.') +
-  # map_eq_int(additive2, 'FQ + HHI (3:2), eq. int.') +
-  # map_eq_int(additive3, 'FQ + HHI (7:3), eq. int.') +
-  # map_eq_int(additive4, 'FQ + HHI (4:1), eq. int.') +
+  # # Combinations, equal interval
+  # map_eq_int(vent50_vents, 'FQ + HHI (1:1), eq. int.') +
+  # map_eq_int(vent60_vents, 'FQ + HHI (3:2), eq. int.') +
+  # map_eq_int(vent70_vents, 'FQ + HHI (7:3), eq. int.') +
+  # map_eq_int(vent80_vents, 'FQ + HHI (4:1), eq. int.') +
   
   # Top 80th percentile, normalized
   map_top_ventiles(norm50_vents, 80, 'FQ + HHI (1:1), top 80th') +
@@ -145,20 +157,90 @@ map_norm_idx(popd_norm, 'Population density') +
   
   # Top 80th percentile, ventiles
   map_top_ventiles(vent50_vents, 80, 'FQ + HHI (1:1) ventiles, top 80th') +
-  map_top_ventiles(vent60_vents, 80, 'FQ + HHI (3:2) ventiles, top 80th') +
+  map_top_ventiles(vent60_vents, 80, 'FQ + HHI (3:2) ventiles, top 80th') + 
   map_top_ventiles(vent70_vents, 80, 'FQ + HHI (7:3) ventiles, top 80th') +
   map_top_ventiles(vent80_vents, 80, 'FQ + HHI (4:1) ventiles, top 80th') +
   
+  # Without biodiversity
+  map_norm_idx(norm60_nobio, 'FQb + HHI (3:2)') +
+  map_top_ventiles(norm60_nobio_vents, 80, 'FQb + HHI (3:2), top 80th') +
   map_norm_idx(vent60_nobio, 'FQb + HHI (3:2) ventiles') +
   map_top_ventiles(vent60_nobio_vents, 80, 'FQb + HHI (3:2) ventiles, top 80th') +
   
-  hih_sites_lyr + hih_pts_lyr + msf_lyr + no_msf_lyr + pas_lyr + legend
+  hih_sites_lyr + hih_pts_lyr + 
+  msf_lyr + no_msf_lyr + pas_lyr + #legend + 
+  lgnd_80
 
+# View with slider
+map_top_ventiles(norm50_vents, 80, 'FQ + HHI (1:1)') | 
+  map_top_ventiles(norm60, 80, 'FQ + HHI (3:2)') + lgnd_80
 
+map_top_ventiles(norm50, 80, 'FQ + HHI (1:1)') | 
+  map_top_ventiles(norm70, 80, 'FQ + HHI (7:3)') + lgnd_80
 
+map_top_ventiles(norm70, 80, 'FQ + HHI (7:3)') | 
+  map_top_ventiles(vent70, 80, 'FQ + HHI (7:3) ventiles') + lgnd_80
+
+map_top_ventiles(vent60, 80, 'FQ + HHI (3:2)') | 
+  map_top_ventiles(vent70, 80, 'FQ + HHI (7:3)') + lgnd_80
+  
+
+map_norm_idx(imr_norm, 'Infant mortality rate normalized') |
+  map_norm_idx(imr_vent, 'Infant mortality rate ventiles')
+
+# Experimental views
 map_top_ventiles(vent50_vents, 80, 'FQ + HHI (1:1), top 80th percentile') +
-  map_top_10pctl(add1_top10, 'FQ + HHI (1:1), top 10th percentile') +
-  map_top_10pctl(additive1, 'FQ + HHI (1:1), top 10th percentile 1') 
+  map_top_10pctl(vent50_top10, 'FQ + HHI (1:1), top 10th percentile') +
+  map_top_10pctl(vent50, 'FQ + HHI (1:1), top 10th percentile 1') 
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Aggregate ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Zonal stats for PAs
+pas_idx_mean <- vent70$reduceRegions(
+    collection = pas,
+    reducer = ee$Reducer$mean()$unweighted(),
+    scale = 10000
+    )
+
+# Create fill
+pas_fill <- pas$draw(color = 'mean', strokeWidth = 0)
+fills = ee$Image()$byte()$paint(pas_idx_mean, color = 'mean')
+pas_mean_lyr <- Map$addLayer(fills, name = 'Normalized 70 mean', 
+                             opacity = 0.5, shown = FALSE)
+
+# Segmentation ----
+
+# ee$Algorithms$Image$Segmentation$SNIC(image, size, compactness, connectivity, neighborhoodSize, seeds)
+
+# From https://code.earthengine.google.com/24050f332c8072deebb7ec1fa71eeb1b
+seeds <- ee$Algorithms$Image$Segmentation$seedGrid(35)
+snic <- ee$Algorithms$Image$Segmentation$SNIC(
+  image = vent70, 
+  compactness = 0,
+  connectivity = 4,
+  neighborhoodSize = 128,
+  size = 2,
+  seeds = seeds
+)
+
+
+clusters_snic <- snic$select("clusters")
+
+vectors <- clusters_snic$reduceToVectors(
+  geometryType = 'polygon',
+  reducer = ee$Reducer$countEvery(),
+  scale = 10000,
+  maxPixels = 1e13,
+  geometry = tropics_bb
+)
+
+clusters_outline <- ee$Image()$byte()$paint(vectors, color = 1, width = 1)
+seg_outlines_lyr <- Map$addLayer(clusters_outline, list(palette = 'FF0000'), 'segments')
+
+means_snic <- snic$select("b1_mean")
+Map$addLayer(means_snic, viz_idx_norm, 'Means') + seg_outlines_lyr
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Export ----

@@ -145,6 +145,52 @@ classify_ventiles <- function(img) {
     updateMask(img$mask())
 }
 
+
+# Classify image to 20 equal-area ranked classes
+classify_finer_percentiles <- function(img) {
+  qs <- get_quantiles(img, c(seq(5, 80, 5), seq(81, 100, 1)))
+  
+  ee$Image(0)$
+    where(img$lt(qs$p5), 0)$
+    where(img$gte(qs$p5), .05)$
+    where(img$gte(qs$p10), .1)$
+    where(img$gte(qs$p15), .15)$
+    where(img$gte(qs$p20), .2)$
+    where(img$gte(qs$p25), .25)$
+    where(img$gte(qs$p30), .3)$
+    where(img$gte(qs$p35), .35)$
+    where(img$gte(qs$p40), .4)$
+    where(img$gte(qs$p45), .45)$
+    where(img$gte(qs$p50), .5)$
+    where(img$gte(qs$p55), .55)$
+    where(img$gte(qs$p60), .6)$
+    where(img$gte(qs$p65), .65)$
+    where(img$gte(qs$p70), .7)$
+    where(img$gte(qs$p75), .75)$
+    where(img$gte(qs$p80), .8)$
+    where(img$gte(qs$p81), .81)$
+    where(img$gte(qs$p82), .82)$
+    where(img$gte(qs$p83), .83)$
+    where(img$gte(qs$p84), .84)$
+    where(img$gte(qs$p85), .85)$
+    where(img$gte(qs$p86), .86)$
+    where(img$gte(qs$p87), .87)$
+    where(img$gte(qs$p88), .88)$
+    where(img$gte(qs$p89), .89)$
+    where(img$gte(qs$p90), .9)$
+    where(img$gte(qs$p91), .91)$
+    where(img$gte(qs$p92), .92)$
+    where(img$gte(qs$p93), .93)$
+    where(img$gte(qs$p94), .94)$
+    where(img$gte(qs$p95), .95)$
+    where(img$gte(qs$p96), .96)$
+    where(img$gte(qs$p97), .97)$
+    where(img$gte(qs$p98), .98)$
+    where(img$gte(qs$p99), .99)$
+    where(img$gte(qs$p100), 1)$
+    updateMask(img$mask())
+}
+
 # Classify upper 10th percentile to 5 equal-area (percentile) classes
 classify_top10pctl <- function(img) {
   qs <- get_quantiles(img, seq(90, 98, 2))
@@ -206,22 +252,33 @@ map_upper_2pct <- function(img, name, shown = FALSE) {
                shown = shown)
 }
 
-map_top_ventiles <- function(ventile_img, lower = 50, 
+map_top_ventiles <- function(ventile_img, lower = 80, 
                              name = NULL, shown = FALSE) {
   
   min <- lower / 100
-  viz <- list(min = min, max = 0.95, palette = BlueToRed, 
-              values = seq(lower, 100, 5))
+  viz <- list(min = min-0.05, max = 0.96, palette = BlueToRed, 
+              values = c(str_c('<', lower), 
+                         seq(lower, 95, 5) %>% str_c('>', .)))
   
   Map$addLayer(eeObject = ventile_img, 
                visParams = viz, 
                name = name, 
-               shown = shown) +
-    Map$addLegend(visParams = viz,
+               shown = shown)
+}
+
+lgnd_top_ventiles <- function(lower = 80) {
+  
+  min <- lower / 100
+  viz <- list(min = min-0.05, max = 0.96, palette = BlueToRed, 
+              values = c(str_c('<', lower), 
+                         seq(lower, 95, 5) %>% str_c('>', .)))
+  
+  Map$addLegend(visParams = viz,
                   name = NA, 
-                  position = "bottomleft", 
+                  position = "bottomright", 
                   color_mapping = "character")
 }
+
 
 map_top_10pctl <- function(img, name, shown = FALSE) {
   
@@ -239,7 +296,7 @@ map_top_10pctl <- function(img, name, shown = FALSE) {
 legend <- Map$addLegend(
   visParams = viz_idx_norm,
   name = NA,
-  position = c("bottomright", "topright", "bottomleft", "topleft"),
+  position = "bottomright",
   color_mapping = "numeric",
   opacity = 1
 )
@@ -247,7 +304,7 @@ legend <- Map$addLegend(
 lgnd_eq_int <- Map$addLegend(
   visParams = viz_clssfd_idx,
   name = NA,
-  position = c("bottomright", "topright", "bottomleft", "topleft"),
+  position = "bottomright",
   color_mapping = "character",
   opacity = 1
 )
@@ -307,28 +364,26 @@ hih_pts_lyr <- Map$addLayer(hih_pts, name = 'HIH points')
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # MSF interventions ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-countries_msf_shp <- file.path(data_dir, 'gadm', 'gadm36_0_tropics_simp001big3.shp')
-countries_msf <- st_read(countries_msf_shp) %>% 
-  filter(!is.na(MSF)) %>%
-  st_geometry() %>%
-  st_simplify(dTolerance = 0.01) %>% 
-  sf_as_ee()
+countries_msf_shp <- file.path(data_dir, 'gadm', 'gadm0_tropics_simp01big9.shp')
+countries <- st_read(countries_msf_shp) %>% 
+  mutate(MSF = ifelse(is.na(MSF), 0, 1))
 
-# Load non-MSF countries
-no_msf_ee <- st_read(countries_msf_shp) %>% 
-  filter(is.na(MSF)) %>%
-  st_geometry() %>%
-  st_simplify(dTolerance = 0.01) %>% 
-  sf_as_ee()
+# Upload countries
+countries_ee <- countries %>% sf_as_ee()
+
+# Filter to MSF and non-MSF countries
+msf_ee <- countries_ee$filter(ee$Filter$eq('MSF', 1))
+no_msf_ee <- countries_ee$filter(ee$Filter$neq('MSF', 1))
 
 # Simplify
-msf_simp <- countries_msf$map(
+msf_simp <- msf_ee$map(
   function(f) f$simplify(maxError = ee$ErrorMargin(50000, 'meters'))
 )
 
 # Create outline
-msf_outline <- ee$Image()$byte()$paint(featureCollection = msf_simp, color = 1, width = 2)
-msf_lyr <- Map$addLayer(msf_outline, name = 'MSF operations', shown = FALSE)
+msf_outline <- ee$Image()$byte()$paint(featureCollection = msf_simp, width = 1)
+msf_lyr <- Map$addLayer(msf_outline, list(palette = c('#979797')),
+                        name = 'MSF operations', shown = FALSE)
 
 # Create fill
 no_msf_fill <- no_msf_ee$draw(color = '#2c7bb6', strokeWidth = 0)
@@ -362,7 +417,7 @@ carbon_norm <- rescale_to_pctl(carbon_idx)$updateMask(tropics_r)
 l_normalized$carbon <- carbon_norm
 
 # Reclass to ventiles
-carbon_vent <- classify_ventiles(carbon_idx)
+carbon_vent <- classify_finer_percentiles(carbon_idx)
 l_ventiles$carbon <- carbon_vent
 
 # # View
@@ -372,6 +427,7 @@ l_ventiles$carbon <- carbon_vent
 #   map_norm_idx(carbon_norm, 'Carbon normalized') +
 #   map_norm_idx(carbon_vent, "Carbon normalized ventiles") 
 
+# Look at histogram
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Forest Landscape Integrity Index ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -400,14 +456,14 @@ flii_norm <- rescale_to_pctl(flii, c(0, 78))$updateMask(tropics_r)
 l_normalized$flii <- flii_norm
 
 # Map and reclass to ventiles
-flii_vent <- classify_ventiles(flii_norm$updateMask(c_mask))
+flii_vent <- classify_finer_percentiles(flii_norm$updateMask(c_mask))
 l_ventiles$flii <- flii_vent
 
 # # View
-map_norm_idx(flii, 'FLII') +
-  # map_norm_idx(flii_vent1, 'FLII ventiles') +
-  map_norm_idx(flii_norm, 'FLII normalized') +
-  map_norm_idx(flii_vent, "FLII normalized ventiles")
+# map_norm_idx(flii, 'FLII') +
+#   # map_norm_idx(flii_vent1, 'FLII ventiles') +
+#   map_norm_idx(flii_norm, 'FLII normalized') +
+#   map_norm_idx(flii_vent, "FLII normalized ventiles")
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Key Biodiversity Areas ----
@@ -474,7 +530,7 @@ hm_norm <- rescale_to_pctl(gHM)$updateMask(tropics_r)
 l_normalized$hm <- hm_norm
 
 # Map and reclass to ventiles
-hm_vent <- classify_ventiles(gHM$updateMask(c_mask))
+hm_vent <- classify_finer_percentiles(gHM$updateMask(c_mask))
 l_ventiles$hm <- hm_vent
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -491,7 +547,7 @@ hf_norm <- rescale_to_pctl(hf, c(0, 98))$updateMask(tropics_r)
 l_normalized$hf <- hf_norm
 
 # Map and reclass to ventiles
-hf_vent <- classify_ventiles(hf$updateMask(c_mask))
+hf_vent <- classify_finer_percentiles(hf$updateMask(c_mask))
 l_ventiles$hf <- hf_vent
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -509,7 +565,7 @@ popd_norm <- rescale_to_pctl(popd)$updateMask(tropics_r)
 l_normalized$popd <- popd_norm
 
 # Map and reclass to ventiles
-popd_vent <- classify_ventiles(popd$updateMask(c_mask))
+popd_vent <- classify_finer_percentiles(popd$updateMask(c_mask))
 l_ventiles$popd <- popd_vent
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -568,7 +624,7 @@ if(!dti_id %in% alist$ID) {
   dti <- dpi$
     sum()$
     setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
-    updateMask(tropics_r)$selfMask()
+    updateMask(c_mask)
   
   # Normalize
   dti_norm <- rescale_to_pctl(dti, c(0, 100))
@@ -580,7 +636,8 @@ if(!dti_id %in% alist$ID) {
                                 region = tropics_bb,
                                 crs = 'EPSG:4326',
                                 scale = 1000,
-                                maxPixels = 191434770)
+                                maxPixels = 191434770, 
+                                overwrite = TRUE)
   task_img2$start()
   
 }
@@ -588,13 +645,14 @@ if(!dti_id %in% alist$ID) {
 dti_norm <- ee$Image(dti_id)
 l_normalized$dti <- dti_norm
   
-dti_vent <- classify_ventiles(dti_norm$updateMask(c_mask))
+dti_vent <- classify_finer_percentiles(dti_norm$updateMask(c_mask))
 l_ventiles$dti <- dti_vent
 
 # # View
-# rescale_and_map(ee$Image(dpi_eelist$ID[[1]])$unmask(), 'Biofuels') +
+# # rescale_and_map(ee$Image(addm('DPI/bio_dpi_geo_int'))$unmask(), 'Biofuels') +
 #   map_norm_idx(dti_norm, 'Average and normalize') +
-#   map_norm_idx(dti_vent, 'Ventiles')
+#   map_norm_idx(dti_vent, 'Ventiles') +
+#     map_norm_idx(carbon_vent, 'Carbon')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Subnational Infant Mortality Rate ----
@@ -614,7 +672,7 @@ l_normalized$imr <- imr_norm
 # Map$addLayer(eeObject = infant_mort, visParams = viz_idx_norm)
 
 # Ventiles
-imr_vent <- classify_ventiles(imr_norm$updateMask(c_mask))
+imr_vent <- classify_finer_percentiles(imr_norm$updateMask(c_mask))
 l_ventiles$imr <- imr_vent
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -638,7 +696,7 @@ zs_wpubs_ea <- classify_percentiles(zs_weight_pubs)$updateMask(tropics_r)
 # Reweighted by population
 zs_weight_pop <- zoonotic_risk_all$select('b3')$rename('b1')
 zs_wpop_norm <- rescale_to_pctl(zs_weight_pop)$updateMask(tropics_r)
-zs_wpop_ea <- classify_ventiles(zs_weight_pop$updateMask(c_mask))
+zs_wpop_ea <- classify_finer_percentiles(zs_weight_pop$updateMask(c_mask))
 
 zoonotic_risk <- zs_wpop_ea$unitScale(0, .95)
 l_indices$zs <- zs_wpop_ea
@@ -678,6 +736,7 @@ le_ea <- classify_percentiles(le_norm)$updateMask(tropics_r)
 
 # View
 # Map$addLayer(eeObject = le, visParams = viz_idx_norm, name = "Life expectancy")
+
 # Health index ----
 hi <- hdi_fc$
   reduceToImage(properties = list('HI'), reducer = ee$Reducer$first())$
@@ -691,7 +750,7 @@ hdi <- hdi_fc$
 hdi_norm <- rescale_to_pctl(hdi, c(0, 100))$updateMask(tropics_r)
 
 # Map$addLayer(eeObject = hdi,
-#              visParams = list(min = 0, max = 1, palette = viridis), 
+#              visParams = viz_idx_norm, 
 #              name = "SHDI")
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -715,7 +774,7 @@ hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
 # Rescale
 # get_pctl(hc_motor,  95)
 hc_motor <- rescale_to_pctl(hc_motor, c(0, 95))$updateMask(tropics_r)
-# Map$addLayer(eeObject = hc_motor, visParams = viz)
+# Map$addLayer(eeObject = hc_motor, visParams = viz_idx_norm)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Protected Areas ----
@@ -736,9 +795,4 @@ pas_fill <- pas$draw(color = 'green', strokeWidth = 0)
 pas_lyr <- Map$addLayer(pas_fill, name = 'Protected areas', 
                         opacity = 0.5, shown = FALSE)
 
-# Zonal stats for PAs
-$
-  reduceRegion(
-    reducer = ee$Reducer$percentile(percentiles),
-    geometry = tropics_bb,
-    bestEffort = TRUE)
+

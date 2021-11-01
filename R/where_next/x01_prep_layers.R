@@ -52,18 +52,18 @@ msf_countries <- msf_countries %>%
   arrange(country)
 
 # Load GADM country boundaries as singlepart
-countries <- st_read(file.path(data_dir, 'gadm', 'gadm36_0.shp'),
-                     promote_to_multi = TRUE) %>% 
+gadm_shp <- file.path(data_dir, 'gadm', 'gadm36_0.shp')
+countries <- st_read(gadm_shp, promote_to_multi = TRUE) %>% 
   st_cast("POLYGON")
 
 # Simplify and subset to those that intersect tropics
-countries <- countries %>% st_simplify(dTolerance = 0.001)
+countries <- countries %>% st_simplify(dTolerance = 0.01)
 countries <- countries[unlist(st_intersects(tropics_rect, countries)),]
 
 # Remove parts of countries < 2km2
 countries['area'] <- countries %>% st_area()
 countries <- countries %>% 
-  filter(area > units::set_units(4, 'km^2')) %>% 
+  filter(area > units::set_units(9, 'km^2')) %>% 
   group_by(NAME_0) %>% 
   summarize()
 
@@ -73,7 +73,7 @@ countries <- countries %>%
   left_join(msf_countries, by = 'country')
 
 # Save
-countries_msf_shp <- file.path(data_dir, 'gadm', 'gadm36_0_tropics_simp001big3.shp')
+countries_msf_shp <- file.path(data_dir, 'gadm', 'gadm0_tropics_simp01big9.shp')
 countries %>% st_write(countries_msf_shp)
 
 tm_shape(countries) + tm_polygons(col = 'MSF')
