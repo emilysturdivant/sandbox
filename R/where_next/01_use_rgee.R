@@ -426,7 +426,7 @@ wbd_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_BGB
 soc_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_SOC_Mgha")
 
 # Get mask
-c_mask <- wbd_mgha$updateMask(tropics_r)$mask()
+c_mask <- wbd_mgha$updateMask(dhf_mask)$mask()
 
 # Convert to carbon density 
 wcd_mgcha <- wbd_mgha$divide(2)
@@ -442,7 +442,7 @@ soc_idx <- rescale_to_pctl(soc_mgcha)
 carbon_idx <- wcd_idx$add(soc_idx)$divide(2)
 
 # get_pctl(carbon_idx, 98) # max: 1; 98th: .73; 99th: 0.79
-carbon_norm <- rescale_to_pctl(carbon_idx)$updateMask(tropics_r)
+carbon_norm <- rescale_to_pctl(carbon_idx)$updateMask(dhf_mask)
 
 # Reclass to ventiles
 carbon_vent <- classify_finer_percentiles(carbon_idx)
@@ -478,7 +478,7 @@ flii <- flii$mosaic()$
 
 # Scale values to 0-1 scale
 # get_pctl(flii, 99) # 99th: 9996 # 78th: 9666
-flii_norm <- rescale_to_pctl(flii, c(0, 78))$updateMask(tropics_r)
+flii_norm <- rescale_to_pctl(flii, c(0, 78))$updateMask(dhf_mask)
 
 # Map and reclass to ventiles
 flii_vent <- classify_finer_percentiles(flii_norm$updateMask(c_mask))
@@ -546,7 +546,7 @@ gHM <- ee$ImageCollection("CSP/HM/GlobalHumanModification")$first() # only image
 
 # Rescale
 # get_pctl(gHM, 100) # 99th: 0.76; 98th: 0.72; 95th: 0.66; max: 0.99
-hm_norm <- rescale_to_pctl(gHM)$updateMask(tropics_r)
+hm_norm <- rescale_to_pctl(gHM)$updateMask(dhf_mask)
 
 # Map and reclass to ventiles
 hm_vent <- classify_finer_percentiles(gHM$updateMask(c_mask))
@@ -559,7 +559,7 @@ hf <- ee$Image(addm("wildareas-v3-2009-human-footprint"))
 
 # Rescale
 # get_pctl(hf, 98) # max: 50; 99th: 24.6; 98th: 20.7
-hf_norm <- rescale_to_pctl(hf, c(0, 98))$updateMask(tropics_r)
+hf_norm <- rescale_to_pctl(hf, c(0, 98))$updateMask(dhf_mask)
 # Map$addLayer(eeObject = hf_norm, visParams = viz_idx_norm)
 
 # Map and reclass to ventiles
@@ -574,7 +574,7 @@ popd <- ee$ImageCollection("CIESIN/GPWv411/GPW_UNWPP-Adjusted_Population_Density
 
 # Rescale
 # get_pctl(popd, 100) # 98th: 36 p/km2; max: 162974.2
-popd_norm <- rescale_to_pctl(popd)$updateMask(tropics_r)
+popd_norm <- rescale_to_pctl(popd)$updateMask(dhf_mask)
 # Map$addLayer(eeObject = popd_norm, visParams = viz_idx_norm)
 
 # Map and reclass to ventiles
@@ -591,10 +591,10 @@ dti <- ee$Image(addm("development-threat-index_geographic"))
 dti <- dti$updateMask(c_mask)
 
 # Rescale
-dti15 <- rescale_to_pctl(dti)$updateMask(tropics_r)
+dti15 <- rescale_to_pctl(dti)$updateMask(dhf_mask)
 
 # Test mask
-# dti_m <- dti$updateMask(tropics_r$neq(0))
+# dti_m <- dti$updateMask(dhf_mask$neq(0))
 # Map$addLayer(eeObject = dti, visParams = viz_idx_norm) +
 #   Map$addLayer(eeObject = dti_m, visParams = viz_idx_norm) 
 
@@ -675,7 +675,7 @@ infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
 
 # Rescale
 # get_pctl(infant_mort) # 99.7
-imr_norm <- rescale_to_pctl(infant_mort)$updateMask(tropics_r)
+imr_norm <- rescale_to_pctl(infant_mort)$updateMask(dhf_mask)
 
 # Map$addLayer(eeObject = infant_mort, visParams = viz_idx_norm)
 
@@ -692,17 +692,17 @@ zoonotic_risk_all <- ee$Image(addm("zoonotic_eid_risk"))$
 
 # raw model output
 zs_response <- zoonotic_risk_all$select('b1')$rename('b1') 
-zs_resp_norm <- rescale_to_pctl(zs_response)$updateMask(tropics_r)
-zs_resp_ea <- classify_percentiles(zs_response)$updateMask(tropics_r)
+zs_resp_norm <- rescale_to_pctl(zs_response)$updateMask(dhf_mask)
+zs_resp_ea <- classify_percentiles(zs_response)$updateMask(dhf_mask)
 
 # weighted by publications, not reweighted by population
 zs_weight_pubs <- zoonotic_risk_all$select('b2')$rename('b1') 
-zs_wpubs_norm <- rescale_to_pctl(zs_weight_pubs)$updateMask(tropics_r)
-zs_wpubs_ea <- classify_percentiles(zs_weight_pubs)$updateMask(tropics_r)
+zs_wpubs_norm <- rescale_to_pctl(zs_weight_pubs)$updateMask(dhf_mask)
+zs_wpubs_ea <- classify_percentiles(zs_weight_pubs)$updateMask(dhf_mask)
 
 # Reweighted by population
 zs_weight_pop <- zoonotic_risk_all$select('b3')$rename('b1')
-zs_wpop_norm <- rescale_to_pctl(zs_weight_pop)$updateMask(tropics_r)
+zs_wpop_norm <- rescale_to_pctl(zs_weight_pop)$updateMask(dhf_mask)
 zs_wpop_ea <- classify_finer_percentiles(zs_weight_pop$updateMask(c_mask))
 
 zoonotic_risk <- zs_wpop_ea$unitScale(0, .95)
@@ -730,13 +730,13 @@ le <- hdi_fc$
 
 # Rescale
 # get_pctl(le, 1) # 51.9 years is the 1st percentile and 47.75 is the min
-le <- rescale_to_pctl(le, c(0, 100))$updateMask(tropics_r)
+le <- rescale_to_pctl(le, c(0, 100))$updateMask(dhf_mask)
 
 # Invert values
 le_norm <- le$multiply(-1)$add(1)
 
 # Rescale to Percentiles 
-le_ea <- classify_percentiles(le_norm)$updateMask(tropics_r)
+le_ea <- classify_percentiles(le_norm)$updateMask(dhf_mask)
 
 # View
 # Map$addLayer(eeObject = le, visParams = viz_idx_norm, name = "Life expectancy")
@@ -745,13 +745,13 @@ le_ea <- classify_percentiles(le_norm)$updateMask(tropics_r)
 hi <- hdi_fc$
   reduceToImage(properties = list('HI'), reducer = ee$Reducer$first())$
   setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-hi_norm <- rescale_to_pctl(hi, c(0, 100))$updateMask(tropics_r)
+hi_norm <- rescale_to_pctl(hi, c(0, 100))$updateMask(dhf_mask)
 
 # Human development index ----
 hdi <- hdi_fc$
   reduceToImage(properties = list('shdi'), reducer = ee$Reducer$first())$
   setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-hdi_norm <- rescale_to_pctl(hdi, c(0, 100))$updateMask(tropics_r)
+hdi_norm <- rescale_to_pctl(hdi, c(0, 100))$updateMask(dhf_mask)
 
 # Map$addLayer(eeObject = hdi,
 #              visParams = viz_idx_norm, 
@@ -767,7 +767,7 @@ hc_access <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
 
 # Rescale
 # get_pctl(hc_access,  95) # 6380 min
-hc_access <- rescale_to_pctl(hc_access, c(0, 95))$updateMask(tropics_r)
+hc_access <- rescale_to_pctl(hc_access, c(0, 95))$updateMask(dhf_mask)
 # Map$addLayer(eeObject = hc_access, visParams = viz_idx_norm)
 
 # Load 
@@ -777,7 +777,7 @@ hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
 
 # Rescale
 # get_pctl(hc_motor,  95)
-hc_motor <- rescale_to_pctl(hc_motor, c(0, 95))$updateMask(tropics_r)
+hc_motor <- rescale_to_pctl(hc_motor, c(0, 95))$updateMask(dhf_mask)
 # Map$addLayer(eeObject = hc_motor, visParams = viz_idx_norm)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -836,7 +836,7 @@ if(!no_msf_id %in% alist$ID) {
       reducer = ee$Reducer$first()
     )$
     setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
-    updateMask(tropics_r)
+    updateMask(dhf_mask)
   
   # Save image as EE asset
   task_img <- ee_image_to_asset(no_msf_r,
