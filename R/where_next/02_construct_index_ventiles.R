@@ -16,39 +16,6 @@
 source('R/where_next/01_use_rgee.R')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Combine normalized inputs  ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-i_forest_norm <- flii_norm$multiply(0.5)$
-  add(carbon_norm$multiply(0.5)) %>% 
-  rescale_to_pctl()
-
-i_forestbio_norm <- flii_norm$multiply(0.45)$
-  add(carbon_norm$multiply(0.45))$
-  add(kba_r$multiply(0.1)) %>% 
-  rescale_to_pctl()
-
-i_humz_norm <- imr_norm$multiply(0.33)$
-  add(dti_norm$multiply(0.33))$
-  add(zoonotic_risk$multiply(0.33)) %>% 
-  rescale_to_pctl()
-
-norm_multiply <- i_forestbio_norm$multiply(i_humz_norm) %>% rescale_to_pctl()
-
-norm50 <- i_forestbio_norm$multiply(0.5)$add(i_humz_norm$multiply(0.5)) %>% rescale_to_pctl()
-norm60 <- i_forestbio_norm$multiply(0.6)$add(i_humz_norm$multiply(0.4)) %>% rescale_to_pctl()
-norm70 <- i_forestbio_norm$multiply(0.7)$add(i_humz_norm$multiply(0.3)) %>% rescale_to_pctl()
-norm80 <- i_forestbio_norm$multiply(0.8)$add(i_humz_norm$multiply(0.2)) %>% rescale_to_pctl()
-
-norm50_vents <- classify_ventiles(norm50)
-norm60_vents <- classify_ventiles(norm60)
-norm70_vents <- classify_ventiles(norm70)
-norm80_vents <- classify_ventiles(norm80)
-
-# Process without biodiversity
-norm60_nobio <- i_forest_norm$multiply(0.6)$add(i_humz_norm$multiply(0.4)) %>% rescale_to_pctl()
-norm60_nobio_vents <- classify_ventiles(norm60_nobio)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Combine indicators in ventiles ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create components
@@ -82,17 +49,15 @@ vent60 <- i_forestbio$multiply(0.6)$add(i_humz$multiply(0.4)) %>% rescale_to_pct
 vent70 <- i_forestbio$multiply(0.7)$add(i_humz$multiply(0.3)) %>% rescale_to_pctl()
 vent80 <- i_forestbio$multiply(0.8)$add(i_humz$multiply(0.2)) %>% rescale_to_pctl()
 
-# Transform composite to ventiles
-vent50_vents <- classify_ventiles(vent50)
-vent60_vents <- classify_ventiles(vent60)
-vent70_vents <- classify_ventiles(vent70)
-vent80_vents <- classify_ventiles(vent80)
+# # Transform composite to ventiles
+# vent50_vents <- classify_ventiles(vent50)
+# vent60_vents <- classify_ventiles(vent60)
+# vent70_vents <- classify_ventiles(vent70)
+# vent80_vents <- classify_ventiles(vent80)
 
 # Process without biodiversity
 vent60_nobio <- i_forest$multiply(0.6)$add(i_humz$multiply(0.4)) %>% rescale_to_pctl()
 vent60_nobio_vents <- classify_ventiles(vent60_nobio)
-
-vent50_top10 <- classify_top10pctl(vent50)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Look at it all together ----
@@ -106,48 +71,112 @@ Map$setCenter(136, -2, zoom = 6)  # Papua
 
 # Get legend 
 lgnd_80 <- lgnd_top_ventiles(80)
+lgnd80_3clas <- lgnd_top_pctls_3class()
 
 # Input layers
-# map_norm_idx(popd_norm, 'Population density') +
-  # map_norm_idx(dti_norm, 'DTI normalized') +
-  # map_norm_idx(imr_norm, 'Infant mortality rate normalized') +
-  map_norm_idx(zoonotic_risk, 'Zoonotic spillover risk') +
-  # map_norm_idx(carbon_norm, 'Carbon normalized') +
+map_norm_idx(zoonotic_risk, 'Zoonotic spillover risk') +
   map_norm_idx(carbon_vent, 'Carbon ventiles') +
-  # map_norm_idx(flii_vent, 'FLII ventiles') +
   map_norm_idx(flii_norm, 'FLII') +
   map_norm_idx(kba_r, 'KBAs') +
   map_norm_idx(dti_vent, 'DTI ventiles') +
   map_norm_idx(imr_vent, 'Infant mortality rate ventiles') +
   
   # Components
-  # map_norm_idx(i_forestbio_norm, 'Forest quality normalized') +
-  # map_norm_idx(i_forest_norm, 'Forest quality normalized (w/o biodiv)') +
   map_norm_idx(i_forestbio, 'Forest quality') +
   map_norm_idx(i_forest, 'Forest quality (w/o biodiv)') +
-  # map_norm_idx(i_humz_norm, 'Human health and impacts normalized') +
   map_norm_idx(i_humz, 'Human health and impacts') +
-  # map_norm_idx(i_humz2, 'Human health and impacts (with HM)') +
+
+  # Final options
+  map_norm_idx(vent80, 'FQ + HHI (4:1) ventiles') +
+  map_top_pctls_3class(vent80, 'FQ + HHI (4:1), top 80th', TRUE) + 
+  
+  hih_sites_lyr + hih_pts_lyr + 
+  no_msf_lyr + msf_lyr + pas_lyr + 
+  lgnd80_3clas
+
+Map$addLayer(eeObject = tropics, name = "Tropical biomes", opacity = 0.5) 
+
+# Slider views ----
+map_top_pctls_3class(vent60, 80, 'FQ + HHI (3:2)') | 
+  map_top_pctls_3class(vent70, 80, 'FQ + HHI (7:3)') + lgnd80_3clas
+  
+map_top_pctls_3class(i_forestbio, 'Forest quality') + legend |
+  map_top_pctls_3class(vent80, 80, 'FQ + HHI (7:3)') + lgnd80_3clas
+
+# inputs layers
+map_norm_idx(imr_norm, 'Infant mortality rate normalized') |
+  map_norm_idx(imr_vent, 'Infant mortality rate ventiles')
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Combine normalized inputs  ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+i_forest_norm <- flii_norm$multiply(0.5)$
+  add(carbon_norm$multiply(0.5)) %>% 
+  rescale_to_pctl()
+
+i_forestbio_norm <- flii_norm$multiply(0.45)$
+  add(carbon_norm$multiply(0.45))$
+  add(kba_r$multiply(0.1)) %>% 
+  rescale_to_pctl()
+
+i_humz_norm <- imr_norm$multiply(0.33)$
+  add(dti_norm$multiply(0.33))$
+  add(zoonotic_risk$multiply(0.33)) %>% 
+  rescale_to_pctl()
+
+norm_multiply <- i_forestbio_norm$multiply(i_humz_norm) %>% rescale_to_pctl()
+
+norm50 <- i_forestbio_norm$multiply(0.5)$add(i_humz_norm$multiply(0.5)) %>% rescale_to_pctl()
+norm60 <- i_forestbio_norm$multiply(0.6)$add(i_humz_norm$multiply(0.4)) %>% rescale_to_pctl()
+norm70 <- i_forestbio_norm$multiply(0.7)$add(i_humz_norm$multiply(0.3)) %>% rescale_to_pctl()
+norm80 <- i_forestbio_norm$multiply(0.8)$add(i_humz_norm$multiply(0.2)) %>% rescale_to_pctl()
+
+norm50_vents <- classify_ventiles(norm50)
+norm60_vents <- classify_ventiles(norm60)
+norm70_vents <- classify_ventiles(norm70)
+norm80_vents <- classify_ventiles(norm80)
+
+# ALL OF THEM ----
+map_norm_idx(popd_norm, 'Population density') +
+  map_norm_idx(dti_norm, 'DTI normalized') +
+  map_norm_idx(imr_norm, 'Infant mortality rate normalized') +
+  map_norm_idx(zoonotic_risk, 'Zoonotic spillover risk') +
+  map_norm_idx(carbon_norm, 'Carbon normalized') +
+  map_norm_idx(carbon_vent, 'Carbon ventiles') +
+  map_norm_idx(flii_vent, 'FLII ventiles') +
+  map_norm_idx(flii_norm, 'FLII') +
+  map_norm_idx(kba_r, 'KBAs') +
+  map_norm_idx(dti_vent, 'DTI ventiles') +
+  map_norm_idx(imr_vent, 'Infant mortality rate ventiles') +
+  
+  # Components
+  map_norm_idx(i_forestbio_norm, 'Forest quality normalized') +
+  map_norm_idx(i_forest_norm, 'Forest quality normalized (w/o biodiv)') +
+  map_norm_idx(i_forestbio, 'Forest quality') +
+  map_norm_idx(i_forest, 'Forest quality (w/o biodiv)') +
+  map_norm_idx(i_humz_norm, 'Human health and impacts normalized') +
+  map_norm_idx(i_humz, 'Human health and impacts') +
+  map_norm_idx(i_humz2, 'Human health and impacts (with HM)') +
   
   # Combinations, continuous, normalized
-  # map_norm_idx(norm_multiply, 'FQ * HHI') +
-  # map_norm_idx(norm50, 'FQ + HHI (1:1)') +
+  map_norm_idx(norm_multiply, 'FQ * HHI') +
+  map_norm_idx(norm50, 'FQ + HHI (1:1)') +
   map_norm_idx(norm60, 'FQ + HHI (3:2)') +
   map_norm_idx(norm70, 'FQ + HHI (7:3)') +
   map_norm_idx(norm80, 'FQ + HHI (4:1)') +
   
   # Combinations, continuous, ventiles
-  # map_norm_idx(mult1, 'FQ * HHI ventiles') +
-  # map_norm_idx(vent50, 'FQ + HHI (1:1) ventiles') +
+  map_norm_idx(mult1, 'FQ * HHI ventiles') +
+  map_norm_idx(vent50, 'FQ + HHI (1:1) ventiles') +
   map_norm_idx(vent60, 'FQ + HHI (3:2) ventiles') +
   map_norm_idx(vent70, 'FQ + HHI (7:3) ventiles') +
   map_norm_idx(vent80, 'FQ + HHI (4:1) ventiles') +
   
   # # Combinations, equal interval
-  # map_eq_int(vent50_vents, 'FQ + HHI (1:1), eq. int.') +
-  # map_eq_int(vent60_vents, 'FQ + HHI (3:2), eq. int.') +
-  # map_eq_int(vent70_vents, 'FQ + HHI (7:3), eq. int.') +
-  # map_eq_int(vent80_vents, 'FQ + HHI (4:1), eq. int.') +
+  map_eq_int(vent50_vents, 'FQ + HHI (1:1), eq. int.') +
+  map_eq_int(vent60_vents, 'FQ + HHI (3:2), eq. int.') +
+  map_eq_int(vent70_vents, 'FQ + HHI (7:3), eq. int.') +
+  map_eq_int(vent80_vents, 'FQ + HHI (4:1), eq. int.') +
   
   # Top 80th percentile, normalized
   map_top_ventiles(norm50_vents, 80, 'FQ + HHI (1:1), top 80th') +
@@ -157,9 +186,15 @@ lgnd_80 <- lgnd_top_ventiles(80)
   
   # Top 80th percentile, ventiles
   map_top_ventiles(vent50_vents, 80, 'FQ + HHI (1:1) ventiles, top 80th') +
-  map_top_ventiles(vent60_vents, 80, 'FQ + HHI (3:2) ventiles, top 80th') + 
+  map_top_ventiles(vent60_vents, 80, 'FQ + HHI (3:2) ventiles, top 80th') +
   map_top_ventiles(vent70_vents, 80, 'FQ + HHI (7:3) ventiles, top 80th') +
   map_top_ventiles(vent80_vents, 80, 'FQ + HHI (4:1) ventiles, top 80th') +
+  map_top_ventiles(vent80, 80, 'FQ + HHI (4:1) ventiles, top 80th') +
+  
+  map_top_pctls_3class(vent50, 'FQ + HHI (1:1), top 80th') +
+  map_top_pctls_3class(vent60, 'FQ + HHI (3:2), top 80th') +
+  map_top_pctls_3class(vent70, 'FQ + HHI (7:3), top 80th') +
+  map_top_pctls_3class(vent80, 'FQ + HHI (4:1), top 80th') + 
   
   # Without biodiversity
   map_norm_idx(norm60_nobio, 'FQb + HHI (3:2)') +
@@ -168,27 +203,10 @@ lgnd_80 <- lgnd_top_ventiles(80)
   map_top_ventiles(vent60_nobio_vents, 80, 'FQb + HHI (3:2) ventiles, top 80th') +
   
   hih_sites_lyr + hih_pts_lyr + 
-  msf_lyr + no_msf_lyr + pas_lyr + #legend + 
-  lgnd_80
+  msf_lyr + no_msf_lyr + pas_lyr + legend + lgnd_80 +
+  lgnd80_3clas
 
-# View with slider
-map_top_ventiles(norm50_vents, 80, 'FQ + HHI (1:1)') | 
-  map_top_ventiles(norm60, 80, 'FQ + HHI (3:2)') + lgnd_80
-
-map_top_ventiles(norm50, 80, 'FQ + HHI (1:1)') | 
-  map_top_ventiles(norm70, 80, 'FQ + HHI (7:3)') + lgnd_80
-
-map_top_ventiles(norm70, 80, 'FQ + HHI (7:3)') | 
-  map_top_ventiles(vent70, 80, 'FQ + HHI (7:3) ventiles') + lgnd_80
-
-map_top_ventiles(vent60, 80, 'FQ + HHI (3:2)') | 
-  map_top_ventiles(vent70, 80, 'FQ + HHI (7:3)') + lgnd_80
-  
-
-map_norm_idx(imr_norm, 'Infant mortality rate normalized') |
-  map_norm_idx(imr_vent, 'Infant mortality rate ventiles')
-
-# Experimental views
+# Experimental views ----
 map_top_ventiles(vent50_vents, 80, 'FQ + HHI (1:1), top 80th percentile') +
   map_top_10pctl(vent50_top10, 'FQ + HHI (1:1), top 10th percentile') +
   map_top_10pctl(vent50, 'FQ + HHI (1:1), top 10th percentile 1') 

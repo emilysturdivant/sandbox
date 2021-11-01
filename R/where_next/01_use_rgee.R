@@ -19,8 +19,12 @@ library(tidyverse)
 
 # Initialize variables 
 BlueToRed <- c('#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c')
-viz_idx_norm <- list(min = 0, max = 1, palette = BlueToRed)
-viz_clssfd_idx <- list(min = 0, max = .8, palette = BlueToRed, 
+BlueToRed_3 <- c('#2c7bb6', '#fee090', '#d7191c')
+greens_3 <- c('#cbebc1', '#3fa54f', '#0f3614')
+greens_5 <- colorspace::sequential_hcl(5, 'Greens 3', rev = TRUE)
+greens_3 <- greens_5[2:5]
+viz_idx_norm <- list(min = 0, max = 1, palette = greens_5)
+viz_clssfd_idx <- list(min = 0, max = .8, palette = greens_5, 
                        values = c('0-20', '20-40', '40-60', '60-80', '80-100'))
 viz_pctls_idx <- list(min = 0, max = 90, palette = BlueToRed,
                        values = c('0', '10', '20', '30', '40', '50', '60', '70', '80', '90'))
@@ -252,11 +256,44 @@ map_upper_2pct <- function(img, name, shown = FALSE) {
                shown = shown)
 }
 
+map_top_pctls_3class <- function(pctl_img, name = NULL, shown = FALSE) {
+  
+  lower <- 80
+  
+  img <- ee$Image(0)$
+    where(pctl_img$lt(.80), 0.8)$
+    where(pctl_img$gte(.80), .9)$
+    where(pctl_img$gte(.90), 1)$
+    updateMask(c_mask)
+  
+  min <- lower / 100
+  viz <- list(min = min, max = 1, 
+              palette = greens_3, 
+              values = c('<80%', '>80%', '>90%'))
+  
+  Map$addLayer(eeObject = img, 
+               visParams = viz, 
+               name = name, 
+               shown = shown)
+}
+
+lgnd_top_pctls_3class <- function(lower = 80) {
+  
+  min <- lower / 100
+  viz <- list(min = min, max = 1, palette = greens_3, 
+              values = c('<80%', '>80%', '>90%'))
+  
+  Map$addLegend(visParams = viz,
+                name = NA, 
+                position = "bottomright", 
+                color_mapping = "character")
+}
+
 map_top_ventiles <- function(ventile_img, lower = 80, 
                              name = NULL, shown = FALSE) {
   
   min <- lower / 100
-  viz <- list(min = min-0.05, max = 0.96, palette = BlueToRed, 
+  viz <- list(min = min-0.05, max = 0.96, palette = greens_5, 
               values = c(str_c('<', lower), 
                          seq(lower, 95, 5) %>% str_c('>', .)))
   
@@ -269,7 +306,7 @@ map_top_ventiles <- function(ventile_img, lower = 80,
 lgnd_top_ventiles <- function(lower = 80) {
   
   min <- lower / 100
-  viz <- list(min = min-0.05, max = 0.96, palette = BlueToRed, 
+  viz <- list(min = min-0.05, max = 0.96, palette = greens_5, 
               values = c(str_c('<', lower), 
                          seq(lower, 95, 5) %>% str_c('>', .)))
   
@@ -282,7 +319,7 @@ lgnd_top_ventiles <- function(lower = 80) {
 
 map_top_10pctl <- function(img, name, shown = FALSE) {
   
-  viz <- list(min = 0.9, max = 0.98, palette = BlueToRed, 
+  viz <- list(min = 0.9, max = 0.98, palette = greens_5, 
               values = seq(92, 100, 2))
   
   Map$addLayer(eeObject = img, 
@@ -310,37 +347,58 @@ lgnd_eq_int <- Map$addLegend(
 )
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Initialize lists ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-l_indices <- list()
-l_normalized <- list()
-l_ventiles <- list()
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Tropics extent ----
+# Tropical boundaries ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create tropics extent rectangle ----
 tropics_bb <- ee$Geometry$Rectangle(
-  coords = c(-117, -26, 180, 26),
+  coords = c(-180, -35, 180, 35),
   proj = "EPSG:4326",
   geodesic = FALSE
 )
 
 # Convert to raster for masking ----
-# Set property of 1 for the polygon
-tropics_r <- ee$FeatureCollection(tropics_bb)$
-  map(function(f) {f$set("tropics", 1)})
-
 # Convert to raster
-tropics_r <- tropics_r$
+tropics_r <- ee$FeatureCollection(tropics_bb)$
+  map(function(f) f$set("tropics", 1))$
   reduceToImage(
     properties = list('tropics'),
     reducer = ee$Reducer$first()
   )
 
-# # Test
-# Map$addLayer(eeObject = tropics_r, visParams = viz_idx_norm, name = "Tropics", opacity = 0.5) +
-#   Map$addLayer(eeObject = tropics_bb, name = "Tropics", opacity = 0.5)
+# Dense humid forests biome ----
+biome_dhf_id <- addm('BIOME_Dense_Humid_Forests')
+
+# Get dense humid forests biome
+alist <- ee_manage_assetlist(path_asset = addm(""))
+if(!biome_dhf_id %in% alist$ID) {
+  
+  # Load ecoregions and filter to dense humid forests biome
+  biome_dhf <- ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")$
+    filter(
+      ee$Filter$eq('BIOME_NAME', 'Tropical & Subtropical Moist Broadleaf Forests')
+    )
+  
+  # Convert to raster
+  dense_humid_forests <- biome_dhf$
+    reduceToImage(
+      properties = list('BIOME_NUM'), 
+      reducer = ee$Reducer$first()
+    )$
+    setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+  
+  # Save image as EE asset
+  task_img <- ee_image_to_asset(dense_humid_forests,
+                                'BIOME_Dense_Humid_Forests',
+                                assetId = biome_dhf_id,
+                                # region = tropics_bb,
+                                crs = 'EPSG:4326',
+                                scale = 1000,
+                                maxPixels = 803042888)
+  task_img$start()
+}
+
+dense_humid_forests <- ee$Image(biome_dhf_id)
+dhf_mask <- dense_humid_forests$mask()
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # HIH sites ----
@@ -359,35 +417,7 @@ hih_pts <- ee$FeatureCollection(addm('HIH_sites/hih_sites_pts'))
 # Paint all the polygon edges with the same number and width, display.
 outline <- ee$Image()$byte()$paint(featureCollection = hih_sites, color = 1, width = 2)
 hih_sites_lyr <- Map$addLayer(outline, name = 'HIH sites', shown = FALSE)
-hih_pts_lyr <- Map$addLayer(hih_pts, name = 'HIH points')
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# MSF interventions ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-countries_msf_shp <- file.path(data_dir, 'gadm', 'gadm0_tropics_simp01big9.shp')
-countries <- st_read(countries_msf_shp) %>% 
-  mutate(MSF = ifelse(is.na(MSF), 0, 1))
-
-# Upload countries
-countries_ee <- countries %>% sf_as_ee()
-
-# Filter to MSF and non-MSF countries
-msf_ee <- countries_ee$filter(ee$Filter$eq('MSF', 1))
-no_msf_ee <- countries_ee$filter(ee$Filter$neq('MSF', 1))
-
-# Simplify
-msf_simp <- msf_ee$map(
-  function(f) f$simplify(maxError = ee$ErrorMargin(50000, 'meters'))
-)
-
-# Create outline
-msf_outline <- ee$Image()$byte()$paint(featureCollection = msf_simp, width = 1)
-msf_lyr <- Map$addLayer(msf_outline, list(palette = c('#979797')),
-                        name = 'MSF operations', shown = FALSE)
-
-# Create fill
-no_msf_fill <- no_msf_ee$draw(color = '#2c7bb6', strokeWidth = 0)
-no_msf_lyr <- Map$addLayer(no_msf_fill, name = 'non-MSF', opacity = 0.8, shown = TRUE)
+hih_pts_lyr <- Map$addLayer(hih_pts, name = 'HIH points', shown = FALSE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Carbon density ----
@@ -410,15 +440,12 @@ soc_idx <- rescale_to_pctl(soc_mgcha)
 
 # Combine 1:1 / simple average
 carbon_idx <- wcd_idx$add(soc_idx)$divide(2)
-l_indices$carbon <- carbon_idx
 
 # get_pctl(carbon_idx, 98) # max: 1; 98th: .73; 99th: 0.79
 carbon_norm <- rescale_to_pctl(carbon_idx)$updateMask(tropics_r)
-l_normalized$carbon <- carbon_norm
 
 # Reclass to ventiles
 carbon_vent <- classify_finer_percentiles(carbon_idx)
-l_ventiles$carbon <- carbon_vent
 
 # # View
 # map_norm_idx(soc_idx, 'SOC', shown = TRUE) +
@@ -448,16 +475,13 @@ flii <- flii$map(function(img) {
 # Mosaic
 flii <- flii$mosaic()$
   setDefaultProjection(crs = 'EPSG:4326', scale = 300)
-l_indices$flii <- flii
 
 # Scale values to 0-1 scale
 # get_pctl(flii, 99) # 99th: 9996 # 78th: 9666
 flii_norm <- rescale_to_pctl(flii, c(0, 78))$updateMask(tropics_r)
-l_normalized$flii <- flii_norm
 
 # Map and reclass to ventiles
 flii_vent <- classify_finer_percentiles(flii_norm$updateMask(c_mask))
-l_ventiles$flii <- flii_vent
 
 # # View
 # map_norm_idx(flii, 'FLII') +
@@ -510,9 +534,6 @@ if(!kba_id %in% alist$ID) {
 }
 
 kba_r <- ee$Image(kba_id)
-l_indices$kba <- kba_r
-l_normalized$kba <- kba_r
-l_ventiles$kba <- kba_r
 
 # # View
 # Map$addLayer(eeObject = kba_r, visParams = viz_idx_norm, name = "Key Biodiversity Areas")
@@ -522,33 +543,27 @@ l_ventiles$kba <- kba_r
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load
 gHM <- ee$ImageCollection("CSP/HM/GlobalHumanModification")$first() # only image is '2016'
-l_indices$hm <- gHM
 
 # Rescale
 # get_pctl(gHM, 100) # 99th: 0.76; 98th: 0.72; 95th: 0.66; max: 0.99
 hm_norm <- rescale_to_pctl(gHM)$updateMask(tropics_r)
-l_normalized$hm <- hm_norm
 
 # Map and reclass to ventiles
 hm_vent <- classify_finer_percentiles(gHM$updateMask(c_mask))
-l_ventiles$hm <- hm_vent
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Human footprint (from Wild Areas v3) ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load 
 hf <- ee$Image(addm("wildareas-v3-2009-human-footprint"))
-l_indices$hf <- hf
 
 # Rescale
 # get_pctl(hf, 98) # max: 50; 99th: 24.6; 98th: 20.7
 hf_norm <- rescale_to_pctl(hf, c(0, 98))$updateMask(tropics_r)
 # Map$addLayer(eeObject = hf_norm, visParams = viz_idx_norm)
-l_normalized$hf <- hf_norm
 
 # Map and reclass to ventiles
 hf_vent <- classify_finer_percentiles(hf$updateMask(c_mask))
-l_ventiles$hf <- hf_vent
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Population density ----
@@ -556,17 +571,14 @@ l_ventiles$hf <- hf_vent
 # Load 
 popd <- ee$ImageCollection("CIESIN/GPWv411/GPW_UNWPP-Adjusted_Population_Density")$
   first()
-l_indices$popd <- popd
 
 # Rescale
 # get_pctl(popd, 100) # 98th: 36 p/km2; max: 162974.2
 popd_norm <- rescale_to_pctl(popd)$updateMask(tropics_r)
 # Map$addLayer(eeObject = popd_norm, visParams = viz_idx_norm)
-l_normalized$popd <- popd_norm
 
 # Map and reclass to ventiles
 popd_vent <- classify_finer_percentiles(popd$updateMask(c_mask))
-l_ventiles$popd <- popd_vent
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Development Threat Index ----
@@ -643,10 +655,8 @@ if(!dti_id %in% alist$ID) {
 }
 
 dti_norm <- ee$Image(dti_id)
-l_normalized$dti <- dti_norm
-  
+
 dti_vent <- classify_finer_percentiles(dti_norm$updateMask(c_mask))
-l_ventiles$dti <- dti_vent
 
 # # View
 # # rescale_and_map(ee$Image(addm('DPI/bio_dpi_geo_int'))$unmask(), 'Biofuels') +
@@ -662,18 +672,15 @@ infant_mort <- ee$Image(addm("subnational_infant_mortality_rates_v2_01"))
 
 # Mask 
 infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
-l_indices$imr <- infant_mort
 
 # Rescale
 # get_pctl(infant_mort) # 99.7
 imr_norm <- rescale_to_pctl(infant_mort)$updateMask(tropics_r)
-l_normalized$imr <- imr_norm
 
 # Map$addLayer(eeObject = infant_mort, visParams = viz_idx_norm)
 
 # Ventiles
 imr_vent <- classify_finer_percentiles(imr_norm$updateMask(c_mask))
-l_ventiles$imr <- imr_vent
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Zoonotic spillover risk (from Allen et al. 2017) ----
@@ -699,12 +706,9 @@ zs_wpop_norm <- rescale_to_pctl(zs_weight_pop)$updateMask(tropics_r)
 zs_wpop_ea <- classify_finer_percentiles(zs_weight_pop$updateMask(c_mask))
 
 zoonotic_risk <- zs_wpop_ea$unitScale(0, .95)
-l_indices$zs <- zs_wpop_ea
-l_normalized$zs <- zs_wpop_ea
-l_ventiles$zs <- zs_wpop_ea
 
 # # View
-# viz_pctls_idx <- list(min = 0, max = 90, palette = BlueToRed, 
+# viz_pctls_idx <- list(min = 0, max = 90, palette = greens_5, 
 #                        values = c('0', '10', '20', '30', '40', '50', '60', '70', '80', '90'))
 # Map$addLayer(eeObject = zs_wpop_q10, visParams = viz_pctls_idx) +
 #   Map$addLayer(eeObject = zs_wpubs_q10, visParams = viz_pctls_idx) +
@@ -795,4 +799,59 @@ pas_fill <- pas$draw(color = 'green', strokeWidth = 0)
 pas_lyr <- Map$addLayer(pas_fill, name = 'Protected areas', 
                         opacity = 0.5, shown = FALSE)
 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# MSF interventions ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+countries_msf_shp <- file.path(data_dir, 'gadm', 'gadm0_tropics_simp01big9.shp')
+countries <- st_read(countries_msf_shp) %>% 
+  mutate(MSF = ifelse(is.na(MSF), 0, 1))
 
+# Upload countries
+countries_ee <- countries %>% sf_as_ee()
+
+# Filter to MSF countries
+msf_ee <- countries_ee$filter(ee$Filter$eq('MSF', 1))
+
+# Simplify
+msf_simp <- msf_ee$map(
+  function(f) f$simplify(maxError = ee$ErrorMargin(50000, 'meters'))
+)
+
+# Create outline
+msf_outline <- ee$Image()$byte()$paint(featureCollection = msf_simp, width = 2)
+msf_lyr <- Map$addLayer(msf_outline, list(palette = c('#bdbdbd')),
+                        name = 'MSF operations', shown = FALSE)
+
+# Get non-MSF countries
+no_msf_id <- addm('non_MSF_countries_masked')
+alist <- ee_manage_assetlist(path_asset = addm(""))
+if(!no_msf_id %in% alist$ID) {
+  
+  no_msf_ee <- countries_ee$filter(ee$Filter$neq('MSF', 1))
+  
+  # Convert to raster
+  no_msf_r <- no_msf_ee$
+    reduceToImage(
+      properties = list('MSF'), 
+      reducer = ee$Reducer$first()
+    )$
+    setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
+    updateMask(tropics_r)
+  
+  # Save image as EE asset
+  task_img <- ee_image_to_asset(no_msf_r,
+                                'non_MSF_countries_masked',
+                                assetId = ,
+                                region = tropics_bb,
+                                crs = 'EPSG:4326',
+                                scale = 1000,
+                                maxPixels = 191434770)
+  task_img$start()
+}
+
+no_msf_r <- ee$Image(no_msf_id)
+
+# Create layer
+no_msf_lyr <- Map$addLayer(no_msf_r, list(palette = c('#bdbdbd')),
+                           name = 'non-MSF', 
+                           opacity = 0.8, shown = TRUE)
