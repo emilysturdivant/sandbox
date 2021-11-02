@@ -15,23 +15,37 @@
 library(rgee)
 ee_Initialize()
 library(sf)
+library(colorspace)
 library(tidyverse)
 
 # Initialize variables 
-# greens_3 <- c('#cbebc1', '#3fa54f', '#0f3614')
-greens_5 <- colorspace::sequential_hcl(5, 'Greens 3', rev = TRUE)
-# greens_5 <- colorspace::diverging_hcl(10, 'Red-Green')
+# Woodwell Carbon and Tropics palettes
+pal_carbon <- c('#d8d4cd', '#bab4a7', '#9d9786', '#847f6b', '#6b6a52')
+pal_tropics <- c('#d5ead3', '#b1d9ad', '#8bca8b', '#62bd67', '#1ab14b', '#037a31')
+pal_tropics_accents <- c(pal_tropics[6], '#0ecd5d')
 
-# PuOr <- colorspace::sequential_hcl(10, 'Purple-Orange', rev = TRUE)
-# greens_4 <- colorspace::sequential_hcl(4, 'Greens 3', rev = TRUE)
-# greens_5 <- c(PuOr[1:7], greens_4[3:4])
+# Combine
+priorities_idx_pal <- c(pal_carbon, pal_tropics_accents)
+pal_carbontropics <- c(rev(pal_carbon), pal_tropics)
+priorities_11 <- c(pal_carbon, pal_tropics[6], '#0ecd5d')
+priorities_5 <- c(pal_tropics[1:5], pal_tropics[6], '#0ecd5d')
+priorities_4 <- c(pal_tropics[c(1, 4)], pal_tropics[6], '#0ecd5d')
+priorities_3 <- c(pal_tropics[1], pal_tropics[6], '#0ecd5d')
 
-greens_3 <- greens_5[2:5]
-viz_idx_norm <- list(min = 0, max = 1, palette = greens_5)
-viz_clssfd_idx <- list(min = 0, max = .8, palette = greens_5, 
-                       values = c('0-20', '20-40', '40-60', '60-80', '80-100'))
-viz_pctls_idx <- list(min = 0, max = 90, palette = greens_5,
-                       values = c('0', '10', '20', '30', '40', '50', '60', '70', '80', '90'))
+# Dark green highest
+priorities_11 <- c(pal_carbon[c(1,2,3)], pal_tropics[c(4, 6)])
+priorities_4 <- c(pal_tropics[c(1, 2, 4, 6)])
+priorities_3 <- c(pal_tropics[c(1, 4, 6)])
+
+# Default index palette
+viz_idx_norm <- list(min = 0, max = 1, palette = priorities_11, 
+                     values = str_c(seq(0, 90, 10), seq(10, 100, 10), sep = '-'))
+legend <- Map$addLegend(
+  visParams = viz_idx_norm,
+  name = NA,
+  position = "bottomright",
+  color_mapping = "character"
+)
 
 # Set a region of interest and center map display
 Map$setCenter(30, 0, zoom = 3)
@@ -361,20 +375,11 @@ rescale_and_map <- function(img, name, shown = FALSE) {
 
 map_eq_int <- function(img, name, shown = FALSE) {
   img <- classify_eq_int(img)
+  
+  viz_clssfd_idx <- list(min = 0, max = .8, palette = greens_5, 
+                         values = c('0-20', '20-40', '40-60', '60-80', '80-100'))
+  
   Map$addLayer(eeObject = img, 
-               visParams = viz_clssfd_idx, 
-               name = name, 
-               shown = shown)
-}
-
-map_upper_2pct <- function(img, name, shown = FALSE) {
-  pctl_val <- get_pctl(img, 98)
-  
-  img1 <- ee$Image(0)$
-    where(img$gte(pctl_val), 1)$
-    selfMask()
-  
-  Map$addLayer(eeObject = img1, 
                visParams = viz_clssfd_idx, 
                name = name, 
                shown = shown)
@@ -392,7 +397,7 @@ map_top_pctls_3class <- function(pctl_img, name = NULL, shown = FALSE) {
   
   min <- lower / 100
   viz <- list(min = min, max = 1, 
-              palette = greens_3, 
+              palette = priorities_3, 
               values = c('<80%', '>80%', '>90%'))
   
   Map$addLayer(eeObject = img, 
@@ -404,8 +409,40 @@ map_top_pctls_3class <- function(pctl_img, name = NULL, shown = FALSE) {
 lgnd_top_pctls_3class <- function(lower = 80) {
   
   min <- lower / 100
-  viz <- list(min = min, max = 1, palette = greens_3, 
+  viz <- list(min = min, max = 1, palette = priorities_3, 
               values = c('<80%', '>80%', '>90%'))
+  
+  Map$addLegend(visParams = viz,
+                name = NA, 
+                position = "bottomright", 
+                color_mapping = "character")
+}
+
+
+map_top_pctls <- function(pctl_img, name = NULL, shown = FALSE) {
+  
+  img <- ee$Image(0.65)$
+    where(pctl_img$gte(.7), .7)$
+    where(pctl_img$gte(.8), .8)$
+    where(pctl_img$gte(.9), .9)$
+    where(pctl_img$gte(.95), .95)$
+    updateMask(dhf_mask)
+  
+  viz <- list(min = 0.75, max = .95, 
+              palette = priorities_4, 
+              values = c('<80%', '>80%', '>90%', '>95%'))
+  
+  Map$addLayer(eeObject = img, 
+               visParams = viz, 
+               name = name, 
+               shown = shown)
+}
+
+lgnd_top_pctls <- function(lower = 70) {
+  
+  viz <- list(min = 0.75, max = .95, 
+              palette = priorities_4, 
+              values = c('<80%', '>80%', '>90%', '>95%'))
   
   Map$addLegend(visParams = viz,
                 name = NA, 
@@ -440,7 +477,6 @@ lgnd_top_ventiles <- function(lower = 80) {
                   color_mapping = "character")
 }
 
-
 map_top_10pctl <- function(img, name, shown = FALSE) {
   
   viz <- list(min = 0.9, max = 0.98, palette = greens_5, 
@@ -453,22 +489,6 @@ map_top_10pctl <- function(img, name, shown = FALSE) {
     Map$addLegend(visParams = viz, name = NA, 
                   position = "bottomleft", color_mapping = "character")
 }
-
-legend <- Map$addLegend(
-  visParams = viz_idx_norm,
-  name = NA,
-  position = "bottomright",
-  color_mapping = "numeric",
-  opacity = 1
-)
-
-lgnd_eq_int <- Map$addLegend(
-  visParams = viz_clssfd_idx,
-  name = NA,
-  position = "bottomright",
-  color_mapping = "character",
-  opacity = 1
-)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Tropical boundaries ----
@@ -562,8 +582,8 @@ soc_mgcha <- soc_mgha$divide(2)$updateMask(c_mask)
 wcd_idx <- rescale_to_pctl(wcd_mgcha)
 soc_idx <- rescale_to_pctl(soc_mgcha)
 
-wcd_vent <- classify_finer_percentiles(wcd_mgcha)
-soc_vent <- classify_finer_percentiles(soc_mgcha)
+wcd_vent <- classify_percentiles(wcd_mgcha)
+soc_vent <- classify_percentiles(soc_mgcha)
 
 # Combine 1:1 / simple average
 carbon_idx <- wcd_idx$
@@ -575,7 +595,7 @@ carbon_idx <- wcd_idx$
 carbon_norm <- rescale_to_pctl(carbon_idx)
 
 # Reclass to ventiles
-carbon_vent <- classify_finer_percentiles(carbon_idx)
+carbon_vent <- classify_percentiles(carbon_idx)
 
 # # View
 # map_norm_idx(soc_idx, 'SOC', shown = TRUE) +
@@ -611,7 +631,7 @@ flii <- flii$mosaic()$
 flii_norm <- rescale_to_pctl(flii, c(0, 78))$updateMask(dhf_mask)
 
 # Map and reclass to ventiles
-flii_vent <- classify_finer_percentiles(flii_norm)
+flii_vent <- classify_percentiles(flii_norm)
 
 # # View
 # map_norm_idx(flii, 'FLII') +
@@ -670,16 +690,6 @@ kba_r <- ee$Image(kba_id)
 # Map$addLayer(eeObject = kba_r, visParams = viz_idx_norm, name = "Key Biodiversity Areas")
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Development Threat Index ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load 
-dti <- ee$Image(addm("development-threat-index_geographic"))$
-  updateMask(dhf_mask)
-
-# Rescale
-dti15 <- rescale_to_pctl(dti)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Development Potential Indices ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # # Create ImageCollection
@@ -708,7 +718,8 @@ if(!dti_id %in% alist$ID) {
   dpi <- dpi_eelist$ID %>% 
     purrr::map(function(x) {
       img <- ee$Image(x)$unmask()
-      rescale_to_pctl(img, c(0, 100))
+      # rescale_to_pctl(img, c(0, 100))
+      classify_percentiles(img)
     }) %>% 
     ee$ImageCollection()
   
@@ -736,7 +747,7 @@ if(!dti_id %in% alist$ID) {
 
 dti_norm <- ee$Image(dti_id)$updateMask(dhf_mask)
 
-dti_vent <- classify_finer_percentiles(dti_norm)
+dti_vent <- classify_percentiles(dti_norm)
 
 # # View
 # # rescale_and_map(ee$Image(addm('DPI/bio_dpi_geo_int'))$unmask(), 'Biofuels') +
@@ -761,7 +772,7 @@ infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
 imr_norm <- rescale_to_pctl(infant_mort)$updateMask(dhf_mask)
 
 # Ventiles
-imr_vent <- classify_finer_percentiles(imr_norm)
+imr_vent <- classify_percentiles(imr_norm)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Zoonotic spillover risk (from Allen et al. 2017) ----
@@ -774,7 +785,7 @@ zoonotic_risk_all <- ee$Image(addm("zoonotic_eid_risk"))$
 # Reweighted by population
 zs_weight_pop <- zoonotic_risk_all$select('b3')$updateMask(dhf_mask)
 zs_wpop_norm <- rescale_to_pctl(zs_weight_pop)
-zs_wpop_vent <- classify_finer_percentiles(zs_weight_pop)
+zs_wpop_vent <- classify_percentiles(zs_weight_pop)
 
 # # View
 # map_eq_int(zs_wpubs_norm, 'ZS') +
@@ -791,7 +802,7 @@ gHM <- ee$ImageCollection("CSP/HM/GlobalHumanModification")$first() # only image
 hm_norm <- rescale_to_pctl(gHM)$updateMask(dhf_mask)
 
 # Map and reclass to ventiles
-hm_vent <- classify_finer_percentiles(gHM)
+hm_vent <- classify_percentiles(gHM)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Human footprint (from Wild Areas v3) ----
@@ -805,7 +816,7 @@ hf_norm <- rescale_to_pctl(hf, c(0, 98))
 # Map$addLayer(eeObject = hf_norm, visParams = viz_idx_norm)
 
 # Map and reclass to ventiles
-hf_vent <- classify_finer_percentiles(hf)
+hf_vent <- classify_percentiles(hf)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Population density ----
@@ -821,7 +832,7 @@ popd_norm <- rescale_to_pctl(popd)$updateMask(dhf_mask)
 # Map$addLayer(eeObject = popd_norm, visParams = viz_idx_norm)
 
 # Map and reclass to ventiles
-popd_vent <- classify_finer_percentiles(popd)
+popd_vent <- classify_percentiles(popd)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # GDL Health indicators ----
@@ -962,4 +973,5 @@ no_msf_r <- ee$Image(no_msf_id)
 # Create layer
 no_msf_lyr <- Map$addLayer(no_msf_r, list(palette = c('#bdbdbd')),
                            name = 'non-MSF', 
-                           opacity = 0.8, shown = TRUE)
+                           opacity = 0.8, shown = FALSE)
+

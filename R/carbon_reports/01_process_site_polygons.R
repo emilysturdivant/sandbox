@@ -270,13 +270,14 @@ df %>% st_write(out_fp, append = FALSE)
 
 
 # Read and add Papua scouting sites ----
+hih_sites_shp <- file.path(final_polys_dir, 'hih_sites_polys.shp')
 df <- st_read(out_fp)
 
 df_out <- bind_rows(df, papua)
 
 tm_shape(df_out) + tm_polygons(alpha = 0.5)
 
-df_out %>% st_write(file.path(final_polys_dir, 'hih_sites_polys.shp'), append = FALSE)
+df_out %>% st_write(hih_sites_shp, append = FALSE)
 pts <- df_out %>% 
   group_by(HIH_site) %>% summarize() %>%
   st_centroid()
@@ -285,3 +286,9 @@ pts %>% st_write(file.path(final_polys_dir, 'hih_sites_pts.shp'), append = FALSE
 # tm_shape(df_out) + tm_polygons() +
 #   tm_shape(pts) + tm_dots()
 
+# Convert to json ----
+hih_sites_shp <- file.path(final_polys_dir, 'hih_sites_polys.shp')
+df <- st_read(hih_sites_shp)
+
+hih_sites_json <- file.path(final_polys_dir, 'hih_sites_polys.geojson')
+df %>% st_write(hih_sites_json)
