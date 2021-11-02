@@ -44,16 +44,14 @@ i_humz2 <- imr_vent$multiply(0.2)$
 # Create composite indicator
 mult1 <- i_forestbio$multiply(i_humz) %>% rescale_to_pctl()
 
-vent50 <- i_forestbio$multiply(0.5)$add(i_humz$multiply(0.5)) %>% rescale_to_pctl()
 vent60 <- i_forestbio$multiply(0.6)$add(i_humz$multiply(0.4)) %>% rescale_to_pctl()
 vent70 <- i_forestbio$multiply(0.7)$add(i_humz$multiply(0.3)) %>% rescale_to_pctl()
 vent80 <- i_forestbio$multiply(0.8)$add(i_humz$multiply(0.2)) %>% rescale_to_pctl()
 
-# # Transform composite to ventiles
-# vent50_vents <- classify_ventiles(vent50)
-# vent60_vents <- classify_ventiles(vent60)
-# vent70_vents <- classify_ventiles(vent70)
-# vent80_vents <- classify_ventiles(vent80)
+# Transform composite to ventiles
+vent60_vents <- classify_ventiles(vent60)
+vent70_vents <- classify_ventiles(vent70)
+vent80_vents <- classify_ventiles(vent80)
 
 # Process without biodiversity
 vent60_nobio <- i_forest$multiply(0.6)$add(i_humz$multiply(0.4)) %>% rescale_to_pctl()
@@ -87,7 +85,8 @@ map_norm_idx(zoonotic_risk, 'Zoonotic spillover risk') +
   map_norm_idx(i_humz, 'Human health and impacts') +
 
   # Final options
-  map_norm_idx(vent80, 'FQ + HHI (4:1) ventiles') +
+  map_norm_idx(vent80, 'FQ + HHI (4:1)') +
+  map_norm_idx(vent80_vents, 'FQ + HHI (4:1) ventiles') +
   map_top_pctls_3class(vent80, 'FQ + HHI (4:1), top 80th', TRUE) + 
   
   hih_sites_lyr + hih_pts_lyr + 
@@ -263,20 +262,29 @@ Map$addLayer(means_snic, viz_idx_norm, 'Means') + seg_outlines_lyr
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Export ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# task_img <- mltplctv_clas_eq$fb_humz$index %>% 
-#   ee_image_to_asset(assetId = addm('hih_index/v1_mult_FCB_HmDtHcImZ'),
-#                     region = geometry, 
-#                     scale = 1000, 
-#                     maxPixels = 191434780)
+# task_img <- vent80 %>%
+#   ee_image_to_asset(assetId = addm('hih_index/PlanetaryHealthPriorities_index_v4_1km'),
+#                     region = tropics_bb,
+#                     scale = 1000,
+#                     maxPixels = 312352344)
 # 
 # task_img$start()
 # ee_monitoring(task_img)
-# 
-# task_img_to_drive <- mltplctv_clas_eq$fb_humz$index %>% 
-#   ee_image_to_drive(description = 'v1_mult_FCB_HmDtHcImZ_10km',
-#                     folder = 'Earth Engine Exports',
-#                     region = geometry, 
-#                     scale = 10000)
-# 
-# task_img_to_drive$start()
-# ee_monitoring(task_img_to_drive)
+
+vent80v_eqint <- classify_eq_int_10(vent80_vents)
+vent80_eqint <- classify_eq_int_10(vent80)
+
+map_norm_idx(vent80_eqint$divide(10), "Eq int") +
+  map_norm_idx(vent80v_eqint$divide(10), "Eq int") +
+  map_top_ventiles(vent80_vents, lower = 70, name = "Percentiles") +
+  map_norm_idx(vent80_vents, name = "Ventiles") +
+  map_top_pctls_3class(vent80, 'FQ + HHI (4:1), top 80th', TRUE)
+
+task_img_to_drive <- vent80_vents$multiply(100) %>%
+  ee_image_to_drive(description = 'HIH_PlanetaryHealthIndex_v4_10km_ventiles',
+                    folder = 'Earth Engine Exports',
+                    region = tropics_bb,
+                    scale = 10000)
+
+task_img_to_drive$start()
+ee_monitoring(task_img_to_drive)
