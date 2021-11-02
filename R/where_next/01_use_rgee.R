@@ -30,7 +30,7 @@ greens_3 <- greens_5[2:5]
 viz_idx_norm <- list(min = 0, max = 1, palette = greens_5)
 viz_clssfd_idx <- list(min = 0, max = .8, palette = greens_5, 
                        values = c('0-20', '20-40', '40-60', '60-80', '80-100'))
-viz_pctls_idx <- list(min = 0, max = 90, palette = BlueToRed,
+viz_pctls_idx <- list(min = 0, max = 90, palette = greens_5,
                        values = c('0', '10', '20', '30', '40', '50', '60', '70', '80', '90'))
 
 # Set a region of interest and center map display
@@ -106,7 +106,7 @@ rescale_to_pctl <- function(img, pctls = c(0, 99)) {
 }
 
 # Classify image to 10 equal-area ranked classes
-classify_percentiles <- function(img) {
+classify_dentiles <- function(img) {
   qs <- get_quantiles(img, c(10, 20, 30, 40, 50, 60, 70, 80, 90))
   
   ee$Image(0)$
@@ -172,6 +172,113 @@ classify_finer_percentiles <- function(img) {
     where(img$gte(qs$p65), .65)$
     where(img$gte(qs$p70), .7)$
     where(img$gte(qs$p75), .75)$
+    where(img$gte(qs$p80), .8)$
+    where(img$gte(qs$p81), .81)$
+    where(img$gte(qs$p82), .82)$
+    where(img$gte(qs$p83), .83)$
+    where(img$gte(qs$p84), .84)$
+    where(img$gte(qs$p85), .85)$
+    where(img$gte(qs$p86), .86)$
+    where(img$gte(qs$p87), .87)$
+    where(img$gte(qs$p88), .88)$
+    where(img$gte(qs$p89), .89)$
+    where(img$gte(qs$p90), .9)$
+    where(img$gte(qs$p91), .91)$
+    where(img$gte(qs$p92), .92)$
+    where(img$gte(qs$p93), .93)$
+    where(img$gte(qs$p94), .94)$
+    where(img$gte(qs$p95), .95)$
+    where(img$gte(qs$p96), .96)$
+    where(img$gte(qs$p97), .97)$
+    where(img$gte(qs$p98), .98)$
+    where(img$gte(qs$p99), .99)$
+    where(img$gte(qs$p100), 1)$
+    updateMask(img$mask())
+}
+
+classify_percentiles <- function(img) {
+  qs <- get_quantiles(img, seq(1, 100, 1))
+  
+  ee$Image(0)$
+    where(img$gte(qs$p1), .01)$
+    where(img$gte(qs$p2), .02)$
+    where(img$gte(qs$p3), .03)$
+    where(img$gte(qs$p4), .04)$
+    where(img$gte(qs$p5), .05)$
+    where(img$gte(qs$p6), .06)$
+    where(img$gte(qs$p7), .07)$
+    where(img$gte(qs$p8), .08)$
+    where(img$gte(qs$p9), .09)$
+    where(img$gte(qs$p10), .1)$
+    where(img$gte(qs$p11), .11)$
+    where(img$gte(qs$p12), .12)$
+    where(img$gte(qs$p13), .13)$
+    where(img$gte(qs$p14), .14)$
+    where(img$gte(qs$p15), .15)$
+    where(img$gte(qs$p16), .16)$
+    where(img$gte(qs$p17), .17)$
+    where(img$gte(qs$p18), .18)$
+    where(img$gte(qs$p19), .19)$
+    where(img$gte(qs$p20), .2)$
+    where(img$gte(qs$p21), .21)$
+    where(img$gte(qs$p22), .22)$
+    where(img$gte(qs$p23), .23)$
+    where(img$gte(qs$p24), .24)$
+    where(img$gte(qs$p25), .25)$
+    where(img$gte(qs$p26), .26)$
+    where(img$gte(qs$p27), .27)$
+    where(img$gte(qs$p28), .28)$
+    where(img$gte(qs$p29), .29)$
+    where(img$gte(qs$p30), .3)$
+    where(img$gte(qs$p31), .31)$
+    where(img$gte(qs$p32), .32)$
+    where(img$gte(qs$p33), .33)$
+    where(img$gte(qs$p34), .34)$
+    where(img$gte(qs$p35), .35)$
+    where(img$gte(qs$p36), .36)$
+    where(img$gte(qs$p37), .37)$
+    where(img$gte(qs$p38), .38)$
+    where(img$gte(qs$p39), .39)$
+    where(img$gte(qs$p40), .4)$
+    where(img$gte(qs$p41), .41)$
+    where(img$gte(qs$p42), .42)$
+    where(img$gte(qs$p43), .43)$
+    where(img$gte(qs$p44), .44)$
+    where(img$gte(qs$p45), .45)$
+    where(img$gte(qs$p46), .46)$
+    where(img$gte(qs$p47), .47)$
+    where(img$gte(qs$p48), .48)$
+    where(img$gte(qs$p49), .49)$
+    where(img$gte(qs$p50), .5)$
+    where(img$gte(qs$p51), .51)$
+    where(img$gte(qs$p52), .52)$
+    where(img$gte(qs$p53), .53)$
+    where(img$gte(qs$p54), .54)$
+    where(img$gte(qs$p55), .55)$
+    where(img$gte(qs$p56), .56)$
+    where(img$gte(qs$p57), .57)$
+    where(img$gte(qs$p58), .58)$
+    where(img$gte(qs$p59), .59)$
+    where(img$gte(qs$p60), .6)$
+    where(img$gte(qs$p61), .61)$
+    where(img$gte(qs$p62), .62)$
+    where(img$gte(qs$p63), .63)$
+    where(img$gte(qs$p64), .64)$
+    where(img$gte(qs$p65), .65)$
+    where(img$gte(qs$p66), .66)$
+    where(img$gte(qs$p67), .67)$
+    where(img$gte(qs$p68), .68)$
+    where(img$gte(qs$p69), .69)$
+    where(img$gte(qs$p70), .7)$
+    where(img$gte(qs$p71), .71)$
+    where(img$gte(qs$p72), .72)$
+    where(img$gte(qs$p73), .73)$
+    where(img$gte(qs$p74), .74)$
+    where(img$gte(qs$p75), .75)$
+    where(img$gte(qs$p76), .76)$
+    where(img$gte(qs$p77), .77)$
+    where(img$gte(qs$p78), .78)$
+    where(img$gte(qs$p79), .79)$
     where(img$gte(qs$p80), .8)$
     where(img$gte(qs$p81), .81)$
     where(img$gte(qs$p82), .82)$
@@ -455,8 +562,14 @@ soc_mgcha <- soc_mgha$divide(2)$updateMask(c_mask)
 wcd_idx <- rescale_to_pctl(wcd_mgcha)
 soc_idx <- rescale_to_pctl(soc_mgcha)
 
+wcd_vent <- classify_finer_percentiles(wcd_mgcha)
+soc_vent <- classify_finer_percentiles(soc_mgcha)
+
 # Combine 1:1 / simple average
-carbon_idx <- wcd_idx$add(soc_idx)$divide(2)
+carbon_idx <- wcd_idx$
+  setDefaultProjection(crs = 'SR-ORG:6974', scale = 463.3127165275)$
+  add(soc_idx$setDefaultProjection(crs = 'SR-ORG:6974', scale = 463.3127165275))$
+  divide(2)
 
 # get_pctl(carbon_idx, 98) # max: 1; 98th: .73; 99th: 0.79
 carbon_norm <- rescale_to_pctl(carbon_idx)
@@ -583,7 +696,7 @@ dti15 <- rescale_to_pctl(dti)
 #   final_path = addm("DPI")
 # )
 
-dti_id <- addm('DTI_2016_maskDHF')
+dti_id <- addm('DTI_2016_pctls_maskDHF')
 
 alist <- ee_manage_assetlist(path_asset = addm(""))
 if(!dti_id %in% alist$ID) {
@@ -591,7 +704,7 @@ if(!dti_id %in% alist$ID) {
   # Load ImageCollection 
   dpi_eelist <- ee_manage_assetlist(path_asset = addm("DPI"))
   
-  # Reclass each index to tropics
+  # Reclass each index to dense humid forest biome
   dpi <- dpi_eelist$ID %>% 
     purrr::map(function(x) {
       img <- ee$Image(x)$unmask()
@@ -661,9 +774,7 @@ zoonotic_risk_all <- ee$Image(addm("zoonotic_eid_risk"))$
 # Reweighted by population
 zs_weight_pop <- zoonotic_risk_all$select('b3')$updateMask(dhf_mask)
 zs_wpop_norm <- rescale_to_pctl(zs_weight_pop)
-zs_wpop_ea <- classify_finer_percentiles(zs_weight_pop)
-
-zoonotic_risk <- zs_wpop_ea
+zs_wpop_vent <- classify_finer_percentiles(zs_weight_pop)
 
 # # View
 # map_eq_int(zs_wpubs_norm, 'ZS') +
@@ -733,7 +844,7 @@ le <- rescale_to_pctl(le, c(0, 100))$updateMask(dhf_mask)
 le_norm <- le$multiply(-1)$add(1)
 
 # Rescale to Percentiles 
-le_ea <- classify_percentiles(le_norm)$updateMask(dhf_mask)
+le_ea <- classify_dentiles(le_norm)$updateMask(dhf_mask)
 
 # View
 # Map$addLayer(eeObject = le, visParams = viz_idx_norm, name = "Life expectancy")
