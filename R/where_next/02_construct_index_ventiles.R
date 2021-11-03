@@ -16,7 +16,7 @@
 source('R/where_next/01_use_rgee.R')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Combine indicators in ventiles ----
+# Combine indicators ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create components
 i_forestbio <- flii_norm$multiply(0.45)$
@@ -31,11 +31,20 @@ i_humz <- imr_vent$multiply(0.33)$
 
 # Create composite indicator
 vent80 <- i_forestbio$multiply(0.8)$add(i_humz$multiply(0.2))
-vent80_norm <- vent80 %>% rescale_to_pctl()
 
-# Transform composite to ventiles
+# Transform composite to ventiles for display
+vent80_pctl <- classify_percentiles(vent80)
 vent80_vents <- classify_ventiles(vent80)
-vent80_dents <- classify_dentiles(vent80)
+
+# # Classify to percentiles
+# i_forestbio_pctl <- classify_percentiles(i_forestbio)
+# i_humz_pctl <- classify_percentiles(i_humz)
+# 
+# vent80_pctls <- i_forestbio_pctl$multiply(0.8)$add(i_humz_pctl$multiply(0.2))$
+#   setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+# 
+# # Transform composite to ventiles for display
+# vent80_pctls <- classify_ventiles(vent80_pctls)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Look at it all together ----
@@ -48,24 +57,27 @@ Map$setCenter(112, 0, zoom = 7) # Borneo
 Map$setCenter(136, -2, zoom = 6)  # Papua
 
 # Get legend 
-lgnd_80 <- lgnd_top_ventiles(80)
+legend <- lgnd_norm_idx()
+lgnd_forestbio <- lgnd_norm_idx(pal_forestbio)
+lgnd_humz <- lgnd_norm_idx(pal_humz)
 lgnd80_3clas <- lgnd_top_pctls_3class()
 lgnd70_4clas <- lgnd_top_pctls()
 
 # Input layers
-map_norm_idx(zs_wpop_vent, 'Zoonotic spillover risk') +
-  map_norm_idx(carbon_vent, 'Carbon ventiles') +
-  map_norm_idx(wcd_idx, 'WCD') +
-  map_norm_idx(soc_idx, 'SOC') +
-  map_norm_idx(flii_norm, 'FLII') +
-  map_norm_idx(kba_r, 'KBAs') +
-  map_norm_idx(dti_vent, 'DTI ventiles') +
-  map_norm_idx(imr_vent, 'Infant mortality rate ventiles') +
+map_eq_int_10(wcd_vent, 'WCD', palette = pal_forestbio) +
+  map_eq_int_10(soc_vent, 'SOC', palette = pal_forestbio) +
+  map_eq_int_10(carbon_vent, 'Carbon ventiles', palette = pal_forestbio) +
+  map_eq_int_10(flii_norm, 'FLII', palette = pal_forestbio) +
+  map_eq_int_10(kba_r, 'KBAs', palette = pal_forestbio) +
+  map_eq_int_10(imr_vent, 'Infant mortality rate ventiles', palette = pal_humz) +
+  map_eq_int_10(dti_vent, 'DTI ventiles', palette = pal_humz) +
+  map_eq_int_10(zs_wpop_vent, 'Zoonotic spillover risk', palette = pal_humz) +
   
   # Components
-  map_norm_idx(i_forestbio, 'Forest quality') +
-  map_norm_idx(i_forest, 'Forest quality (w/o biodiv)') +
-  map_norm_idx(i_humz, 'Human health and impacts') +
+  map_norm_idx(i_forestbio_pctl, 'Forest quality', palette = pal_forestbio) +
+  lgnd_forestbio +
+  map_norm_idx(i_humz_pctl, 'Human health and impacts', palette = pal_humz) +
+  lgnd_humz +
   
   # Final options
   map_norm_idx(vent80_vents, 'FQ + HHI (4:1) ventiles') + legend +
@@ -142,17 +154,8 @@ Map$addLayer(means_snic, viz_idx_norm, 'Means') + seg_outlines_lyr
 # task_img$start()
 # ee_monitoring(task_img)
 
-# vent80v_eqint <- classify_eq_int_10(vent80_vents)
-# vent80_eqint <- classify_eq_int_10(vent80)
-# 
-# map_norm_idx(vent80_eqint$divide(10), "Eq int") +
-#   map_norm_idx(vent80v_eqint$divide(10), "Eq int") +
-#   map_top_ventiles(vent80_vents, lower = 70, name = "Percentiles") +
-#   map_norm_idx(vent80_vents, name = "Ventiles") +
-#   map_top_pctls_3class(vent80, 'FQ + HHI (4:1), top 80th', TRUE)
-
-task_img_to_drive <- vent80_vents$multiply(100) %>%
-  ee_image_to_drive(description = 'HIH_PlanetaryHealthIndex_v4b_10km_ventiles',
+task_img_to_drive <- vent80_pctl$multiply(100) %>%
+  ee_image_to_drive(description = 'HIH_PlanetaryHealthIndex_v4b_10km_percentiles',
                     folder = 'Earth Engine Exports',
                     region = tropics_bb,
                     scale = 10000)

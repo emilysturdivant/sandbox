@@ -20,9 +20,19 @@ library(tidyverse)
 
 # Initialize variables 
 # Woodwell Carbon and Tropics palettes
+pal_arctic <- c('#d4e5e6', '#afd2d4', '#8ac1c4', '#62b2b5', '#24a4a6', '#0d7072', '#15c9ca')
+pal_risk <- c('#f6e9cd', '#f0daa4', '#ebcb7d', '#e5be52', '#dfb125', '#937613', '#f6cf1c')
 pal_carbon <- c('#d8d4cd', '#bab4a7', '#9d9786', '#847f6b', '#6b6a52')
 pal_tropics <- c('#d5ead3', '#b1d9ad', '#8bca8b', '#62bd67', '#1ab14b', '#037a31')
 pal_tropics_accents <- c(pal_tropics[6], '#0ecd5d')
+
+# FQ index
+pal_forestbio <- c(pal_carbon[1], pal_arctic)
+pal_humz <- c(pal_carbon[c(2,1)], pal_risk[1:6])
+demoplot(rev(pal_forestbio), type = 'heatmap')
+demoplot(rev(pal_humz), type = 'heatmap')
+pal_forestbio <- c(pal_carbon[c(1,2,3)], pal_arctic[c(4, 6)])
+pal_humz <- c(pal_carbon[c(1,2,3)], pal_risk[c(4, 6)])
 
 # Combine
 priorities_idx_pal <- c(pal_carbon, pal_tropics_accents)
@@ -34,18 +44,9 @@ priorities_3 <- c(pal_tropics[1], pal_tropics[6], '#0ecd5d')
 
 # Dark green highest
 priorities_11 <- c(pal_carbon[c(1,2,3)], pal_tropics[c(4, 6)])
-priorities_4 <- c(pal_tropics[c(1, 2, 4, 6)])
 priorities_3 <- c(pal_tropics[c(1, 4, 6)])
-
-# Default index palette
-viz_idx_norm <- list(min = 0, max = 1, palette = priorities_11, 
-                     values = str_c(seq(0, 90, 10), seq(10, 100, 10), sep = '-'))
-legend <- Map$addLegend(
-  visParams = viz_idx_norm,
-  name = NA,
-  position = "bottomright",
-  color_mapping = "character"
-)
+priorities_4 <- c(pal_tropics[c(1, 2, 4, 6)])
+priorities_4 <- c(pal_tropics[c(1, 4, 6)], '#0ecd5d')
 
 # Set a region of interest and center map display
 Map$setCenter(30, 0, zoom = 3)
@@ -348,39 +349,73 @@ classify_eq_int <- function(img) {
 # Classify 0-1 to equal intervals
 classify_eq_int_10 <- function(img) {
   ee$Image(0)$
-    where(img$lt(0.1), 1)$
-    where(img$gte(0.1), 2)$
-    where(img$gte(0.2), 3)$
-    where(img$gte(0.3), 4)$
-    where(img$gte(0.4), 5)$
-    where(img$gte(0.5), 6)$
-    where(img$gte(0.6), 7)$
-    where(img$gte(0.7), 8)$
-    where(img$gte(0.8), 9)$
-    where(img$gte(0.9), 10)$
+    where(img$lt(0.1), .1)$
+    where(img$gte(0.1), .2)$
+    where(img$gte(0.2), .3)$
+    where(img$gte(0.3), .4)$
+    where(img$gte(0.4), .5)$
+    where(img$gte(0.5), .6)$
+    where(img$gte(0.6), .7)$
+    where(img$gte(0.7), .8)$
+    where(img$gte(0.8), .9)$
+    where(img$gte(0.9), 1)$
     updateMask(img$mask())
 }
 
 # Functions to map layers ----
-map_norm_idx <- function(img, name, shown = FALSE) {
+map_norm_idx <- function(img, name, shown = FALSE, palette = NULL) {
+  
+  if (is.null(palette)) {
+    palette = priorities_11
+  }
+  
+  viz <- list(min = 0, max = 1, palette = palette, 
+                       values = str_c(seq(0, 90, 10), seq(10, 100, 10), sep = '-'))
+  
   Map$addLayer(eeObject = img, 
-               visParams = viz_idx_norm, 
+               visParams = viz, 
                name = name, 
                shown = shown)
 }
 
-rescale_and_map <- function(img, name, shown = FALSE) {
-  map_norm_idx(rescale_to_pctl(img), name, shown)
+lgnd_norm_idx <- function(palette = NULL) {
+  
+  if (is.null(palette)) {
+    palette = priorities_11
+  }
+  
+  viz <- list(min = 0, max = 1, palette = palette, 
+              values = str_c(seq(0, 90, 10), seq(10, 100, 10), sep = '-'))
+  
+  Map$addLegend(visParams = viz, name = NA, 
+                color_mapping = "character")
+  
 }
 
 map_eq_int <- function(img, name, shown = FALSE) {
   img <- classify_eq_int(img)
   
-  viz_clssfd_idx <- list(min = 0, max = .8, palette = greens_5, 
+  viz <- list(min = 0, max = .8, palette = priorities_5, 
                          values = c('0-20', '20-40', '40-60', '60-80', '80-100'))
   
   Map$addLayer(eeObject = img, 
-               visParams = viz_clssfd_idx, 
+               visParams = viz, 
+               name = name, 
+               shown = shown)
+}
+
+map_eq_int_10 <- function(img, name, shown = FALSE, palette = NULL) {
+  img <- classify_eq_int_10(img)
+  
+  if (is.null(palette)) {
+    palette = priorities_11
+  }
+  
+  viz <- list(min = 0, max = 1, palette = palette, 
+              values = str_c(seq(0, 90, 10), seq(10, 100, 10), sep = '-'))
+  
+  Map$addLayer(eeObject = img, 
+               visParams = viz, 
                name = name, 
                shown = shown)
 }
@@ -454,7 +489,7 @@ map_top_ventiles <- function(ventile_img, lower = 80,
                              name = NULL, shown = FALSE) {
   
   min <- lower / 100
-  viz <- list(min = min-0.1, max = 1, palette = greens_5, 
+  viz <- list(min = min-0.1, max = 1, palette = priorities_5, 
               values = c(str_c('<', lower), 
                          seq(lower, 95, 5) %>% str_c('>', .)))
   
@@ -467,7 +502,7 @@ map_top_ventiles <- function(ventile_img, lower = 80,
 lgnd_top_ventiles <- function(lower = 80) {
   
   min <- lower / 100
-  viz <- list(min = min-0.05, max = 0.96, palette = greens_5, 
+  viz <- list(min = min-0.05, max = 0.96, palette = priorities_5, 
               values = c(str_c('<', lower), 
                          seq(lower, 95, 5) %>% str_c('>', .)))
   
@@ -479,7 +514,7 @@ lgnd_top_ventiles <- function(lower = 80) {
 
 map_top_10pctl <- function(img, name, shown = FALSE) {
   
-  viz <- list(min = 0.9, max = 0.98, palette = greens_5, 
+  viz <- list(min = 0.9, max = 0.98, palette = priorities_5, 
               values = seq(92, 100, 2))
   
   Map$addLayer(eeObject = img, 
@@ -750,8 +785,7 @@ dti_norm <- ee$Image(dti_id)$updateMask(dhf_mask)
 dti_vent <- classify_percentiles(dti_norm)
 
 # # View
-# # rescale_and_map(ee$Image(addm('DPI/bio_dpi_geo_int'))$unmask(), 'Biofuels') +
-#   map_norm_idx(dti_norm, 'Average and normalize') +
+# map_norm_idx(dti_norm, 'Average and normalize') +
 #   map_norm_idx(dti_vent, 'Ventiles') +
 #     map_norm_idx(carbon_vent, 'Carbon')
 
