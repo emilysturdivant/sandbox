@@ -21,7 +21,7 @@ source('R/where_next/01_use_rgee.R')
 # Create components
 i_forestbio <- flii_norm$multiply(0.45)$
   add(wcd_vent$multiply(0.225))$
-  add(soc_vent$resample()$multiply(0.225))$
+  add(soc_vent$multiply(0.225))$
   add(kba_r$multiply(0.1))
 
 i_humz <- imr_vent$multiply(0.33)$
@@ -36,15 +36,62 @@ vent80 <- i_forestbio$multiply(0.8)$add(i_humz$multiply(0.2))
 vent80_pctl <- classify_percentiles(vent80)
 vent80_vents <- classify_ventiles(vent80)
 
-# # Classify to percentiles
-# i_forestbio_pctl <- classify_percentiles(i_forestbio)
-# i_humz_pctl <- classify_percentiles(i_humz)
+# Classify to percentiles
+i_forestbio_pctl <- classify_percentiles(i_forestbio)
+i_humz_pctl <- classify_percentiles(i_humz)
 # 
 # vent80_pctls <- i_forestbio_pctl$multiply(0.8)$add(i_humz_pctl$multiply(0.2))$
 #   setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
 # 
 # # Transform composite to ventiles for display
 # vent80_pctls <- classify_ventiles(vent80_pctls)
+
+colorUpdates = list(
+  list(ECO_ID = 204, COLOR = '#B3493B'),
+  list(ECO_ID = 245, COLOR = '#267400'),
+  list(ECO_ID = 259, COLOR = '#004600'),
+  list(ECO_ID = 286, COLOR = '#82F178'),
+  list(ECO_ID = 316, COLOR = '#E600AA'),
+  list(ECO_ID = 453, COLOR = '#5AA500'),
+  list(ECO_ID = 317, COLOR = '#FDA87F'),
+  list(ECO_ID = 763, COLOR = '#A93800')
+)
+
+ecoRegions <- ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")
+ecoRegions = ecoRegions$map(function(f) {
+  color = f$get('COLOR')
+  f$set(list(style = list(color = color, width = 0)))
+})
+
+for (i in 1:length(colorUpdates)) {
+  colorUpdates[[i]]$layer = ecoRegions$
+    filterMetadata('ECO_ID', 'equals', colorUpdates[[i]]$ECO_ID)$
+    map(function(f) {
+      f$set(list(style = list(color = colorUpdates[[i]]$COLOR, width = 0)))
+  })
+  
+  ecoRegions = ecoRegions$
+    filterMetadata('ECO_ID','not_equals', colorUpdates[[i]]$ECO_ID)$
+    merge(colorUpdates[[i]]$layer)
+}
+
+
+
+imageRGB = ecoRegions$style(styleProperty = 'style')
+Map$addLayer(imageRGB, name = 'RESOLVE/ECOREGIONS/2017');
+
+ecoRegions = ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")$
+  map(function(f) {
+  color = f$get('COLOR_BIO')
+  f$set(list(style = list(color = color, width = 0)))
+})
+
+ecoRegions = ecoRegions$
+  filter(ee$Filter$inList('BIOME_NUM', c(1,2,3,7,14)))$
+  merge(colorUpdates[[i]]$layer)
+
+imageRGB = ecoRegions$style(styleProperty = 'style')
+biomes_lyr <- Map$addLayer(imageRGB, name = 'RESOLVE/ECOREGIONS/2017')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Look at it all together ----
@@ -64,7 +111,8 @@ lgnd80_3clas <- lgnd_top_pctls_3class()
 lgnd70_4clas <- lgnd_top_pctls()
 
 # Input layers
-map_eq_int_10(wcd_vent, 'WCD', palette = pal_forestbio) +
+biomes_lyr +
+  map_eq_int_10(wcd_vent, 'WCD', palette = pal_forestbio) +
   map_eq_int_10(soc_vent, 'SOC', palette = pal_forestbio) +
   map_eq_int_10(carbon_vent, 'Carbon ventiles', palette = pal_forestbio) +
   map_eq_int_10(flii_norm, 'FLII', palette = pal_forestbio) +
@@ -81,8 +129,8 @@ map_eq_int_10(wcd_vent, 'WCD', palette = pal_forestbio) +
   
   # Final options
   map_norm_idx(vent80_vents, 'FQ + HHI (4:1) ventiles') + legend +
-  map_top_pctls_3class(vent80_vents, 'FQ + HHI (4:1), top 80th') + lgnd80_3clas +
-  map_top_pctls(vent80_vents, 'FQ + HHI (4:1), top 80th', TRUE) + lgnd70_4clas +
+  map_top_pctls_3class(vent80_vents, 'FQ + HHI (4:1), top 80th', TRUE) + lgnd80_3clas +
+  map_top_pctls(vent80_vents, 'FQ + HHI (4:1), top 80th') + lgnd70_4clas +
   
   hih_sites_lyr + hih_pts_lyr + 
   no_msf_lyr + msf_lyr + pas_lyr
@@ -154,11 +202,94 @@ Map$addLayer(means_snic, viz_idx_norm, 'Means') + seg_outlines_lyr
 # task_img$start()
 # ee_monitoring(task_img)
 
+# Final index
 task_img_to_drive <- vent80_pctl$multiply(100) %>%
-  ee_image_to_drive(description = 'HIH_PlanetaryHealthIndex_v4b_10km_percentiles',
+  ee_image_to_drive(description = 'HIH_PlanetaryHealthIndex_v4b_1km_percentiles',
                     folder = 'Earth Engine Exports',
                     region = tropics_bb,
-                    scale = 10000)
-
+                    scale = 1000,
+                    maxPixels = 312352344)
 task_img_to_drive$start()
-ee_monitoring(task_img_to_drive)
+
+# HHI indicator
+i_humz_pctl <- classify_percentiles(i_humz)
+task_img_to_drive <- i_humz_pctl$multiply(100) %>%
+  ee_image_to_drive(description = 'Indicator_HHI_v4b_10km_percentiles',
+                    folder = 'Earth Engine Exports',
+                    region = tropics_bb,
+                    scale = 10000,
+                    maxPixels = 312352344)
+task_img_to_drive$start()
+
+# FQ indicator
+i_forestbio_pctl <- classify_percentiles(i_forestbio)
+task_img_to_drive <- i_forestbio_pctl$multiply(100) %>%
+  ee_image_to_drive(description = 'Indicator_FQ_v4b_10km_percentiles',
+                    folder = 'Earth Engine Exports',
+                    region = tropics_bb,
+                    scale = 10000,
+                    maxPixels = 312352344)
+task_img_to_drive$start()
+
+# FQ indicator
+task_img_to_drive <- flii_norm$multiply(100) %>%
+  ee_image_to_drive(description = 'FLII_v4b_10km_percentiles',
+                    folder = 'Earth Engine Exports',
+                    region = tropics_bb,
+                    scale = 10000,
+                    maxPixels = 312352344)
+task_img_to_drive$start()
+
+# FQ indicator
+task_img_to_drive <- wcd_vent$multiply(100) %>%
+  ee_image_to_drive(description = 'WCD_v4b_10km_percentiles',
+                    folder = 'Earth Engine Exports',
+                    region = tropics_bb,
+                    scale = 10000,
+                    maxPixels = 312352344)
+task_img_to_drive$start()
+
+# FQ indicator
+task_img_to_drive <- kba_r$multiply(100) %>%
+  ee_image_to_drive(description = 'KBA_v4b_10km_percentiles',
+                    folder = 'Earth Engine Exports',
+                    region = tropics_bb,
+                    scale = 10000,
+                    maxPixels = 312352344)
+task_img_to_drive$start()
+
+# FQ indicator
+task_img_to_drive <- soc_vent$multiply(100) %>%
+  ee_image_to_drive(description = 'SOC_v4b_10km_percentiles',
+                    folder = 'Earth Engine Exports',
+                    region = tropics_bb,
+                    scale = 10000,
+                    maxPixels = 312352344)
+task_img_to_drive$start()
+
+# HHI indicator
+task_img_to_drive <- imr_vent$multiply(100) %>%
+  ee_image_to_drive(description = 'IMR_v4b_10km_percentiles',
+                    folder = 'Earth Engine Exports',
+                    region = tropics_bb,
+                    scale = 10000,
+                    maxPixels = 312352344)
+task_img_to_drive$start()
+
+# HHI indicator
+task_img_to_drive <- dti_vent$multiply(100) %>%
+  ee_image_to_drive(description = 'DTI_v4b_10km_percentiles',
+                    folder = 'Earth Engine Exports',
+                    region = tropics_bb,
+                    scale = 10000,
+                    maxPixels = 312352344)
+task_img_to_drive$start()
+
+# HHI indicator
+task_img_to_drive <- zs_wpop_vent$multiply(100) %>%
+  ee_image_to_drive(description = 'ZS_v4b_10km_percentiles',
+                    folder = 'Earth Engine Exports',
+                    region = tropics_bb,
+                    scale = 10000,
+                    maxPixels = 312352344)
+task_img_to_drive$start()

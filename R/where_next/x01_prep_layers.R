@@ -78,6 +78,17 @@ countries %>% st_write(countries_msf_shp)
 
 tm_shape(countries) + tm_polygons(col = 'MSF')
 
+# MSF OCG points ----
+ocg_xls <- list.files(file.path(data_dir, 'raw_data', 'msf'), 'xlsx$', full.names = TRUE)
+
+ocg_df <- readxl::read_excel(ocg_xls)
+ocg_pts <- st_as_sf(ocg_df, coords = c('LONG', 'LAT'), crs = 'EPSG:4326')
+st_write(ocg_pts, file.path(data_dir, 'hih_sites', 'MSF_OCG', 
+                     str_c(tools::file_path_sans_ext(basename(ocg_xls)), '.shp')))
+
+qtm(ocg_pts)
+tm_shape(st_geometry(ocg_pts)) + tm_dots()
+
 # Extract Protected Areas in the tropics ----
 # Protected area polygons ----
 pa_zips <- list.files(
@@ -611,3 +622,103 @@ r <- terra::rast(fp)
 # # Load shapefile (polygons)
 # (shp_fp <- list.files(miao, pattern = "polygons\\.shp$", full.names=TRUE, recursive = TRUE))
 # pa <- st_read(shp_fp[[1]])
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Local biodiversity intactness index ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lbii_zip <- file.path(data_dir, 'raw_data/biodiversity/lbii_2005.zip')
+lbii <- download.file('http://data.nhm.ac.uk/resources/ab6817846d8d4ff8214ba8a7d6a707e0-16689-1636052089.zip', 
+                      destfile = lbii_zip)
+
+# Unzip to temp dir
+miao <- tempfile()
+unzip(lbii_zip, exdir = miao)
+
+# List extracted files
+(fp1 <- list.files(miao, full.names=TRUE, recursive = TRUE))
+
+# Unzip to temp dir
+miao2 <- tempfile()
+unzip(fp1, exdir = miao2)
+
+# List extracted files
+(lbii_asc <- list.files(miao2, full.names=TRUE, recursive = TRUE))
+
+# Load
+lbii <- rast(lbii_asc)
+
+lbii_tif <- file.path(data_dir, 'biodiversity/lbii_2005.tif')
+lbii %>% writeRaster(lbii_tif)
+
+# BII from https://data.nhm.ac.uk/dataset/bii-bte/resource/94be0af6-ec90-4b83-8f02-64a4983e1ca1 ----
+bii_rds <- list.files(file.path(data_dir, 'biodiversity'), 'rds$', full.names = TRUE)
+bii_dat <- readRDS(bii_rds)
+
+# Download area_codes.json (from link sent after I requested the data)
+dl_url <- "http://data.nhm.ac.uk/resources/1a2475f13eb08757aaf434016b425cb8-16689-1636566334.zip"
+local_zip_fp <- file.path(data_dir, 'raw_data/biodiversity/bii/area_code.zip')
+download.file(dl_url, destfile = local_zip_fp)
+
+# Unzip to temp dir
+miao <- tempfile()
+unzip(local_zip_fp, exdir = miao)
+
+# List extracted files
+(fp1 <- list.files(miao, full.names=TRUE, recursive = TRUE))
+
+# Load
+area_codes <- rjson::fromJSON(fp1)
+area_codes_json <- file.path(data_dir, 'raw_data/biodiversity/bii/area_code.json')
+area_codes <- rjson::fromJSON(area_codes_json)
+
+lbii_tif <- file.path(data_dir, 'biodiversity/lbii_2005.tif')
+lbii %>% writeRaster(lbii_tif)
+
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Biomes ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Load biomes
+biomes_shp <- here::here(data_dir, 'raw_data', 'Ecoregions2017', 'Ecoregions2017.shp')
+biomes_dhf <- st_read(biomes_shp) %>% filter(BIOME_NUM == 1)
+biomes_dhf <- biomes %>% st_make_valid()
+
+biomes_dhf_shp <- here::here(data_dir, 'raw_data', 'Ecoregions2017', 'Ecoregions2017_DHF.shp')
+biomes_dhf %>% st_write(biomes_dhf_shp, append = FALSE)
+
+bdhf_sub2 <- biomes_dhf %>% filter(OBJECTID %in% c(14, 519)) %>% st_make_valid()
+bdhf_sub2 <- bdhf_sub2 %>% st_buffer(0.0001) %>% st_buffer(-0.0001)
+bdhf_sub2_shp <- here::here(data_dir, 'ecoregions', 'Ecoregions2017_DHF_sub2.shp')
+bdhf_sub2 %>% st_write(bdhf_sub2_shp, append = FALSE)
+
+bdhf_sub2 <- st_read(bdhf_sub2_shp)
+bdhf_sub1 <- st_read(here::here(data_dir, 'ecoregions', 
+                                'Ecoregions2017_DHF_dissolved1.shp'))
+
+bdhf <- bind_rows(bdhf_sub1, bdhf_sub2)
+bdhf_combo3_shp <- here::here(data_dir, 'ecoregions', 'Ecoregions2017_DHF_combo3.shp')
+bdhf %>% st_write(bdhf_combo3_shp, append = FALSE)
+
+bdhf_simp <- st_read(here::here(data_dir, 'ecoregions', 
+                                'Ecoregions2017_DHF_combo3_simp.1.shp'))
+bdhf_union <- bdhf_simp %>% st_union()
+bdhf_noholes <- bdhf_union %>% nngeo::st_remove_holes(max_area = 0.5)
+bdhf_noholes_shp <- here::here(data_dir, 'ecoregions', 'Ecoregions2017_DHF_combo3_simp.1_noholes.shp')
+bdhf_noholes %>% st_write(bdhf_noholes_shp, append = FALSE)
+qtm(bdhf_noholes)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# BasinATLAS (from HydroSHEDS) ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lev12_shp <- list.files(here::here('/Volumes/STORAGE/work_Woodwell/raw_data',
+                               '/HydroSHEDS/BasinATLAS_Data_v10_shp/BasinATLAS_v10_shp'), 
+                    'lev12\\.shp', full.names = TRUE)
+
+lev12 <- st_read(lev12_shp)
+
+
+
+
+
+

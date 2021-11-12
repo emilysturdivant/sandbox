@@ -974,6 +974,8 @@ msf_simp <- msf_ee$map(
 msf_outline <- ee$Image()$byte()$paint(featureCollection = msf_simp, width = 2)
 msf_lyr <- Map$addLayer(msf_outline, list(palette = c('#bdbdbd')),
                         name = 'MSF operations', shown = FALSE)
+msf_lyr <- Map$addLayer(msf_outline, list(palette = c('black')),
+                        name = 'MSF operations', shown = FALSE)
 
 # Get non-MSF countries
 no_msf_id <- addm('non_MSF_countries_masked')
@@ -1009,3 +1011,6 @@ no_msf_lyr <- Map$addLayer(no_msf_r, list(palette = c('#bdbdbd')),
                            name = 'non-MSF', 
                            opacity = 0.8, shown = FALSE)
 
+no_msf_lyr <- Map$addLayer(no_msf_r, list(palette = c('black')),
+                           name = 'non-MSF', 
+                           opacity = 0.8, shown = FALSE)
