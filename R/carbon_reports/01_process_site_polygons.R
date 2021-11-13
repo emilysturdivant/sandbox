@@ -18,6 +18,59 @@ sites_dir <- '~/data/hih_sites'
 polys_dir <- file.path(sites_dir, 'final_sites')
 final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Estonia ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# GADM ----
+countries_shp <- here::here('~/data', 'raw_data', 'world_context', 'gadm', 'gadm36_1.shp')
+estonia <- st_read(countries_shp) %>% 
+  filter(str_detect(NAME_0, regex('estonia', ignore_case = TRUE))) %>% 
+  mutate(div1_lat = stringi::stri_trans_general(str=NAME_1, id='Latin-ASCII')) %>% 
+  select(name = NAME_0, 
+         div1 = NAME_1) 
+
+# Diva lakes
+lakes_shp <- here::here('~/data/raw_data/world_context/diva', 'EST_wat', 
+                        'EST_water_areas_dcw.shp')
+lakes <- st_read(lakes_shp) %>% st_make_valid()
+
+# Clip out lakes
+est_nolks <- estonia %>% st_difference(st_union(lakes))
+
+est_nolks <- est_nolks %>% 
+  st_simplify(dTolerance = 0.01)
+
+estonia_shp <- here::here('~/data', 'sites_for_c_report', 'estonia_div_nolakes.shp')
+est_nolks %>% st_write(estonia_shp, append = FALSE)
+
+# Natural Earth ----
+lakes <- ne_download(scale = 'small', type = 'lakes', category = 'physical', 
+            destdir = here::here('~/data', 'raw_data', 'world_context', 'natural_earth'), 
+            load = TRUE, returnclass = 'sf')
+
+# Diva ----
+lakes_shp <- here::here('~/data/raw_data/world_context/diva', 'EST_wat', 
+                    'EST_water_areas_dcw.shp')
+lakes <- st_read(lakes_shp) %>% st_make_valid()
+
+est_nolks <- estonia %>% st_difference(st_union(lakes))
+qtm(est_nolks) + qtm(lakes)
+
+est_lks <- estonia %>% 
+  bind_rows(lakes) %>% 
+  st_difference()
+qtm(est_lks) + qtm(lakes)
+
+estonia <- st_read(countries_shp) %>% 
+  filter(str_detect(admin, regex('estonia', ignore_case = TRUE))) %>% 
+  mutate(div1_lat = stringi::stri_trans_general(str=name, id='Latin-ASCII')) %>% 
+  select(div1 = name, 
+         name = admin) 
+
+
+
+
+
 # Get area for site polygons ----
 tdm_shp <- file.path(final_polys_dir, 'TdM_all_dissolved_gapfilled.shp')
 tdm <- st_read(tdm_shp)

@@ -72,7 +72,7 @@ get_piecewise_line <- function(df_zone) {
   
   # BIC-based selection - throws error when 0 breakpoints are found
   try(dev.off)
-  try(rm(os_bicc))
+  try(rm(os_bic))
   set.seed(1)
   os_bic <- try(selgmented(out.lm, Kmax=4, type="bic", 
                            return.fit = TRUE, msg = FALSE))
@@ -145,7 +145,7 @@ plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (metric to
 create_pw_plot_list <- function(div_names, df_site) {
   
   if (length(div_names) == 1) {
-    df_zone <- df_site %>% filter(name == div_names)
+    df_zone <- df_site %>% filter(div1 == div_names)
     pw_fit <- df_zone %>% get_piecewise_line()
     p <- plot_pw_fit(df_zone, NULL, pw_fit)
     plots <- p
@@ -157,59 +157,83 @@ create_pw_plot_list <- function(div_names, df_site) {
     div_name <-  div_names[[i]]
     print('')
     print(div_name)
-    df_zone <- filter(df_site, name == div_name)
+    
+    df_zone <- filter(df_site, div1 == div_name)
+    
     try(rm(pw_fit))
     pw_fit <- get_piecewise_line(df_zone)
     p <- plot_pw_fit(df_zone, div_name, pw_fit)
     try(rm(pw_fit))
     plots[[i]] <- p
+    
   }
   
   return(plots)
 }
 
-get_params <- function(div_names) {
-  if(length(div_names) < 4) {
+get_params <- function(n) {
+  if(n == 1) {
     
     ncol <- 1
     png_width <- 4.5
-    png_height <- length(div_names) * 2
+    png_height <- 3
+    
+  } else if(n < 4) {
+    
+    ncol <- 1
+    png_width <- 4.5
+    png_height <- n * 2
+    
+  } else if(n == 15){
+    
+    ncol <- 3
+    png_width <- 12
+    png_height <- n / 3 * 2 # 10
     
   } else {
     
     ncol <- 2
     png_width <- 9
-    png_height <- length(div_names)
+    png_height <- ceiling(n / 2) * 2
     
   }
   
   return(list(ncol=ncol, png_width=png_width, png_height=png_height))
 }
 
-layout_plots <- function(plots, params, title = TRUE) {
+layout_plots <- function(plots, params, title = TRUE, fix_y = TRUE) {
   
+  # Create patchwork
   ps <- plots %>% 
     wrap_plots(ncol = params$ncol) +
     plot_annotation(
-      title = site,
+      # title = site,
       # caption = cap_text,
       theme = theme(plot.title = element_text(size = 14))
     ) &
     theme(title = element_text(size = 10), 
           axis.title = element_blank())
-  gt <- patchwork::patchworkGrob(ps)
   
+  # Conditionally fix y-scale
+  if(fix_y){
+    ps <- ps &
+      scale_y_continuous(labels = scales::comma, limits = c(0, 500))
+  }
+
+  # Set y-axis label conditionally
   if(params$png_height < 3) {
-    y_lab <- grid::textGrob("AGC loss (tC x 1000)", 
+    y_lab <- grid::textGrob("AGC loss (MgC x 1000)", 
                             gp = grid::gpar(fontsize=10), 
                             rot = 90)
   } else {
-    y_lab <- grid::textGrob("Aboveground carbon loss (tC x 1000)", 
+    y_lab <- grid::textGrob("Aboveground carbon loss (MgC x 1000)", 
                             gp = grid::gpar(fontsize=10), 
                             rot = 90)
   }
   x_lab <- grid::textGrob("Year", gp = grid::gpar(fontsize=10))
-  gta <- gridExtra::grid.arrange(gt, 
+  
+  # Convert to grob
+  gta <- gridExtra::grid.arrange(patchwork::patchworkGrob(ps), 
                                  left = y_lab, 
                                  bottom = x_lab)
 }
