@@ -26,25 +26,25 @@ task_name <- tools::file_path_sans_ext(basename(polys_fp))
 out_fp <- file.path(export_path, str_c(task_name, '.geojson'))
 
 # Run GEE process
-source('R/carbon_reports/01_calculate_loss_with_rgee.R')
+# source('R/carbon_reports/01_calculate_loss_with_rgee.R')
 
 # Load functions 
-source('R/carbon_reports/02_report_from_Hansen_data.R')
+source('R/carbon_reports/02_functions.R')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Get original polygons ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-countries_shp <- here::here('~/data', 'raw_data', 'world_context', 
-                            'gadm', 'gadm36_1.shp')
-estonia <- st_read(countries_shp) %>% 
-  filter(str_detect(NAME_0, regex('estonia', ignore_case = TRUE))) %>% 
-  mutate(div1_lat = stringi::stri_trans_general(str=NAME_1, id='Latin-ASCII')) %>% 
-  rename(name = NAME_0, 
-         div1 = NAME_1)
-
-names_lu <- estonia %>% 
-  st_drop_geometry() %>% 
-  select(name, div1, div1_lat)
+# countries_shp <- here::here('~/data', 'raw_data', 'world_context', 
+#                             'gadm', 'gadm36_1.shp')
+# estonia <- st_read(countries_shp) %>% 
+#   filter(str_detect(NAME_0, regex('estonia', ignore_case = TRUE))) %>% 
+#   mutate(div1_lat = stringi::stri_trans_general(str=NAME_1, id='Latin-ASCII')) %>% 
+#   rename(name = NAME_0, 
+#          div1 = NAME_1)
+# 
+# names_lu <- estonia %>% 
+#   st_drop_geometry() %>% 
+#   select(name, div1, div1_lat)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load new sf for all sites ----
@@ -53,7 +53,8 @@ names_lu <- estonia %>%
 df <- st_read(out_fp) %>% filter(div1 != 'Peipsi')
 
 # Tidy 
-df_tidy <- tidy_forest_loss_df(df)
+df_tidy <- tidy_forest_loss_df(df) %>% 
+  mutate(across(starts_with('carbon'), ~ .x / 1e6))
 
 # # Add accents back
 # df_tidy <- df_tidy %>% 
@@ -67,10 +68,16 @@ df_site <- df_tidy
 # Create output table of 20-year loss ----
 # Sum losses over 20-year period
 df_sums <- df_site %>% 
-  group_by(div1, carbon_2000_mgc, area_ha) %>% 
+  group_by(div1, area_ha, forest_2000_ha, carbon_2000_mgc) %>% 
   summarize(across(any_of(c('carbon_loss_MgC', 'forest_loss_ha')), ~ sum(.x, na.rm = TRUE))) %>% 
   ungroup() %>% 
-  arrange(desc(carbon_loss_MgC)) 
+  mutate(
+    c_loss_pct = carbon_loss_MgC / carbon_2000_mgc * 100,
+    c_dens_2000 = carbon_2000_mgc / area_ha,
+    c_loss_dens = carbon_loss_MgC / area_ha) %>% 
+  arrange(desc(carbon_loss_MgC)) %>% 
+  select(div1, area_ha, forest_2000_ha, forest_loss_ha, carbon_2000_mgc, 
+         carbon_loss_MgC, c_loss_pct, c_dens_2000, c_loss_dens)
 
 # Totals row
 df_total <- df_sums %>% 

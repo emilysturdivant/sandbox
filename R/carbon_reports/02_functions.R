@@ -16,9 +16,6 @@ library(tidyverse)
 
 # Function ----
 tidy_forest_loss_df <- function(df) {
-  # Improve name of sum column
-  df <- df %>% rename(carbon_2000_mgc = sum)
-  
   # Get DF with annual carbon loss
   df_carbon <- df %>% 
     st_drop_geometry() %>% 
@@ -33,9 +30,9 @@ tidy_forest_loss_df <- function(df) {
   # Get DF with annual forest area loss
   df_area <- df %>% 
     st_drop_geometry() %>% 
-    dplyr::select(!starts_with('carbon_loss')) %>%
+    dplyr::select(!starts_with('carbon')) %>%
     # dplyr::select(starts_with('forest'), name) %>% 
-    pivot_longer(starts_with('forest'), 
+    pivot_longer(starts_with('forest_loss'), 
                  names_to = 'year',
                  values_to = 'forest_loss_ha') %>% 
     mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
@@ -56,9 +53,7 @@ tidy_forest_loss_df <- function(df) {
   
   # Get percent of carbon lost annually and percent of the region deforested 
   df_tidy <- df_join %>% 
-    left_join(st_drop_geometry(mgc_2000)) %>% 
-    mutate(carbon_loss_pct = carbon_loss_MgC / carbon_2000_mgc,
-           forest_loss_pct = forest_loss_ha / area_ha)
+    left_join(st_drop_geometry(mgc_2000))
   
   # Return
   return(df_tidy)

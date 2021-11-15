@@ -40,9 +40,7 @@ agb_res_km <- agb_res_m$divide(1e3)
 
 # convert 30m AGBD (Mg/ha) ca. 2000 to AGC (MgC)
 agb_30m_mgc <- agb_30m_mgha$
-  multiply(agb_res_m)$
-  multiply(agb_res_m)$
-  divide(2e4)$
+  multiply(agb_30m_mgha$pixelArea()$divide(1e4))$
   rename('agb_2000_mgc')
 
 # build multi-band images, where each band represents either forest area or carbon loss in a given year
@@ -53,14 +51,12 @@ for (year in seq(1, 20)) { # 1-20 = 2001-2020
   # year_str <-'20' + ee$Number(year)$format('%02d')$getInfo()
   year_str <- as.character(2000+year)
   
-  
+  # get deforested pixels that year
   tmp_loss_mask <- loss_year$eq(year)
   
-  # area loss
+  # area loss - convert to ha
   tmp_area <- tmp_loss_mask$
-    multiply(hansen_res_m)$
-    multiply(hansen_res_m)$
-    divide(1e4)$
+    multiply(tmp_loss_mask$pixelArea()$divide(1e4))$
     rename(str_c('forest_loss_', year_str, '_ha'))
   loss_area_sqkm <- loss_area_sqkm$addBands(tmp_area)
   
@@ -72,35 +68,200 @@ for (year in seq(1, 20)) { # 1-20 = 2001-2020
 }
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Get baseline (2000) values for carbon stock and forest area ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Get forest area ca. 2000
+tc_2000 <- hansen_30m$select(c('treecover2000'))
+
+# Get pixel area with GEE ----
+forest_2000 <- tc_2000$gt(25)$
+  multiply(tc_2000$pixelArea()$divide(1e4))$
+  rename(str_c('forest_2000_ha'))
+
+# summarize Forest area ca. 2000 by district
+fc_agg <- forest_2000$reduceRegions(
+  collection = fc, # add to feature class
+  reducer = ee$Reducer$sum(),
+  scale = hansen_res_m
+)$map(function(f){ # Rename sum column
+  ee$Feature(f$geometry(), list(
+    name = f$get('name'),
+    div1 = f$get('div1'),
+    carbon_2000_mgc = f$get('carbon_2000_mgc'),
+    forest_2000_ha = f$get('sum'))
+  )
+})
+fc_agg$first()$get('forest_2000_ha')$getInfo()
+
+# Sum all pixel areas by district
+all <- ee$Image(1)
+all <- all$multiply(all$pixelArea()$divide(1e4))
+
+fc_agg <- all$reduceRegions(
+  collection = fc_agg, # add to feature class 
+  reducer = ee$Reducer$sum(),
+  scale = hansen_res_m
+)$map(function(f){ # Rename sum column
+  ee$Feature(f$geometry(), list(name = f$get('name'), div1 = f$get('div1'),
+                                ct_forest = f$get('ct_forest'),
+                                ct_nonforest = f$get('ct_nonforest'),
+                                ct_all = f$get('ct_all'),
+                                pixel_areas = f$get('sum'))
+  )
+})
+fc_agg$first()$get('pixel_areas')$getInfo()
+
+# # Get feature areas
+# fc_f2000 <- fc_f2000$map(function(f) {
+#   f$set(list(area_ha = f$area()$divide(1e4)))
+# })
+# fc_f2000$first()$get('area_ha')$getInfo()
+# fc_f2000$first()$get('forest_2000_ha')$getInfo()
+
+# areas1 <- tc_2000$gt(25)$multiply(hansen_res_m)$multiply(hansen_res_m)
+# areas1$
+#   reduceRegion(
+#     reducer = ee$Reducer$percentile(c(0, 25, 50, 75, 100)),
+#     geometry = fc$first()$geometry(),
+#     scale = hansen_res_m,
+#     bestEffort = TRUE)$
+#   getInfo()
+# 
+# areas2 <- tc_2000$gt(25)$multiply(tc_2000$pixelArea())
+# areas2$
+#   reduceRegion(
+#     reducer = ee$Reducer$percentile(c(0, 25, 50, 75, 100)),
+#     geometry = fc$first()$geometry(),
+#     scale = hansen_res_m,
+#     bestEffort = TRUE)$
+#   getInfo()
+
+# Get pixel area based on resolution ----
+fc_2000 <- tc_2000$gt(25)
+fc_2000 <- fc_2000$unmask()$updateMask(fc_2000$eq(1))
+forest_2000 <- fc_2000$
+  multiply(hansen_res_m)$
+  multiply(hansen_res_m)$
+  divide(1e4)$
+  rename(str_c('forest_2000_ha'))
+
+# summarize Forest area ca. 2000 by district
+fc_agg <- forest_2000$reduceRegions(
+  collection = fc, # add to feature class 
+  reducer = ee$Reducer$sum(),
+  scale = hansen_res_m
+)$map(function(f){ # Rename sum column
+  ee$Feature(f$geometry(), list(
+    name = f$get('name'), 
+    div1 = f$get('div1'),
+    forest_2000_ha = f$get('sum'))
+  )
+})
+
+# Get feature areas
+fc_agg <- fc_agg$map(function(f) {
+  f$set(list(area_ha = f$area()$divide(1e4)))
+  })
+fc_agg$first()$get('area_ha')$getInfo()
+fc_agg$first()$get('forest_2000_ha')$getInfo()
+
+
+# Get counts of forested pixels ----
+fc_2000 <- tc_2000$gt(25)
+fc_2000 <- fc_2000$unmask()$updateMask(fc_2000$eq(1))
+Map$addLayer(fc_2000, list(palette = viridis))
+
+# Count forested pixels by district
+fc_agg <- fc_2000$reduceRegions(
+  collection = fc_agg, # add to feature class 
+  reducer = ee$Reducer$count(),
+  scale = hansen_res_m
+)$map(function(f){ # Rename sum column
+  ee$Feature(f$geometry(), list(name = f$get('name'), div1 = f$get('div1'),
+    ct_forest = f$get('count'))
+  )
+})
+
+# Count non-forested pixels by district
+# nonfc_2000 <- fc_2000$unmask()$multiply(-1)
+# nonfc_2000 <- nonfc_2000$updateMask(nonfc_2000$eq(0))
+nonfc_2000 <- tc_2000$lte(25)
+nonfc_2000 <- nonfc_2000$unmask()$updateMask(nonfc_2000$eq(1))
+Map$addLayer(nonfc_2000, list(palette = viridis))
+
+fc_agg <- nonfc_2000$reduceRegions(
+  collection = fc_agg, # add to feature class 
+  reducer = ee$Reducer$count(),
+  scale = hansen_res_m
+)$map(function(f){ # Rename sum column
+  ee$Feature(f$geometry(), list(name = f$get('name'), div1 = f$get('div1'),
+    ct_forest = f$get('ct_forest'),
+    ct_nonforest = f$get('count'))
+  )
+})
+
+# Count all pixels by district
+fc_agg <- ee$Image(1)$reduceRegions(
+  collection = fc_agg, # add to feature class 
+  reducer = ee$Reducer$count(),
+  scale = hansen_res_m
+)$map(function(f){ # Rename sum column
+  ee$Feature(f$geometry(), list(name = f$get('name'), div1 = f$get('div1'),
+                                ct_forest = f$get('ct_forest'),
+                                ct_nonforest = f$get('ct_nonforest'),
+                                ct_all = f$get('count'))
+  )
+})
+
+# Get values
+fc_agg$first()$get('ct_forest')$getInfo()
+fc_agg$first()$get('ct_nonforest')$getInfo()
+fc_agg$first()$get('ct_all')$getInfo()
+fc_agg$first()$get('div1')$getInfo()
+
+
+
+
+
+
+# Get total carbon stock ca. 2000 by district ----
+fc_c2000 <- agb_30m_mgc$reduceRegions(
+  collection = fc_f2000, # add to feature class containing all loss results
+  reducer = ee$Reducer$sum(),
+  scale = agb_res_m
+)$map(function(f){ # Rename sum column
+  ee$Feature(f$geometry(), list(
+    name = f$get('name'), 
+    div1 = f$get('div1'),
+    forest_2000_ha = f$get('forest_2000_ha'),
+    carbon_2000_mgc = f$get('sum'))
+  )
+})
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Sum forest area and carbon each year by region ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # summarize annual forest area loss by district
-fc_area_loss_sqkm <- loss_area_sqkm$reduceRegions(
-  collection = fc, # adds columns forest_loss_[year]_ha
+loss_fc <- loss_area_sqkm$reduceRegions(
+  collection = fc_c_f_2000, # adds columns forest_loss_[year]_ha
   reducer = ee$Reducer$sum(),
   scale = hansen_res_m
 )
 
 # summarize annual forest carbon loss by district
-fc_carbon_loss_mgc <- loss_carbon_mgc$reduceRegions(
-  collection = fc_area_loss_sqkm, # add columns carbon_loss_[year]_mgc to FC with area loss results
+loss_fc_carbon <- loss_carbon_mgc$reduceRegions(
+  collection = loss_fc, # add columns carbon_loss_[year]_mgc to FC with area loss results
   reducer = ee$Reducer$sum(),
   scale = agb_res_m
 )
 
-# summarize AGB ca. 2000 by district
-fc_carbon_2000_mgc <- agb_30m_mgc$reduceRegions(
-  collection = fc_carbon_loss_mgc, # add to feature class containing all loss results
-  reducer = ee$Reducer$sum(),
-  scale = agb_res_m
-)
 
-# fc_carbon_2000_mgc$first()$getInfo()
+loss_fc_carbon$first()$propertyNames()$getInfo()
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Convert to GeoJSON ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-task_vector <- fc_carbon_2000_mgc %>% 
+task_vector <- loss_fc_carbon %>% 
   ee_table_to_drive(description = task_name,
                     folder = basename(export_path),
                     fileFormat = 'GeoJSON', 
@@ -114,6 +275,8 @@ ee_monitoring(task_vector, quiet = TRUE) # optional
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Use Hansens's 2000-2020 loss to mask our 30m AGC ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Map$centerObject(fc, zoom = 6)
+
 # Paint all the polygon edges with the same number and width, display.
 outline <- ee$Image()$byte()$
   paint(featureCollection = fc, color = 1, width = 2)
@@ -146,6 +309,9 @@ viridis <- c('#440154', '#433982', '#30678D', '#218F8B', '#36B677', '#8ED542', '
 Map$addLayer(eeObject = loss_year, 
              visParams = list(min = 0, max = 20, palette = viridis), 
              name = 'Hansen loss year') +
+  Map$addLayer(eeObject = fc_2000, 
+               visParams = list(min = 0, max = 1, palette = viridis), 
+               name = 'Forest') +
   Map$addLayer(eeObject = agb_30m_mgc$updateMask(agb_30m_mgc$neq(0)), 
                visParams = list(min = 0, max = 20, palette = agb_pal), 
                name = '2000 AGC', 
