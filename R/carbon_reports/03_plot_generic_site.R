@@ -51,18 +51,14 @@ source('R/carbon_reports/02_functions.R')
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load data
 df_sf <- st_read(out_fp) %>% filter(div1 != 'Peipsi')
-df <- df_sf %>% st_drop_geometry()
 
 # Get site and division names 
 (site <- df %>% distinct(name) %>% deframe())
 site_code <- abbreviate(site, minlength = 3)
 
-# Tidy 
-df_site <- tidy_forest_loss_df(df)
-
 # Create output table of 20-year loss ----
 # Get values by county
-df_sums <- df %>% 
+df_sf_sums <- df_sf %>% 
   mutate(c_2000_MtC = carbon_2000_mgc / 1e6, 
          c_loss_MtC = c_loss_mgc / 1e6,
          c_loss_pct = c_loss_MtC / c_2000_MtC * 100, 
@@ -81,7 +77,8 @@ df_sums <- df %>%
   arrange(desc(c_loss_MtC))
 
 # Totals row
-df_total <- df_sums %>% 
+df_total <- df_sf_sums %>% 
+  st_drop_geometry() %>% 
   summarize(
     across(any_of(c('area_ha', 'forest_2000_ha', 'forest_loss_ha',
                   'c_2000_MtC', 'c_loss_MtC')), 
@@ -91,20 +88,106 @@ df_total <- df_sums %>%
   mutate(div1 = 'Estonia')
 
 # Combine and change column names
-df_out <- df_sums %>% 
+df_out <- df_sf_sums %>% 
+  st_drop_geometry() %>% 
   bind_rows(df_total) %>% 
-  # select(County = div1, 
-  #        C_stock_2000_MtC = c_2000_MtC, 
-  #        Area_ha = area_ha, 
-  #        C_loss_MtC = c_loss_MtC,
-  #        Forest_loss_ha = forest_loss_ha) %>% 
   mutate(div1 = stringi::stri_trans_general(str=div1, id='Latin-ASCII'))
 
 # Save DF to CSV
 sums_csv <- here::here('outputs', site, 'loss_by_county.csv')
 df_out %>% write_csv(sums_csv)
 
+
+# Display table ----
+library(flextable)
+library(officer)
+df_out2 <- df_out %>% 
+  rename(County = div1) %>%
+  select(-c_dens_loss_tCha) 
+
+ft <- df_out2 %>% 
+  mutate(across(where(is.double), ~ round(.x, 1))) %>%
+  flextable() %>% 
+  colformat_num(digits = 1) %>% 
+  font(fontname = 'Times New Roman', part = 'all') %>% 
+  font(fontname = 'Times New Roman Bold', part = 'header') %>% 
+  fontsize(size = 10, part = 'all') %>% 
+  # set_header_labels(site = paste0('Division')) %>% 
+  compose(j = 'area_ha', part = 'header', 
+          value = as_paragraph('Land area (ha)')) %>% 
+  compose(j = 'forest_2000_ha', part = 'header', 
+          value = as_paragraph('Forest area in 2000 (ha)')) %>% 
+  compose(j = 'forest_loss_ha', part = 'header', 
+          value = as_paragraph('Forest area loss (ha)')) %>% 
+  compose(j = 'c_2000_MtC', part = 'header', 
+          value = as_paragraph('Carbon stock in 2000 (MtC)')) %>% 
+  compose(j = 'c_loss_MtC', part = 'header', 
+          value = as_paragraph('Carbon stock loss (MtC)')) %>% 
+  compose(j = 'c_loss_pct', part = 'header', 
+          value = as_paragraph('Carbon stock loss (%)')) %>% 
+  compose(j = 'c_dens_2000_tCha', part = 'header', 
+          value = as_paragraph('Carbon density in 2000 (tC/ha)')) %>% 
+  compose(j = 'c_loss_dens_tCha', part = 'header', 
+          value = as_paragraph('Carbon density loss (tC/ha)')) %>% 
+  hline_top(border = fp_border(width = 1), part = 'all') %>% 
+  hline_bottom(border = fp_border(width = 1), part = 'all') %>% 
+  hline_top(border = fp_border(width = 1), part = 'body') %>% 
+  hline_bottom(border = fp_border(width = 1), part = 'body') %>% 
+  set_table_properties(layout = "autofit", width = 0.7)
+ft
+
+ft_forest <- df_out2 %>% 
+  select(County, area_ha, forest_2000_ha, forest_loss_ha) %>% 
+  mutate(across(where(is.double), ~ round(.x, 1))) %>%
+  flextable() %>% 
+  colformat_num(digits = 1) %>% 
+  font(fontname = 'Times New Roman', part = 'all') %>% 
+  fontsize(size = 10, part = 'all') %>% 
+  # set_header_labels(site = paste0('Division')) %>% 
+  compose(j = 'area_ha', part = 'header', 
+          value = as_paragraph('Land area (ha)')) %>% 
+  compose(j = 'forest_2000_ha', part = 'header', 
+          value = as_paragraph('Forest area in 2000 (ha)')) %>% 
+  compose(j = 'forest_loss_ha', part = 'header', 
+          value = as_paragraph('Forest area loss (ha)')) %>% 
+  hline_top(border = fp_border(width = 1), part = 'all') %>% 
+  hline_bottom(border = fp_border(width = 1), part = 'all') %>% 
+  set_table_properties(layout = "autofit", width = 0.7)
+ft_forest
+
+ft_carbon <- df_out2 %>% 
+  select(-forest_2000_ha, -forest_loss_ha) %>% 
+  mutate(across(where(is.double), ~ round(.x, 1))) %>%
+  flextable() %>% 
+  colformat_num(digits = 1) %>% 
+  font(fontname = 'Times New Roman', part = 'all') %>% 
+  fontsize(size = 10, part = 'all') %>% 
+  # set_header_labels(site = paste0('Division')) %>% 
+  compose(j = 'area_ha', part = 'header', 
+          value = as_paragraph('Land area (ha)')) %>% 
+  compose(j = 'c_2000_MtC', part = 'header', 
+          value = as_paragraph('Carbon stock in 2000 (MtC)')) %>% 
+  compose(j = 'c_loss_MtC', part = 'header', 
+          value = as_paragraph('Carbon stock loss (MtC)')) %>% 
+  compose(j = 'c_loss_pct', part = 'header', 
+          value = as_paragraph('Carbon stock loss (%)')) %>% 
+  compose(j = 'c_dens_2000_tCha', part = 'header', 
+          value = as_paragraph('Carbon density in 2000 (tC/ha)')) %>% 
+  compose(j = 'c_loss_dens_tCha', part = 'header', 
+          value = as_paragraph('Carbon density loss (tC/ha)')) %>% 
+  hline_top(border = fp_border(width = 1), part = 'all') %>% 
+  hline_bottom(border = fp_border(width = 1), part = 'all') %>% 
+  set_table_properties(layout = "autofit", width = 0.7)
+ft_carbon
+
+sums_doc <- here::here('outputs', site, 'loss_tables.docx')
+save_as_docx(forest = ft_forest, carbon = ft_carbon, path = sums_doc)
+
 # Create piecewise regression plots ----
+# Tidy 
+df <- df_sf %>% st_drop_geometry()
+df_site <- tidy_forest_loss_df(df)
+
 (div_names <- df_sums$div1)
 df_site_t <- df_site %>% 
   mutate(c_loss_MtC = carbon_loss_MgC / 1e6)
@@ -185,24 +268,29 @@ ggsave(file.path('outputs', site, str_c(site_code, '_total_2001_2020_pw.png')),
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Map, choropleth by carbon loss ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-c_loss_sf <- df %>% 
-  select(div1) %>% 
-  inner_join(
-    df_sums %>% 
-      mutate(
-        c_loss_pct = carbon_loss_MgC / carbon_2000_mgc * 100,
-        c_loss_dens = carbon_loss_MgC / area_ha,
-        c_loss_str = round(carbon_loss_MgC / 1e6, 2) %>% 
-          format(., big.mark = ',') %>% 
-          str_c(., ' m MgC'),
-        label = str_c(div1, '\n', c_loss_str))
-  )
+# c_loss_sf <- df %>% 
+#   select(div1) %>% 
+#   inner_join(
+#     df_sums %>% 
+#       mutate(
+#         c_loss_pct = carbon_loss_MgC / carbon_2000_mgc * 100,
+#         c_loss_dens = carbon_loss_MgC / area_ha,
+#         c_loss_str = round(carbon_loss_MgC / 1e6, 2) %>% 
+#           format(., big.mark = ',') %>% 
+#           str_c(., ' m MgC'),
+#         label = str_c(div1, '\n', c_loss_str))
+#   )
+# 
+# c_loss_sf %>% 
+#   st_write(here::here('outputs', site, 'carbon_loss_counties.gpkg'),
+#            append = FALSE)
 
-c_loss_sf %>% 
-  st_write(here::here('outputs', site, 'carbon_loss_counties.gpkg'),
+df_sf_sums %>% 
+  st_write(here::here('outputs', site, 'counties_carbon_loss.gpkg'),
            append = FALSE)
 
-
-tmap_mode('view')
-tm_shape(c_loss_sf2) + tm_polygons(col = 'carbon_loss_MgC') +
-  tm_shape(c_loss_sf2) + tm_text('label')
+tmap_mode('plot')
+p1 <- tm_shape(df_sf_sums) + 
+  tm_polygons(col = 'c_loss_MtC', palette = 'Reds', title = 'Carbon stock loss (MtC)')
+p2 <- tm_shape(df_sf_sums) + 
+  tm_polygons(col = 'c_loss_pct', palette = 'Reds', title = 'Carbon stock loss (%)')

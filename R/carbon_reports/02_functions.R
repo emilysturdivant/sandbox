@@ -145,7 +145,10 @@ get_piecewise_line_scorebased <- function(df_zone) {
   return(dat2)
 }
 
-plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (million tons C)') {
+plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (MtC)') {
+  
+  yrvec <- min(df_zone$year):max(df_zone$year)
+  labels <- str_c(str_sub(yrvec-1, 3,4), str_sub(yrvec, 3,4), sep = '-')
   
   # Plot
   p <- df_zone %>% 
@@ -155,9 +158,11 @@ plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (million t
     geom_line(data = pw_fit, aes(x = x, y = y), color = 'firebrick3', size = .6) +
     scale_x_continuous(name = "Year",
                        breaks = 2001:2020,
-                       expand = c(0.01, 0.01)) +
+                       expand = c(0.01, 0.01),
+                       labels = labels) +
     scale_y_continuous(name = y_name,
-                       labels = scales::comma) +
+                       #labels = scales::comma
+                       ) +
     labs(title = div_name) +
     theme_bw() +
     theme(
@@ -241,7 +246,7 @@ layout_plots <- function(plots, params, title = TRUE, fix_y = TRUE) {
   # Conditionally fix y-scale
   if(fix_y){
     ps <- ps &
-      scale_y_continuous(labels = scales::comma, limits = c(0, 0.25))
+      scale_y_continuous(limits = c(0, 0.25))
   }
 
   # Set y-axis label conditionally
@@ -258,6 +263,7 @@ layout_plots <- function(plots, params, title = TRUE, fix_y = TRUE) {
   
   # Convert to grob
   gta <- gridExtra::grid.arrange(patchwork::patchworkGrob(ps), 
-                                 left = y_lab, 
-                                 bottom = x_lab)
+                                 left = y_lab,
+                                 bottom = x_lab
+                                 )
 }
