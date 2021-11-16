@@ -26,7 +26,7 @@ task_name <- tools::file_path_sans_ext(basename(polys_fp))
 out_fp <- file.path(export_path, str_c(task_name, '.geojson'))
 
 # Run GEE process
-source('R/carbon_reports/01_calculate_loss_with_rgee.R')
+# source('R/carbon_reports/01_calculate_loss_with_rgee.R')
 
 # Load functions 
 source('R/carbon_reports/02_functions.R')
@@ -50,35 +50,35 @@ source('R/carbon_reports/02_functions.R')
 # Load new sf for all sites ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load data
-df <- st_read(out_fp) %>% filter(div1 != 'Peipsi')
-
-# Tidy 
-df_tidy <- tidy_forest_loss_df(df)
-
-# # Add accents back
-# df_tidy <- df_tidy %>% 
-#   left_join(names_lu, by = c('name', div1 = 'div1_lat'), suffix = c('', '_accents'))
+df_sf <- st_read(out_fp) %>% filter(div1 != 'Peipsi')
+df <- df_sf %>% st_drop_geometry()
 
 # Get site and division names 
-(site <- df_tidy %>% distinct(name) %>% deframe())
+(site <- df %>% distinct(name) %>% deframe())
 site_code <- abbreviate(site, minlength = 3)
-df_site <- df_tidy
+
+# Tidy 
+df_site <- tidy_forest_loss_df(df)
 
 # Create output table of 20-year loss ----
-# Sum losses over 20-year period
-df_sums <- df_site %>% 
-  group_by(div1, area_ha, forest_2000_ha, carbon_2000_mgc) %>% 
-  summarize(across(any_of(c('carbon_loss_MgC', 'forest_loss_ha')), ~ sum(.x, na.rm = TRUE))) %>% 
-  ungroup() %>% 
-  mutate(
-    c_loss_pct = carbon_loss_MgC / carbon_2000_mgc * 100,
-    c_dens_2000_tCha = carbon_2000_mgc / area_ha,
-    c_dens_loss_tCha = carbon_loss_MgC / area_ha,
-    c_loss_MtC = carbon_loss_MgC / 1e6,
-    c_2000_MtC = carbon_2000_mgc / 1e6) %>% 
-  arrange(desc(carbon_loss_MgC)) %>% 
-  select(div1, area_ha, forest_2000_ha, forest_loss_ha, c_2000_MtC, 
-         c_loss_MtC, c_loss_pct, c_dens_2000_tCha, c_dens_loss_tCha)
+# Get values by county
+df_sums <- df %>% 
+  mutate(c_2000_MtC = carbon_2000_mgc / 1e6, 
+         c_loss_MtC = c_loss_mgc / 1e6,
+         c_loss_pct = c_loss_MtC / c_2000_MtC * 100, 
+         c_loss_dens_tCha = c_loss_mgc / area_ha
+         ) %>% 
+  select(div1, 
+         area_ha,
+         forest_2000_ha, 
+         forest_loss_ha,
+         c_2000_MtC,
+         c_loss_MtC, 
+         c_loss_pct,
+         c_dens_2000_tCha = c_dens_2000_mgcha, 
+         c_dens_loss_tCha = c_loss_dens,
+         c_loss_dens_tCha) %>% 
+  arrange(desc(c_loss_MtC))
 
 # Totals row
 df_total <- df_sums %>% 
@@ -86,7 +86,7 @@ df_total <- df_sums %>%
     across(any_of(c('area_ha', 'forest_2000_ha', 'forest_loss_ha',
                   'c_2000_MtC', 'c_loss_MtC')), 
            ~ sum(.x, na.rm = TRUE)),
-    across(any_of(c('c_loss_pct', 'c_dens_2000_tCha', 'c_dens_loss_tCha')), 
+    across(any_of(c('c_loss_pct', 'c_dens_2000_tCha', 'c_dens_loss_tCha', 'c_loss_dens_tCha')), 
            ~ mean(.x, na.rm = TRUE))) %>% 
   mutate(div1 = 'Estonia')
 
@@ -107,13 +107,13 @@ df_out %>% write_csv(sums_csv)
 # Create piecewise regression plots ----
 (div_names <- df_sums$div1)
 df_site_t <- df_site %>% 
-  mutate(c_loss_MtC = carbon_loss_MgC / 1000)
+  mutate(c_loss_MtC = carbon_loss_MgC / 1e6)
 
 plots <- list()
 for (i in 1:length(div_names)) {
   div_name <-  div_names[[i]]
   print('')
-  print(div_name)
+  print(paste0(i, ': ', div_name))
   
   df_zone <- filter(df_site_t, div1 == div_name)
   
@@ -126,7 +126,7 @@ for (i in 1:length(div_names)) {
 }
 
 # plots <- create_pw_plot_list(div_names, df_site_t)
-params <- get_params(div_names)
+params <- get_params(length(div_names))
 formatted_plots <- layout_plots(plots, params)
 
 ggsave(file.path('outputs', site, str_c(site_code, '_counties_2001_2020_pw.png')), 
@@ -134,38 +134,38 @@ ggsave(file.path('outputs', site, str_c(site_code, '_counties_2001_2020_pw.png')
        width = params$png_width,
        height = params$png_height)
 
-# Break into two groups
-pset1 <- plots[1:8]
-params <- get_params(length(pset1))
-pset1_formatted <- layout_plots(pset1, params)
-
-ggsave(file.path('outputs', site, str_c(site_code, '_counties_2001_2020_pw_1to8.png')), 
-       plot = pset1_formatted,
-       width = params$png_width,
-       height = params$png_height)
-
-# Break into two groups
-pset2 <- plots[9:15]
-params <- get_params(length(pset2))
-pset2_formatted <- layout_plots(pset2, params)
-
-ggsave(file.path('outputs', site, 
-                 str_c(site_code, '_counties_2001_2020_pw_9to15.png')), 
-       plot = pset2_formatted,
-       width = params$png_width,
-       height = params$png_height)
+# # Break into two groups
+# pset1 <- plots[1:8]
+# params <- get_params(length(pset1))
+# pset1_formatted <- layout_plots(pset1, params)
+# 
+# ggsave(file.path('outputs', site, str_c(site_code, '_counties_2001_2020_pw_1to8.png')), 
+#        plot = pset1_formatted,
+#        width = params$png_width,
+#        height = params$png_height)
+# 
+# # Break into two groups
+# pset2 <- plots[9:15]
+# params <- get_params(length(pset2))
+# pset2_formatted <- layout_plots(pset2, params)
+# 
+# ggsave(file.path('outputs', site, 
+#                  str_c(site_code, '_counties_2001_2020_pw_9to15.png')), 
+#        plot = pset2_formatted,
+#        width = params$png_width,
+#        height = params$png_height)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Total piecewise regression plot ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 df_tot <- df_site %>% 
   group_by(year) %>% 
-  select(-ends_with('pct')) %>% 
+  select(any_of(c('carbon_loss_MgC', 'forest_loss_ha'))) %>% 
   summarize(across(where(is.double), ~ sum(.x, na.rm = TRUE))) %>% 
   ungroup()
 
 df_tot_t <- df_tot %>% 
-  mutate(carbon_loss_MgC = carbon_loss_MgC / 1000)
+  mutate(c_loss_MtC = carbon_loss_MgC / 1e6)
 
 try(rm(pw_fit))
 df_zone <- df_tot_t

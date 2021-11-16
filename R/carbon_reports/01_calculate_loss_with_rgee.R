@@ -69,7 +69,7 @@ for (year in seq(1, 20)) { # 1-20 = 2001-2020
 }
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Get baseline (2000) values for carbon stock and forest area ----
+# Get baseline (2000) values for forest area and carbon ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Get forest area ca. 2000
 tc_2000 <- hansen_30m$select(c('treecover2000'))
@@ -92,7 +92,7 @@ fc_agg <- forest_2000$reduceRegions(
     forest_2000_ha = f$get('sum'))
   )
 })
-fc_agg$first()$get('forest_2000_ha')$getInfo()
+# fc_agg$first()$get('forest_2000_ha')$getInfo()
 # 
 # # Get counts of forested pixels ----
 # fc_2000 <- tc_2000$gt(25)
@@ -176,6 +176,99 @@ fc_2000 <- agb_30m_mgcha$reduceRegions(
     c_dens_2000_mgcha = f$get('mean'))
   )
 })
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Get total loss values (2000-2020) for forest area and carbon ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Mask AGC with loss band
+loss <- hansen_30m$select(c('loss'))$updateMask(loss$eq(1))
+
+# Loss in forest area ----
+# Get pixel area with GEE
+loss_area <- loss$
+  multiply(loss$pixelArea()$divide(1e4))
+
+fc_2000 <- loss_area$reduceRegions(
+  collection = fc_2000, # add to feature class containing all loss results
+  reducer = ee$Reducer$sum(),
+  scale = agb_res_m
+)$map(function(f){ # Rename sum column
+  ee$Feature(f$geometry(), list(
+    name = f$get('name'), 
+    div1 = f$get('div1'),
+    forest_2000_ha = f$get('forest_2000_ha'),
+    carbon_2000_mgc = f$get('carbon_2000_mgc'),
+    c_dens_2000_mgcha = f$get('c_dens_2000_mgcha'),
+    forest_loss_ha = f$get('sum'))
+  )
+})
+
+# Loss in carbon stock ----
+c_loss <- agb_30m_mgc$
+  updateMask(loss$mask())$
+  updateMask(agb_30m_mgc$neq(0))
+# Map$addLayer(c_loss, list(min = 0, max = 2, palette = viridis)) |
+# Map$addLayer(loss, list(min = 0, max = 1, palette = viridis))
+# Map$addLayer(agb_30m_mgc, list(min = 0, max = 2, palette = viridis))
+# 
+# agb_30m_mgc$reduceRegion(
+#   reducer = ee$Reducer$percentile(c(0, 50, 100)),
+#   geometry = fc$first()$geometry(),
+#   bestEffort = TRUE
+# )$getInfo()
+
+fc_2000 <- c_loss$reduceRegions(
+  collection = fc_2000, # add to feature class containing all loss results
+  reducer = ee$Reducer$sum(),
+  scale = agb_res_m
+)$map(function(f){ # Rename sum column
+  ee$Feature(f$geometry(), list(
+    name = f$get('name'), 
+    div1 = f$get('div1'),
+    forest_2000_ha = f$get('forest_2000_ha'),
+    carbon_2000_mgc = f$get('carbon_2000_mgc'),
+    c_dens_2000_mgcha = f$get('c_dens_2000_mgcha'),
+    forest_loss_ha = f$get('forest_loss_ha'),
+    c_loss_mgc = f$get('sum'))
+  )
+})
+
+# Loss in density ----
+c_dens_loss <- agb_30m_mgcha$
+  updateMask(loss$mask())$
+  updateMask(agb_30m_mgcha$neq(0))
+# Map$addLayer(c_dens_loss, list(min = 0, max = 65, palette = viridis)) |
+# Map$addLayer(loss, list(min = 0, max = 1, palette = viridis))
+# Map$addLayer(agb_30m_mgcha, list(min = 0, max = 65, palette = viridis))
+# 
+# c_dens_loss$reduceRegion(
+#   reducer = ee$Reducer$percentile(c(0, 50, 100)),
+#   geometry = fc$first()$geometry(),
+#   bestEffort = TRUE
+# )$getInfo()
+
+fc_2000 <- c_dens_loss$reduceRegions(
+  collection = fc_2000, # add to feature class containing all loss results
+  reducer = ee$Reducer$mean(),
+  scale = agb_res_m
+)$map(function(f){ # Rename sum column
+  ee$Feature(f$geometry(), list(
+    name = f$get('name'), 
+    div1 = f$get('div1'),
+    forest_2000_ha = f$get('forest_2000_ha'),
+    carbon_2000_mgc = f$get('carbon_2000_mgc'),
+    c_dens_2000_mgcha = f$get('c_dens_2000_mgcha'),
+    forest_loss_ha = f$get('forest_loss_ha'),
+    c_loss_mgc = f$get('c_loss_mgc'),
+    c_loss_dens = f$get('mean'))
+  )
+})
+
+fc_2000$first()$propertyNames()$getInfo()
+
+# Get polygon areas ----
+fc_2000 <- fc_2000$map(function(f) f$set(list(area_ha = f$area()$divide(1e4))))
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Sum forest area and carbon each year by region ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

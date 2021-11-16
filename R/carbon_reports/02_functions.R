@@ -18,6 +18,35 @@ library(tidyverse)
 tidy_forest_loss_df <- function(df) {
   # Get DF with annual carbon loss
   df_carbon <- df %>% 
+    dplyr::select(!starts_with('forest')) %>%
+    # dplyr::select(starts_with('carbon_loss'), HIH_site, type, name) %>% 
+    pivot_longer(starts_with('carbon_loss'), 
+                 names_to = 'year',
+                 values_to = 'carbon_loss_MgC') %>% 
+    mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
+             lubridate::year(), )
+  
+  # Get DF with annual forest area loss
+  df_area <- df %>% 
+    dplyr::select(!starts_with('carbon')) %>%
+    # dplyr::select(starts_with('forest'), name) %>% 
+    pivot_longer(starts_with('forest_loss'), 
+                 names_to = 'year',
+                 values_to = 'forest_loss_ha') %>% 
+    mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
+             lubridate::year())
+  
+  # Join forest carbon and area loss values
+  df_tidy <- df_carbon %>% 
+    left_join(df_area)
+  
+  # Return
+  return(df_tidy)
+}
+
+tidy_forest_loss_df_sf <- function(df) {
+  # Get DF with annual carbon loss
+  df_carbon <- df %>% 
     st_drop_geometry() %>% 
     dplyr::select(!starts_with('forest')) %>%
     # dplyr::select(starts_with('carbon_loss'), HIH_site, type, name) %>% 
@@ -62,7 +91,7 @@ tidy_forest_loss_df <- function(df) {
 get_piecewise_line <- function(df_zone) {
   
   # Get linear regression
-  out.lm <- lm(carbon_loss_MgC ~ year, data = df_zone)
+  out.lm <- lm(c_loss_MtC ~ year, data = df_zone)
   dat2 = data.frame(x = df_zone$year, y = out.lm$fitted.values)
   
   # BIC-based selection - throws error when 0 breakpoints are found
@@ -116,11 +145,11 @@ get_piecewise_line_scorebased <- function(df_zone) {
   return(dat2)
 }
 
-plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (metric tons C)') {
+plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (million tons C)') {
   
   # Plot
   p <- df_zone %>% 
-    ggplot(aes(x = year, y = carbon_loss_MgC)) +
+    ggplot(aes(x = year, y = c_loss_MtC)) +
     geom_point(size = .3, color = 'grey30') +
     geom_line(color = 'grey30', size = .5) + 
     geom_line(data = pw_fit, aes(x = x, y = y), color = 'firebrick3', size = .6) +
@@ -212,16 +241,16 @@ layout_plots <- function(plots, params, title = TRUE, fix_y = TRUE) {
   # Conditionally fix y-scale
   if(fix_y){
     ps <- ps &
-      scale_y_continuous(labels = scales::comma, limits = c(0, 500))
+      scale_y_continuous(labels = scales::comma, limits = c(0, 0.25))
   }
 
   # Set y-axis label conditionally
   if(params$png_height < 3) {
-    y_lab <- grid::textGrob("AGC loss (MgC x 1000)", 
+    y_lab <- grid::textGrob("AGC loss (MtC)", 
                             gp = grid::gpar(fontsize=10), 
                             rot = 90)
   } else {
-    y_lab <- grid::textGrob("Aboveground carbon loss (MgC x 1000)", 
+    y_lab <- grid::textGrob("Aboveground carbon loss (MtC)", 
                             gp = grid::gpar(fontsize=10), 
                             rot = 90)
   }
