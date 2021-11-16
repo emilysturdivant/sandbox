@@ -26,7 +26,7 @@ task_name <- tools::file_path_sans_ext(basename(polys_fp))
 out_fp <- file.path(export_path, str_c(task_name, '.geojson'))
 
 # Run GEE process
-# source('R/carbon_reports/01_calculate_loss_with_rgee.R')
+source('R/carbon_reports/01_calculate_loss_with_rgee.R')
 
 # Load functions 
 source('R/carbon_reports/02_functions.R')
@@ -53,8 +53,7 @@ source('R/carbon_reports/02_functions.R')
 df <- st_read(out_fp) %>% filter(div1 != 'Peipsi')
 
 # Tidy 
-df_tidy <- tidy_forest_loss_df(df) %>% 
-  mutate(across(starts_with('carbon'), ~ .x / 1e6))
+df_tidy <- tidy_forest_loss_df(df)
 
 # # Add accents back
 # df_tidy <- df_tidy %>% 
@@ -73,26 +72,33 @@ df_sums <- df_site %>%
   ungroup() %>% 
   mutate(
     c_loss_pct = carbon_loss_MgC / carbon_2000_mgc * 100,
-    c_dens_2000 = carbon_2000_mgc / area_ha,
-    c_loss_dens = carbon_loss_MgC / area_ha) %>% 
+    c_dens_2000_tCha = carbon_2000_mgc / area_ha,
+    c_dens_loss_tCha = carbon_loss_MgC / area_ha,
+    c_loss_MtC = carbon_loss_MgC / 1e6,
+    c_2000_MtC = carbon_2000_mgc / 1e6) %>% 
   arrange(desc(carbon_loss_MgC)) %>% 
-  select(div1, area_ha, forest_2000_ha, forest_loss_ha, carbon_2000_mgc, 
-         carbon_loss_MgC, c_loss_pct, c_dens_2000, c_loss_dens)
+  select(div1, area_ha, forest_2000_ha, forest_loss_ha, c_2000_MtC, 
+         c_loss_MtC, c_loss_pct, c_dens_2000_tCha, c_dens_loss_tCha)
 
 # Totals row
 df_total <- df_sums %>% 
-  summarize(across(where(is.double), ~ sum(.x, na.rm = TRUE))) %>% 
-  mutate(div1 = 'Total')
+  summarize(
+    across(any_of(c('area_ha', 'forest_2000_ha', 'forest_loss_ha',
+                  'c_2000_MtC', 'c_loss_MtC')), 
+           ~ sum(.x, na.rm = TRUE)),
+    across(any_of(c('c_loss_pct', 'c_dens_2000_tCha', 'c_dens_loss_tCha')), 
+           ~ mean(.x, na.rm = TRUE))) %>% 
+  mutate(div1 = 'Estonia')
 
 # Combine and change column names
 df_out <- df_sums %>% 
   bind_rows(df_total) %>% 
-  select(County = div1, 
-         C_stock_2000_MgC = carbon_2000_mgc, 
-         Area_ha = area_ha, 
-         C_loss_MgC = carbon_loss_MgC,
-         Forest_loss_ha = forest_loss_ha) %>% 
-  mutate(County = stringi::stri_trans_general(str=County, id='Latin-ASCII'))
+  # select(County = div1, 
+  #        C_stock_2000_MtC = c_2000_MtC, 
+  #        Area_ha = area_ha, 
+  #        C_loss_MtC = c_loss_MtC,
+  #        Forest_loss_ha = forest_loss_ha) %>% 
+  mutate(div1 = stringi::stri_trans_general(str=div1, id='Latin-ASCII'))
 
 # Save DF to CSV
 sums_csv <- here::here('outputs', site, 'loss_by_county.csv')
@@ -101,7 +107,7 @@ df_out %>% write_csv(sums_csv)
 # Create piecewise regression plots ----
 (div_names <- df_sums$div1)
 df_site_t <- df_site %>% 
-  mutate(carbon_loss_MgC = carbon_loss_MgC / 1000)
+  mutate(c_loss_MtC = carbon_loss_MgC / 1000)
 
 plots <- list()
 for (i in 1:length(div_names)) {
