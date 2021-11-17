@@ -149,7 +149,9 @@ plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (MtC)') {
   
   yrvec <- min(df_zone$year):max(df_zone$year)
   labels <- str_c(str_sub(yrvec-1, 3,4), str_sub(yrvec, 3,4), sep = '-')
-  
+  # rm_labs <- labels[seq(2, length(labels), 2)] %>% str_c(collapse = '|')
+  # labels <- labels %>% str_replace_all(rm_labs, '')
+    
   # Plot
   p <- df_zone %>% 
     ggplot(aes(x = year, y = c_loss_MtC)) +
@@ -227,7 +229,7 @@ get_params <- function(n) {
     
   }
   
-  return(list(ncol=ncol, png_width=png_width, png_height=png_height))
+  return(list(n = n, ncol=ncol, png_width=png_width, png_height=png_height))
 }
 
 layout_plots <- function(plots, params, title = TRUE, fix_y = TRUE) {
@@ -240,8 +242,7 @@ layout_plots <- function(plots, params, title = TRUE, fix_y = TRUE) {
       # caption = cap_text,
       theme = theme(plot.title = element_text(size = 14))
     ) &
-    theme(title = element_text(size = 10), 
-          axis.title = element_blank())
+    theme(title = element_text(size = 10))
   
   # Conditionally fix y-scale
   if(fix_y){
@@ -249,7 +250,22 @@ layout_plots <- function(plots, params, title = TRUE, fix_y = TRUE) {
       scale_y_continuous(limits = c(0, 0.25))
   }
 
-  # Set y-axis label conditionally
+  # Conditionally remove every-other x-axis label
+  if(params$ncol > 1){
+    yrvec <- 2001:2020
+    labels <- str_c(str_sub(yrvec-1, 3,4), str_sub(yrvec, 3,4), sep = '-')
+    rm_labs <- labels[seq(2, length(labels), 2)] %>% str_c(collapse = '|')
+    labels <- labels %>% str_replace_all(rm_labs, '')
+    
+    # Plot
+    ps <- ps &
+      scale_x_continuous(name = "Year",
+                         breaks = yrvec,
+                         expand = c(0.01, 0.01),
+                         labels = labels)
+  }
+  
+  # Set y-axis title based on plot size
   if(params$png_height < 3) {
     y_lab <- grid::textGrob("AGC loss (MtC)", 
                             gp = grid::gpar(fontsize=10), 
@@ -259,8 +275,16 @@ layout_plots <- function(plots, params, title = TRUE, fix_y = TRUE) {
                             gp = grid::gpar(fontsize=10), 
                             rot = 90)
   }
-  x_lab <- grid::textGrob("Year", gp = grid::gpar(fontsize=10))
   
+  # Set x-axis title
+  if(params$n > 1) {
+    ps <- ps & theme(axis.title = element_blank())
+    x_lab <- grid::textGrob("Year", gp = grid::gpar(fontsize=10))
+  } else {
+    ps <- ps & theme(axis.title.y = element_blank())
+    x_lab <- NULL
+  }
+
   # Convert to grob
   gta <- gridExtra::grid.arrange(patchwork::patchworkGrob(ps), 
                                  left = y_lab,
