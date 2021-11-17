@@ -46,8 +46,20 @@ viridis <- c('#440154', '#433982', '#30678D', '#218F8B', '#36B677', '#8ED542', '
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Build raster stacks of loss ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Hansen forest cover and loss
 hansen_30m <- ee$Image("UMD/hansen/global_forest_change_2020_v1_8")
+
+# Get forested pixels based on Hansen
+tc_2000 <- hansen_30m$select(c('treecover2000'))
+forest_2000 <- tc_2000$gt(25)
+forest_2000 <- forest_2000$unmask()$updateMask(forest_2000$eq(1))
+# Map$addLayer(forest_2000, list(palette = c('red', 'green'))) 
+
+# Biomass density
 agb_30m_mgha <- ee$Image("users/sgorelik/global_AGB_2000_30m_Mgha_V4")
+
+# Mask biomass to "forested" areas
+agb_30m_mgha <- agb_30m_mgha$updateMask(forest_2000)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Compare AGB>0 to TC>25% ----
@@ -84,8 +96,9 @@ agb_nonforest <- agb_2000$unmask()$multiply(forest_2000$unmask()$eq(0))
 agb_nonforest <- agb_nonforest$updateMask(agb_nonforest$neq(0))
 
 # Map$addLayer(agb_2000$unmask(), list(palette = viridis)) +
-#   Map$addLayer(forest_2000$unmask(), list(palette = c('red', 'green'))) +
-#   Map$addLayer(agb_nonforest, list(palette = c('blue', 'orange')))
+#   Map$addLayer(forest_2000, list(palette = c('red', 'green'))) +
+  Map$addLayer(agb_nonforest, list(min = 0, max = 1, palette = c('blue', 'orange'))) +
+    Map$addLayer(agb_forest, list(min = 0, max = 1, palette = c('blue', 'orange')))
 
 # Count forested pixels by district
 ct_nonforest <- agb_nonforest$reduceRegions(
@@ -138,10 +151,11 @@ mgcha_nonforest <- agb_30m_mgcha$reduceRegions(
 )
 mgcha_nonforest_num <- mgcha_nonforest$first()$get('mean')$getInfo()
 
-# Back to original programming -----
-
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Back to original programming ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # 30m Hansen loss year (0 = no loss; 1 - 20 = forest loss in year 2001 - 2018, respectively)
-loss_year <- hansen_30m$select(c('lossyear'))
+loss_year <- hansen_30m$select(c('lossyear'))$updateMask(forest_2000)
 
 # spatial resolution
 hansen_res_m <- loss_year$projection()$nominalScale()
@@ -260,7 +274,7 @@ agb2000_mgc_masked <- agb_30m_mgc$unmask()$updateMask(agb_30m_mgc$gt(0))
 # Map$addLayer(agb_30m_mgc, list(min = 0, max = 50, palette = agb_pal)) |
 #   Map$addLayer(agb2000_mgc_masked, list(min = 0, max = 50, palette = agb_pal))
 
-fc_agg <- agb2000_mgc_masked$
+fc_agg <- agb_30m_mgc$
   reduceRegions(
   collection = fc_agg, # add to feature class containing all loss results
   reducer = ee$Reducer$sum(),
@@ -273,12 +287,13 @@ fc_agg <- agb2000_mgc_masked$
     carbon_2000_mgc = f$get('sum'))
   )
 })
+fc_agg$first()$get('carbon_2000_mgc')$getInfo()
 
 # Get carbon density ca. 2000 by district ----
 agb2000_mgcha_masked <- agb_30m_mgcha$unmask()$updateMask(agb_30m_mgcha$gt(0))
 Map$addLayer(agb2000_mgcha_masked, list(min = 0, max = 50, palette = agb_pal))
 
-fc_2000 <- agb2000_mgcha_masked$
+fc_2000 <- agb_30m_mgcha$
   reduceRegions(
     collection = fc_agg, # add to feature class containing all loss results
     reducer = ee$Reducer$mean(),
@@ -301,7 +316,8 @@ fc_2000$first()$get('c_dens_2000_mgcha')$getInfo()
 # Get total loss values (2000-2020) for forest area and carbon ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Mask AGC with loss band
-loss <- hansen_30m$select(c('loss'))$updateMask(loss$eq(1))
+loss <- hansen_30m$select(c('loss'))
+loss <- loss$updateMask(loss$eq(1))
 
 # Loss in forest area ----
 # Get pixel area with GEE
@@ -384,7 +400,7 @@ fc_2000 <- c_dens_loss$reduceRegions(
   )
 })
 
-fc_2000$first()$propertyNames()$getInfo()
+fc_2000$first()$get('c_loss_mgc')$getInfo()
 
 # Get polygon areas ----
 fc_2000 <- fc_2000$map(function(f) f$set(list(area_ha = f$area()$divide(1e4))))
