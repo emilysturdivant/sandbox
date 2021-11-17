@@ -100,8 +100,6 @@ ft <- df_out %>%
   flextable() %>% 
   mk_par(j = 'div1', part = 'header', 
           value = as_paragraph('County')) %>% 
-  # mk_par(j = 'area_ha', part = 'header', 
-  #         value = as_paragraph('Land area (ha)')) %>% 
   mk_par(j = 'forest_2000_ha', part = 'header', 
           value = as_paragraph('Forest area in 2000 (ha)')) %>% 
   mk_par(j = 'forest_loss_ha', part = 'header', 
@@ -114,6 +112,8 @@ ft <- df_out %>%
           value = as_paragraph('Carbon density in 2000 (tC/ha)')) %>% 
   mk_par(j = 'c_dens_loss_tCha', part = 'header', 
           value = as_paragraph('Carbon density loss (tC/ha)')) %>% 
+  # mk_par(j = 'area_ha', part = 'header', 
+  #         value = as_paragraph('Land area (ha)')) %>% 
   # mk_par(j = 'c_loss_pct', part = 'header', 
   #         value = as_paragraph('Carbon stock\nloss\n(%)')) %>% 
   # mk_par(j = 'c_dens_loss_pct', part = 'header', 
