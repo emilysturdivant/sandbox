@@ -13,13 +13,13 @@
 # Initialize ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load libraries 
+library(flextable)
+library(officer)
 library(sf)
 library(patchwork)
 library(segmented)
 library(tidyverse)
 library(tmap)
-library(flextable)
-library(officer)
 
 # Prep paths
 export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
@@ -48,19 +48,22 @@ df_sf_sums <- df_sf %>%
   mutate(c_2000_MtC = carbon_2000_mgc / 1e6, 
          c_loss_MtC = c_loss_mgc / 1e6,
          c_loss_pct = c_loss_MtC / c_2000_MtC * 100, 
-         c_loss_dens_tCha = c_loss_mgc / forest_2000_ha,
-         c_loss_dens_pct = c_loss_dens_tCha / c_dens_2000_mgcha * 100
+         c_dens_2000_tCha = carbon_2000_mgc / forest_2000_ha,
+         c_dens_loss_tCha = c_loss_mgc / forest_2000_ha,
+         c_dens_loss_pct = c_dens_loss_tCha / c_dens_2000_tCha * 100,
+         forest_loss_pct = forest_loss_ha / forest_2000_ha * 100
          ) %>% 
   select(div1, 
          area_ha,
          forest_2000_ha, 
          forest_loss_ha,
+         forest_loss_pct,
          c_2000_MtC,
          c_loss_MtC, 
          c_loss_pct,
-         c_dens_2000_tCha = c_dens_2000_mgcha, 
-         c_loss_dens_tCha, 
-         c_loss_dens_pct) %>% 
+         c_dens_2000_tCha, 
+         c_dens_loss_tCha, 
+         c_dens_loss_pct) %>% 
   arrange(desc(c_loss_MtC))
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -83,34 +86,41 @@ df_out <- df_sf_sums %>%
 
 # Format table ----
 ft <- df_out %>% 
-  select(-area_ha) %>% 
   mutate(
     across(any_of(ends_with('_ha')), ~ round(.x)),
     across(any_of(ends_with('_MtC')), ~ round(.x, 1)),
-    across(any_of(ends_with('_pct')), ~ round(.x, 1)),
-    across(any_of(ends_with('_tCha')), ~ round(.x, 1))
+    across(any_of(ends_with('_pct')), ~ round(.x)),
+    across(any_of(ends_with('_tCha')), ~ round(.x, 1)),
+    forest_loss_ha = str_c(format(forest_loss_ha, big.mark = ","), 
+                           str_glue('  ({forest_loss_pct}%)')),
+    c_loss_MtC = str_glue('{c_loss_MtC}  ({c_loss_pct}%)'),
+    c_dens_loss_tCha = str_c(c_dens_loss_tCha, str_glue('  ({c_dens_loss_pct}%)'))
   ) %>%
+  select(-area_ha, -forest_loss_pct, -c_loss_pct, -c_dens_loss_pct) %>% 
   flextable() %>% 
-  compose(j = 'div1', part = 'header', 
+  mk_par(j = 'div1', part = 'header', 
           value = as_paragraph('County')) %>% 
-  # compose(j = 'area_ha', part = 'header', 
+  # mk_par(j = 'area_ha', part = 'header', 
   #         value = as_paragraph('Land area (ha)')) %>% 
-  compose(j = 'forest_2000_ha', part = 'header', 
-          value = as_paragraph('Forest area in 2000\n(ha)')) %>% 
-  compose(j = 'forest_loss_ha', part = 'header', 
-          value = as_paragraph('Forest area\nloss\n(ha)')) %>% 
-  compose(j = 'c_2000_MtC', part = 'header', 
-          value = as_paragraph('Carbon stock in 2000\n(MtC)')) %>% 
-  compose(j = 'c_loss_MtC', part = 'header', 
-          value = as_paragraph('Carbon stock\nloss\n(MtC)')) %>% 
-  compose(j = 'c_loss_pct', part = 'header', 
-          value = as_paragraph('Carbon stock\nloss\n(%)')) %>% 
-  compose(j = 'c_dens_2000_tCha', part = 'header', 
-          value = as_paragraph('Carbon density in 2000\n(tC/ha)')) %>% 
-  compose(j = 'c_loss_dens_tCha', part = 'header', 
-          value = as_paragraph('Carbon density loss\n(tC/ha)')) %>% 
-  compose(j = 'c_loss_dens_pct', part = 'header', 
-          value = as_paragraph('Carbon density loss\n(%)')) %>% 
+  mk_par(j = 'forest_2000_ha', part = 'header', 
+          value = as_paragraph('Forest area in 2000 (ha)')) %>% 
+  mk_par(j = 'forest_loss_ha', part = 'header', 
+          value = as_paragraph('Forest\narea loss\n(ha)')) %>% 
+  mk_par(j = 'c_2000_MtC', part = 'header', 
+          value = as_paragraph('Carbon stock in 2000 (MtC)')) %>% 
+  mk_par(j = 'c_loss_MtC', part = 'header', 
+          value = as_paragraph('Carbon\nstock loss\n(MtC)')) %>% 
+  mk_par(j = 'c_dens_2000_tCha', part = 'header', 
+          value = as_paragraph('Carbon density in 2000 (tC/ha)')) %>% 
+  mk_par(j = 'c_dens_loss_tCha', part = 'header', 
+          value = as_paragraph('Carbon density loss (tC/ha)')) %>% 
+  # mk_par(j = 'c_loss_pct', part = 'header', 
+  #         value = as_paragraph('Carbon stock\nloss\n(%)')) %>% 
+  # mk_par(j = 'c_dens_loss_pct', part = 'header', 
+  #         value = as_paragraph('Carbon density loss\n(%)')) %>% 
+  align(j = 'forest_loss_ha', align = 'right', part = 'body') %>% 
+  align(j = 'c_dens_loss_tCha', align = 'right', part = 'body') %>% 
+  align(j = 'c_loss_MtC', align = 'right', part = 'body') %>% 
   font(fontname = 'Times New Roman', part = 'all') %>%
   fontsize(size = 10, part = 'all') %>%
   bold(part = 'header') %>% 
@@ -118,16 +128,20 @@ ft <- df_out %>%
   valign(part = 'header', valign = 'bottom') %>% 
   align(j = 'div1', align = 'left', part = 'header') %>% 
   bold(j = 'div1') %>% 
-  bg(part = 'body', i = seq(1, nrow(df_out2), 2), bg = "#EFEFEF") %>% 
+  bg(part = 'body', i = seq(1, nrow(df_out), 2), bg = "#EFEFEF") %>% 
   hline_top(border = fp_border(width = 1), part = 'all') %>% 
   hline_bottom(border = fp_border(width = 1), part = 'all') %>% 
-  hline(i = nrow(df_out2)-1, border = fp_border(width = 1)) %>% 
-  width(width = 0.68, unit = 'in') %>% 
+  hline(i = nrow(df_out)-1, border = fp_border(width = 1)) %>% 
+  width(width = 0.9, unit = 'in') %>% 
+  width(j = 'c_loss_MtC', width = 1, unit = 'in') %>% 
+  width(j = 'c_dens_loss_tCha', width = 1, unit = 'in') %>% 
+  width(j = 'forest_loss_ha', width = 1.1, unit = 'in') %>%
   width(j = 'forest_2000_ha', width = 0.7, unit = 'in') %>% 
   width(j = 'div1', width = 0.85, unit = 'in')
+ft
 
 # Save in Word doc to copy to report
-sums_doc <- here::here('outputs', site, 'loss_table.docx')
+sums_doc <- here::here('outputs', site, 'loss_table_pcts.docx')
 save_as_docx(ft, path = sums_doc)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
