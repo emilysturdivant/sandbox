@@ -7,12 +7,12 @@
 #     * esturdivant@woodwellclimate.org, 2021-10-10
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+library(raster)
 library(tmap)
 tmap_mode('view')
 library(sf)
 library(terra)
 library(tidyverse)
-library(raster)
 
 sites_dir <- '~/data/hih_sites'
 polys_dir <- file.path(sites_dir, 'final_sites')
@@ -32,11 +32,11 @@ final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hi
 # agb_500m_2003 %>% object.size() %>% print(units = 'MB')
 #   raster::writeRaster(here::here('~/data/raw_data/biomass/2003_2018/global_biomass_500m_2003.tif'))
 
-# Prep to get paths to assets
-user <- ee_get_assethome()
-addm <- function(x) sprintf("%s/%s", user, x)
-
-agb_500m_2003 %>% raster_as_ee(assetId = addm("global_biomass_500m_2003"))
+# # Prep to get paths to assets
+# user <- ee_get_assethome()
+# addm <- function(x) sprintf("%s/%s", user, x)
+# 
+# agb_500m_2003 %>% raster_as_ee(assetId = addm("global_biomass_500m_2003"))
 
 
 
@@ -57,17 +57,28 @@ lakes <- st_read(lakes_shp) %>% st_make_valid()
 # Clip out lakes
 est_nolks <- estonia %>% st_difference(st_union(lakes))
 
+# Simplify
+est_nolks_simp <- est_nolks %>% st_simplify(dTolerance = 0.01)
+
+# Save
+estonia_shp <- here::here('~/data', 'sites_for_c_report', 'estonia_div_nolakes_simp01.shp')
+est_nolks_simp %>% st_write(estonia_shp, append = FALSE)
+
+# Dissolve
+estonia_dissolve <- estonia %>% st_union()
+est_diss_nolks <- estonia_dissolve %>% st_difference(st_union(lakes))
+est_diss_nolks_simp <- est_diss_nolks %>% st_simplify(dTolerance = 0.01)
+
+# Save
+estonia_shp <- here::here('~/data', 'sites_for_c_report', 'estonia_nolakes_simp01.shp')
+est_diss_nolks_simp %>% st_write(estonia_shp, append = FALSE)
+
 # Rasterize (at Hansen resolution) ----
 # Set ID field 
 est_nolks <- est_nolks %>% rownames_to_column('ID')
 est_nolks %>% terra::rasterize()
 
-# Simplify
-est_nolks <- est_nolks %>% 
-  st_simplify(dTolerance = 0.01)
 
-estonia_shp <- here::here('~/data', 'sites_for_c_report', 'estonia_div_nolakes.shp')
-est_nolks %>% st_write(estonia_shp, append = FALSE)
 
 # Natural Earth ----
 lakes <- ne_download(scale = 'small', type = 'lakes', category = 'physical', 

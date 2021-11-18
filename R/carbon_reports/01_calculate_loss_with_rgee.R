@@ -80,6 +80,33 @@ hansen_res_m <- loss_year$projection()$nominalScale()
 agb_res_m <- agb_mgha$projection()$nominalScale()
 agb_res_km <- agb_res_m$divide(1e3)
 
+# Get total carbon stock ca. 2000 for dissolved FC ----
+# Unmasked
+total_carbon_mgc <- carbon_mgc$unmask()$ 
+  reduceRegions(
+    collection = fc_dissolved,
+    reducer = ee$Reducer$sum()$unweighted(),
+    scale = agb_res_m
+  )
+# total_carbon_mgc$first()$get('sum')$getInfo() %>% format(big.mark = ',')
+
+# Masked to forest area
+total_carbon_mgc <- carbon_mgc$updateMask(forest_mask)$
+  reduceRegions(
+    collection = fc_dissolved,
+    reducer = ee$Reducer$sum()$unweighted(),
+    scale = agb_res_m
+  )
+# total_carbon_mgc$first()$get('sum')$getInfo() %>% format(big.mark = ',')
+
+# Total forest area
+total_forest <- forest_2000$reduceRegions(
+  collection = fc_dissolved, # add to feature class
+  reducer = ee$Reducer$sum()$unweighted(),
+  scale = hansen_res_m
+)
+# total_forest$first()$get('sum')$getInfo() %>% format(big.mark = ',')
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Get baseline (2000) values for forest area and carbon ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -91,7 +118,7 @@ forest_2000 <- tc_2000$gt(25)$
 # summarize Forest area ca. 2000 by district
 fc_agg <- forest_2000$reduceRegions(
   collection = fc, # add to feature class
-  reducer = ee$Reducer$sum(),
+  reducer = ee$Reducer$sum()$unweighted(),
   scale = hansen_res_m
 )$map(function(f){ # Rename sum column
   ee$Feature(f$geometry(), list(
@@ -105,7 +132,7 @@ fc_agg <- forest_2000$reduceRegions(
 fc_2000 <- carbon_mgc$ #updateMask(forest_mask)$
   reduceRegions(
     collection = fc_agg, # add to feature class containing all loss results
-    reducer = ee$Reducer$sum(),
+    reducer = ee$Reducer$sum()$unweighted(),
     scale = agb_res_m
   )$map(function(f){ # Rename sum column
     ee$Feature(f$geometry(), list(
@@ -115,37 +142,10 @@ fc_2000 <- carbon_mgc$ #updateMask(forest_mask)$
       carbon_2000_mgc = f$get('sum'))
     )
   })
-# 
-# fc_2000$first()$get('div1')$getInfo()
-# fc_2000$first()$get('forest_2000_ha')$getInfo()
-# fc_2000$first()$get('carbon_2000_mgc')$getInfo()
 
-# Get total carbon stock ca. 2000 for dissolved FC ----
-# Unmasked
-total_carbon_mgc <- carbon_mgc$unmask()$ 
-  reduceRegions(
-    collection = fc_dissolved,
-    reducer = ee$Reducer$sum(),
-    scale = agb_res_m
-  )
-# total_carbon_mgc$first()$get('sum')$getInfo() %>% format(big.mark = ',')
-
-# Masked to forest area
-total_carbon_mgc <- carbon_mgc$updateMask(forest_mask)$
-  reduceRegions(
-    collection = fc_dissolved,
-    reducer = ee$Reducer$sum(),
-    scale = agb_res_m
-  )
-# total_carbon_mgc$first()$get('sum')$getInfo() %>% format(big.mark = ',')
-
-# Total forest area
-total_forest <- forest_2000$reduceRegions(
-  collection = fc_dissolved, # add to feature class
-  reducer = ee$Reducer$sum(),
-  scale = hansen_res_m
-)
-# total_forest$first()$get('sum')$getInfo() %>% format(big.mark = ',')
+# fc_2000$first()$get('div1')$getInfo() %>% format(big.mark = ',')
+# fc_2000$first()$get('forest_2000_ha')$getInfo() %>% format(big.mark = ',')
+# fc_2000$first()$get('carbon_2000_mgc')$getInfo() %>% format(big.mark = ',')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Get total loss values (2000-2020) for forest area and carbon ----
@@ -157,7 +157,7 @@ loss_area <- loss$
 
 fc_2000 <- loss_area$reduceRegions(
   collection = fc_2000, # add to feature class containing all loss results
-  reducer = ee$Reducer$sum(),
+  reducer = ee$Reducer$sum()$unweighted(),
   scale = agb_res_m
 )$map(function(f){ # Rename sum column
   ee$Feature(f$geometry(), list(
@@ -177,7 +177,7 @@ c_loss <- agb_30m_mgc$
 
 fc_2000 <- c_loss$reduceRegions(
   collection = fc_2000, # add to feature class containing all loss results
-  reducer = ee$Reducer$sum(),
+  reducer = ee$Reducer$sum()$unweighted(),
   scale = agb_res_m
 )$map(function(f){ # Rename sum column
   ee$Feature(f$geometry(), list(
@@ -227,14 +227,14 @@ for (year in seq(1, 20)) { # 1-20 = 2001-2020
 # summarize annual forest area loss by district
 loss_fc <- loss_area_sqkm$reduceRegions(
   collection = fc_2000, # adds columns forest_loss_[year]_ha
-  reducer = ee$Reducer$sum(),
+  reducer = ee$Reducer$sum()$unweighted(),
   scale = hansen_res_m
 )
 
 # summarize annual forest carbon loss by district
 loss_fc_carbon <- loss_carbon_mgc$reduceRegions(
   collection = loss_fc, # add columns carbon_loss_[year]_mgc to FC with area loss results
-  reducer = ee$Reducer$sum(),
+  reducer = ee$Reducer$sum()$unweighted(),
   scale = agb_res_m
 )
 
@@ -362,7 +362,7 @@ loss_carbon_mgc %>%
 # # Count forested pixels by district
 # mgc_nonforest <- agb_30m_mgc$reduceRegions(
 #   collection = estonia, # add to feature class
-#   reducer = ee$Reducer$sum(),
+#   reducer = ee$Reducer$sum()$unweighted(),
 #   scale = agb_res_m
 # )
 # mgc_nonforest_num <- mgc_nonforest$first()$get('sum')$getInfo()
