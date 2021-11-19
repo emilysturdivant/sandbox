@@ -39,20 +39,21 @@ final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hi
 # agb_500m_2003 %>% raster_as_ee(assetId = addm("global_biomass_500m_2003"))
 
 
-
 # GADM ----
 countries_shp <- here::here('~/data', 'raw_data', 'world_context', 'gadm', 'gadm36_1.shp')
 estonia <- st_read(countries_shp) %>% 
   filter(str_detect(NAME_0, regex('estonia', ignore_case = TRUE)),
          NAME_1 != 'Peipsi') %>% 
   mutate(div1_lat = stringi::stri_trans_general(str=NAME_1, id='Latin-ASCII')) %>% 
-  select(name = NAME_0, 
+  dplyr::select(name = NAME_0, 
          div1 = NAME_1) 
 
 # Diva lakes
 lakes_shp <- here::here('~/data/raw_data/world_context/diva', 'EST_wat', 
                         'EST_water_areas_dcw.shp')
 lakes <- st_read(lakes_shp) %>% st_make_valid()
+# qtm(lakes)
+lakes <- lakes %>% filter(NAME == 'VORTSJARV' | NAME == 'LAKE PEIPUS')
 
 # Clip out lakes
 est_nolks <- estonia %>% st_difference(st_union(lakes))
@@ -61,17 +62,18 @@ est_nolks <- estonia %>% st_difference(st_union(lakes))
 est_nolks_simp <- est_nolks %>% st_simplify(dTolerance = 0.01)
 
 # Save
-estonia_shp <- here::here('~/data', 'sites_for_c_report', 'estonia_div_nolakes_simp01.shp')
+estonia_shp <- here::here('~/data', 'sites_for_c_report', 'estonia_div_nobiglakes_simp01.shp')
 est_nolks_simp %>% st_write(estonia_shp, append = FALSE)
 
 # Dissolve
-estonia_dissolve <- estonia %>% st_union()
-est_diss_nolks <- estonia_dissolve %>% st_difference(st_union(lakes))
+est_diss_nolks <- est_nolks %>% st_union()
 est_diss_nolks_simp <- est_diss_nolks %>% st_simplify(dTolerance = 0.01)
 
 # Save
-estonia_shp <- here::here('~/data', 'sites_for_c_report', 'estonia_nolakes_simp01.shp')
+estonia_shp <- here::here('~/data', 'sites_for_c_report', 'estonia_nobiglakes_simp01.shp')
 est_diss_nolks_simp %>% st_write(estonia_shp, append = FALSE)
+
+
 
 # Rasterize (at Hansen resolution) ----
 # Set ID field 
