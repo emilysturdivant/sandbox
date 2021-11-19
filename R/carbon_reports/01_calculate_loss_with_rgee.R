@@ -25,7 +25,7 @@ out_fp <- file.path(export_path, str_c(task_name, '.geojson'))
 fc <- st_read(polys_fp) %>% sf_as_ee()
 fc_dissolved <- fc$union()
 
-Map$centerObject(fc_dissolved, zoom = 7)
+Map$centerObject(fc_dissolved, zoom = 10)
 agb_pal <- c('75322B','84512A','8E6232','da8c19','ef9e0b','ffc011','ffdb2d',
              'ffe215','f9eb46','d5e400','c9d800','becc00','b4c200','B7B95B',
              'B2B659','AFB457','ABB156','A6AE53','A3AB52','A1AA51','9FA950',
@@ -41,7 +41,13 @@ agb_pal <- c('75322B','84512A','8E6232','da8c19','ef9e0b','ffc011','ffdb2d',
              '215118','205017','1F4F17','1C4E16','1B4D15','1A4C15','194C14',
              '184A14','164913','154812','124711','114610','114610','114610',
              '114610')
+agb_pal <- agb_pal %>% str_c("#", .)
 viridis <- c('#440154', '#433982', '#30678D', '#218F8B', '#36B677', '#8ED542', '#FDE725')
+
+# Paint all the polygon edges with the same number and width, display.
+outline <- ee$Image()$byte()$
+  paint(featureCollection = fc_dissolved, color = 1, width = 2)
+polys_lyr <- Map$addLayer(outline, name = 'Estonia')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load data and mask to forest (TC>25%) ----
@@ -80,7 +86,9 @@ hansen_res_m <- loss_year$projection()$nominalScale()
 agb_res_m <- agb_mgha$projection()$nominalScale()
 agb_res_km <- agb_res_m$divide(1e3)
 
-# Get total carbon stock ca. 2000 for dissolved FC ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# QC: Look at carbon stock ca. 2000 for dissolved FC ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Unmasked
 total_carbon_mgc <- carbon_mgc$unmask()$ 
   reduceRegions(
@@ -107,6 +115,102 @@ total_forest <- forest_2000$reduceRegions(
 )
 # total_forest$first()$get('sum')$getInfo() %>% format(big.mark = ',')
 
+# ~~~~~ QC 2000 vs. 2003 biomass ~~~~~~~ ----
+# Compare 2000 and 2003 carbon density ----
+# 2003 Biomass density and convert to AGC
+agb_mgha_2003 <- ee$Image("users/sgorelik/Woodwell/Global_AGB_500m_2003_2016_V6")$
+  select('mgha_2003')
+carbon_mgcha_2003 <- agb_mgha_2003$divide(2)
+carbon_mgc_2003 <- carbon_mgcha_2003$
+  multiply(agb_mgha_2003$pixelArea()$divide(1e4))$
+  rename('agb_2003_mgc')
+
+# View settings
+acd_viz <- list(min = 0, max = 60, palette = viridis)
+diff_viz <- list(min = -20, max = 20, palette = c('blue', 'white', 'red'))
+legend <- Map$addLegend(visParams = acd_viz, name = NA, opacity = 1)
+diff_lgnd <- Map$addLegend(visParams = diff_viz, name = NA, opacity = 1)
+
+Map$centerObject(fc_dissolved, zoom = 7) # Whole country
+Map$setCenter(26.6, 57.8, zoom = 9) # SE area with high biomass in 2003
+Map$setCenter(26.6, 57.73, zoom = 12) # Very zoomed in on SE area
+Map$setCenter(24.3, 58.5, zoom = 10) # Parnu bogs
+
+# Slider
+Map$addLayer(carbon_mgcha$updateMask(carbon_mgcha$neq(0)), 
+             acd_viz, 'Carbon density, 2000, 500-m') + polys_lyr |
+  Map$addLayer(carbon_mgcha_2003$updateMask(carbon_mgcha_2003$neq(0)), 
+               acd_viz, 'Carbon density, 2003, 500-m') +
+  polys_lyr + legend
+  
+# For screenshot
+Map$addLayer(carbon_mgcha$updateMask(carbon_mgcha$neq(0)), 
+             acd_viz, 'Carbon density, 2000, 500-m') + 
+  Map$addLayer(carbon_mgcha_2003$updateMask(carbon_mgcha_2003$neq(0)), 
+               acd_viz, 'Carbon density, 2003, 500-m') + polys_lyr + legend
+
+# Resample 2000 30m to 500m resolution ----
+c_500m_reproj <- carbon_mgcha$reproject(crs = agb_mgha_2003$projection())
+
+# Difference
+diff_500m <- carbon_mgcha_2003$updateMask(carbon_mgcha_2003$gt(0))$
+  subtract(c_500m_reproj)
+
+# Slider
+Map$addLayer(c_500m_reproj$updateMask(c_500m_reproj$neq(0)), 
+             acd_viz, 'Carbon density, 2000, 500-m') + polys_lyr + legend |
+  Map$addLayer(carbon_mgcha_2003$updateMask(carbon_mgcha_2003$gt(5)), 
+               acd_viz, 'Carbon density, 2003, 500-m') + polys_lyr + legend
+
+# For screenshot
+Map$addLayer(diff_500m, diff_viz, 'Difference') + diff_lgnd + 
+  Map$addLayer(c_500m_reproj$updateMask(c_500m_reproj$gt(0)), 
+               acd_viz, 'Carbon density, 2000, 500-m') +
+  Map$addLayer(carbon_mgcha_2003$updateMask(carbon_mgcha_2003$gt(0)), 
+               acd_viz, 'Carbon density, 2003, 500-m') + polys_lyr #+ legend 
+
+# Export sample for scatterplot -----
+# make an image for the two variables
+pairedImage =  ee$ImageCollection$fromImages(
+  c(c_500m_reproj$updateMask(c_500m_reproj$neq(0)), 
+    carbon_mgcha_2003$updateMask(carbon_mgcha_2003$gt(0))
+  ))$
+  toBands()$
+  rename(c("c_2000","c_2003"))
+
+# Take sample at random points within the region
+sample <-  pairedImage$sampleRegions(fc_dissolved, NULL, 2000)
+
+# Export
+task_vector <- sample %>% 
+  ee_table_to_drive(description = 'sample_500m_2000_2003_gt0',
+                    folder = basename(export_path),
+                    fileFormat = 'CSV', 
+                    timePrefix = FALSE)
+task_vector$start()
+
+# Import CSV for plot ----
+samp_df <- read_csv(here::here(export_path, 'sample_500m_2000_2003_gt0.csv'))
+
+samp_df %>% 
+  filter(c_2003>0 & c_2000>0) %>%
+  ggplot(aes(x = c_2000, y = c_2003)) +
+  # geom_point(alpha=0.1, size=0.5, fill="royalblue", color="royalblue") +
+  geom_bin2d(bins = 40) +
+  scale_fill_continuous(type = "viridis") +
+  labs(y = 'ACD in 2003 (tC/ha)', 
+       x = 'ACD in 2000, resampled to 500-m (tC/ha)') +
+  geom_abline(slope = 1, intercept = 0, linetype = 'solid', color = 'darkgray', size=.25) +
+  geom_smooth(method="lm", se = FALSE, fullrange=TRUE, col='black', 
+              size=.25, linetype = 'dashed') +
+  coord_fixed(ratio = 1, xlim=c(0, 65), ylim=c(0, 65)) +
+  theme_minimal()
+
+# Save
+ggsave(here::here('~/Desktop/Estonia/comparison_reprojected', 
+                  'est_scatter_2000v2003_dens.png'),
+       width = 4, height = 3.5)
+# ~~~~~ end QC ~~~~~ ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Get baseline (2000) values for forest area and carbon ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -254,19 +358,11 @@ task_vector$start()
 #                   dsn = file.path('outputs', str_c(task_name, '.geojson')), 
 #                   overwrite = TRUE)
 
-# Export loss stack ----
-loss_carbon_mgc %>% 
-  ee_image_to_drive()
-
 # ~~~~~~ EXTRAS ~~~~~~~~ ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Use Hansens's 2000-2020 loss to mask our 30m AGC ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# # Paint all the polygon edges with the same number and width, display.
-# outline <- ee$Image()$byte()$
-#   paint(featureCollection = fc, color = 1, width = 2)
-# polys_lyr <- Map$addLayer(outline, name = 'HIH sites')
 # 
 # # Mask AGC with loss band
 # loss <- hansen_30m$select(c('loss'))
