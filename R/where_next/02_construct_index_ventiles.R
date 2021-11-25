@@ -22,19 +22,53 @@ source('R/where_next/01_use_rgee.R')
 i_forestbio <- flii_norm$multiply(0.45)$
   add(wcd_vent$multiply(0.225))$
   add(soc_vent$multiply(0.225))$
-  add(kba_r$multiply(0.1))
+  add(lbii_vent$multiply(0.1))
 
 i_humz <- imr_vent$multiply(0.33)$
   add(dti_vent$multiply(0.33))$
   add(zs_wpop_vent$multiply(0.33))$
   setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
 
-# Create composite indicator
-vent80 <- i_forestbio$multiply(0.8)$add(i_humz$multiply(0.2))
+# Experimental... 
+i_forestbio <- flii_norm$multiply(0.3)$
+  add(wcd_vent$multiply(0.3))$
+  add(soc_vent$multiply(0.2))$
+  add(lbii_vent$multiply(0.1))$
+  add(kba_r$multiply(0.1))
 
-# Transform composite to ventiles for display
+i_humz <- imr_vent$multiply(0.25)$
+  add(dti_vent$multiply(0.25))$
+  add(hm_vent$multiply(0.25))$
+  add(zs_wpop_vent$multiply(0.25))$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+
+
+i_health <- imr_vent$multiply(1)$
+  add(zs_wpop_vent$multiply(1))$
+  add(hcm_vent$multiply(1))$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000) %>% 
+  classify_ventiles()
+
+i_threats <- dti_vent$multiply(1)$
+  add(hm_vent$multiply(1))$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000) %>% 
+  classify_ventiles()
+  
+i_humz <- i_threats$multiply(0.5)$
+  add(i_health$multiply(0.5))$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000) %>% 
+  classify_ventiles()
+  
+  
+# Create composite indicator and transform for display
+vent80 <- i_forestbio$multiply(0.8)$add(i_humz$multiply(0.2))
 vent80_pctl <- classify_percentiles(vent80)
 vent80_vents <- classify_ventiles(vent80)
+
+# Create composite indicator and transform for display
+vent70 <- i_forestbio$multiply(0.7)$add(i_humz$multiply(0.3))
+vent70_pctl <- classify_percentiles(vent70)
+vent70_vents <- classify_ventiles(vent70)
 
 # Classify to percentiles
 i_forestbio_pctl <- classify_percentiles(i_forestbio)
@@ -46,53 +80,6 @@ i_humz_pctl <- classify_percentiles(i_humz)
 # # Transform composite to ventiles for display
 # vent80_pctls <- classify_ventiles(vent80_pctls)
 
-colorUpdates = list(
-  list(ECO_ID = 204, COLOR = '#B3493B'),
-  list(ECO_ID = 245, COLOR = '#267400'),
-  list(ECO_ID = 259, COLOR = '#004600'),
-  list(ECO_ID = 286, COLOR = '#82F178'),
-  list(ECO_ID = 316, COLOR = '#E600AA'),
-  list(ECO_ID = 453, COLOR = '#5AA500'),
-  list(ECO_ID = 317, COLOR = '#FDA87F'),
-  list(ECO_ID = 763, COLOR = '#A93800')
-)
-
-ecoRegions <- ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")
-ecoRegions = ecoRegions$map(function(f) {
-  color = f$get('COLOR')
-  f$set(list(style = list(color = color, width = 0)))
-})
-
-for (i in 1:length(colorUpdates)) {
-  colorUpdates[[i]]$layer = ecoRegions$
-    filterMetadata('ECO_ID', 'equals', colorUpdates[[i]]$ECO_ID)$
-    map(function(f) {
-      f$set(list(style = list(color = colorUpdates[[i]]$COLOR, width = 0)))
-  })
-  
-  ecoRegions = ecoRegions$
-    filterMetadata('ECO_ID','not_equals', colorUpdates[[i]]$ECO_ID)$
-    merge(colorUpdates[[i]]$layer)
-}
-
-
-
-imageRGB = ecoRegions$style(styleProperty = 'style')
-Map$addLayer(imageRGB, name = 'RESOLVE/ECOREGIONS/2017');
-
-ecoRegions = ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")$
-  map(function(f) {
-  color = f$get('COLOR_BIO')
-  f$set(list(style = list(color = color, width = 0)))
-})
-
-ecoRegions = ecoRegions$
-  filter(ee$Filter$inList('BIOME_NUM', c(1,2,3,7,14)))$
-  merge(colorUpdates[[i]]$layer)
-
-imageRGB = ecoRegions$style(styleProperty = 'style')
-biomes_lyr <- Map$addLayer(imageRGB, name = 'RESOLVE/ECOREGIONS/2017')
-
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Look at it all together ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -103,7 +90,7 @@ Map$setCenter(46, -21, zoom = 7) # Manombo
 Map$setCenter(112, 0, zoom = 7) # Borneo
 Map$setCenter(136, -2, zoom = 6)  # Papua
 
-# Get legend 
+# Get legends 
 legend <- lgnd_norm_idx()
 lgnd_forestbio <- lgnd_norm_idx(pal_forestbio)
 lgnd_humz <- lgnd_norm_idx(pal_humz)
@@ -112,14 +99,21 @@ lgnd70_4clas <- lgnd_top_pctls()
 
 # Input layers
 biomes_lyr +
+  map_eq_int_10(flii_norm, 'FLII', palette = pal_forestbio) +
   map_eq_int_10(wcd_vent, 'WCD', palette = pal_forestbio) +
   map_eq_int_10(soc_vent, 'SOC', palette = pal_forestbio) +
   map_eq_int_10(carbon_vent, 'Carbon ventiles', palette = pal_forestbio) +
-  map_eq_int_10(flii_norm, 'FLII', palette = pal_forestbio) +
-  map_eq_int_10(kba_r, 'KBAs', palette = pal_forestbio) +
+  map_norm_idx(kba_r, 'KBAs', palette = pal_forestbio) +
+  map_eq_int_10(lbii_vent, 'LBII', palette = pal_forestbio) +
   map_eq_int_10(imr_vent, 'Infant mortality rate ventiles', palette = pal_humz) +
+  map_eq_int_10(le_vent, 'Life expectancy ventiles', palette = pal_humz) +
+  map_eq_int_10(hcw_vent, 'HC access walking ventiles', palette = pal_humz) +
+  map_eq_int_10(hcm_vent, 'HC access motorized ventiles', palette = pal_humz) +
   map_eq_int_10(dti_vent, 'DTI ventiles', palette = pal_humz) +
+  map_eq_int_10(hf_vent, 'Human footprint ventiles', palette = pal_humz) +
+  map_eq_int_10(hm_vent, 'Human modification ventiles', palette = pal_humz) +
   map_eq_int_10(zs_wpop_vent, 'Zoonotic spillover risk', palette = pal_humz) +
+  map_eq_int_10(i_health, 'Health component', palette = pal_carbontropics) +
   
   # Components
   map_norm_idx(i_forestbio_pctl, 'Forest quality', palette = pal_forestbio) +
@@ -128,9 +122,13 @@ biomes_lyr +
   lgnd_humz +
   
   # Final options
-  map_norm_idx(vent80_vents, 'FQ + HHI (4:1) ventiles') + legend +
-  map_top_pctls_3class(vent80_vents, 'FQ + HHI (4:1), top 80th', TRUE) + lgnd80_3clas +
-  map_top_pctls(vent80_vents, 'FQ + HHI (4:1), top 80th') + lgnd70_4clas +
+  map_norm_idx(vent80_vents, 'FQ + HHI (4:1) ventiles') + 
+  map_norm_idx(vent70_pctl, 'FQ + HHI (4:1) percentiles') + 
+  map_top_pctls(vent80_vents, 'FQ + HHI (4:1), top 20%', TRUE, palette = priorities_11) + 
+  
+  # Final options
+  map_norm_idx(vent70_vents, 'FQ + HHI (7:3) ventiles', legend = FALSE) + 
+  map_top_pctls(vent70_vents, 'FQ + HHI (7:3), top 20%', legend = FALSE) + 
   
   hih_sites_lyr + hih_pts_lyr + 
   no_msf_lyr + msf_lyr + pas_lyr

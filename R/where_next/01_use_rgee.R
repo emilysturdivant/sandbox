@@ -31,7 +31,7 @@ pal_forestbio <- c(pal_carbon[1], pal_arctic)
 pal_humz <- c(pal_carbon[c(2,1)], pal_risk[1:6])
 demoplot(rev(pal_forestbio), type = 'heatmap')
 demoplot(rev(pal_humz), type = 'heatmap')
-pal_forestbio <- c(pal_carbon[c(1,2,3)], pal_arctic[c(4, 6)])
+pal_forestbio <- c(pal_carbon[c(1,2,3)], pal_arctic[c(4, 6)], '#00f8ec')
 pal_humz <- c(pal_carbon[c(1,2,3)], pal_risk[c(4, 6)])
 
 # Combine
@@ -55,6 +55,8 @@ Map$setCenter(30, 0, zoom = 3)
 data_dir <- '/Users/emilysturdivant/data'
 final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
 
+viz_idx_norm <- list(min = 0, max = 1, palette = priorities_11, 
+            values = str_c(seq(0, 90, 10), seq(10, 100, 10), sep = '-'))
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Functions ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -363,19 +365,131 @@ classify_eq_int_10 <- function(img) {
 }
 
 # Functions to map layers ----
-map_norm_idx <- function(img, name, shown = FALSE, palette = NULL) {
+map_norm_idx <- function(img, name, shown = FALSE, palette = NULL,
+                         legend = TRUE) {
+  
+  # Set palette to default
+  if (is.null(palette)) {
+    palette = priorities_11
+  }
+  
+  # Set visualization parameters
+  viz <- list(min = 0, max = 1, palette = palette, 
+                       values = str_c(seq(0, 90, 10), seq(10, 100, 10), sep = '-'))
+  
+  # Create layer
+  lyr <- Map$addLayer(eeObject = img, 
+               visParams = viz, 
+               name = name, 
+               shown = shown)
+  
+  # Conditionally add legend
+  if( legend ) {
+    lyr + Map$addLegend(visParams = viz, name = NA, position = "bottomright", 
+                        color_mapping = "character")
+  } else {
+    lyr
+  }
+}
+
+map_eq_int <- function(img, name, shown = FALSE) {
+  img <- classify_eq_int(img)
+  
+  viz <- list(min = 0, max = .8, palette = priorities_5, 
+                         values = c('0-20', '20-40', '40-60', '60-80', '80-100'))
+  
+  Map$addLayer(eeObject = img, 
+               visParams = viz, 
+               name = name, 
+               shown = shown)
+}
+
+map_eq_int_10 <- function(img, name, shown = FALSE, palette = NULL,
+                          legend = TRUE) {
+  img <- classify_eq_int_10(img)
   
   if (is.null(palette)) {
     palette = priorities_11
   }
   
   viz <- list(min = 0, max = 1, palette = palette, 
-                       values = str_c(seq(0, 90, 10), seq(10, 100, 10), sep = '-'))
+              values = str_c(seq(0, 90, 10), seq(10, 100, 10), sep = '-'))
   
-  Map$addLayer(eeObject = img, 
+  lyr <- Map$addLayer(eeObject = img, 
                visParams = viz, 
                name = name, 
                shown = shown)
+  
+  if( legend ) {
+    lyr + Map$addLegend(visParams = viz, name = NA, position = "bottomright", 
+                        color_mapping = "character")
+  } else {
+    lyr
+  }
+}
+
+map_top_pctls_3class <- function(pctl_img, name = NULL, shown = FALSE, palette = NULL,
+                                 legend = TRUE) {
+  
+  lower <- 80
+  
+  if (is.null(palette)) {
+    palette = priorities_3
+  }
+  
+  img <- ee$Image(0)$
+    where(pctl_img$lt(.80), 0.8)$
+    where(pctl_img$gte(.80), .9)$
+    where(pctl_img$gte(.90), 1)$
+    updateMask(dhf_mask)
+  
+  min <- lower / 100
+  viz <- list(min = min, max = 1, 
+              palette = palette, 
+              values = c('<80%', '>80%', '>90%'))
+  
+  lyr <- Map$addLayer(eeObject = img, 
+               visParams = viz, 
+               name = name, 
+               shown = shown)
+  
+  if( legend ) {
+    lyr + Map$addLegend(visParams = viz, name = NA, position = "bottomright", 
+                        color_mapping = "character")
+  } else {
+    lyr
+  }
+}
+
+map_top_pctls <- function(pctl_img, name = NULL, shown = FALSE, palette = NULL, 
+                          legend = TRUE) {
+  
+  if (is.null(palette)) {
+    palette = priorities_4
+  }
+  
+  img <- ee$Image(0.65)$
+    where(pctl_img$gte(.7), .7)$
+    where(pctl_img$gte(.8), .8)$
+    where(pctl_img$gte(.9), .9)$
+    where(pctl_img$gte(.95), .95)$
+    updateMask(dhf_mask)
+  
+  viz <- list(min = 0.75, max = .95, 
+              palette = palette, 
+              values = c('<80%', '>80%', '>90%', '>95%'))
+  
+  lyr <- Map$addLayer(eeObject = img, 
+               visParams = viz, 
+               name = name, 
+               shown = shown)
+  
+  if( legend ) {
+    lyr + Map$addLegend(visParams = viz, name = NA, position = "bottomright", 
+                        color_mapping = "character")
+  } else {
+    lyr
+  }
 }
 
 lgnd_norm_idx <- function(palette = NULL) {
@@ -392,55 +506,6 @@ lgnd_norm_idx <- function(palette = NULL) {
   
 }
 
-map_eq_int <- function(img, name, shown = FALSE) {
-  img <- classify_eq_int(img)
-  
-  viz <- list(min = 0, max = .8, palette = priorities_5, 
-                         values = c('0-20', '20-40', '40-60', '60-80', '80-100'))
-  
-  Map$addLayer(eeObject = img, 
-               visParams = viz, 
-               name = name, 
-               shown = shown)
-}
-
-map_eq_int_10 <- function(img, name, shown = FALSE, palette = NULL) {
-  img <- classify_eq_int_10(img)
-  
-  if (is.null(palette)) {
-    palette = priorities_11
-  }
-  
-  viz <- list(min = 0, max = 1, palette = palette, 
-              values = str_c(seq(0, 90, 10), seq(10, 100, 10), sep = '-'))
-  
-  Map$addLayer(eeObject = img, 
-               visParams = viz, 
-               name = name, 
-               shown = shown)
-}
-
-map_top_pctls_3class <- function(pctl_img, name = NULL, shown = FALSE) {
-  
-  lower <- 80
-  
-  img <- ee$Image(0)$
-    where(pctl_img$lt(.80), 0.8)$
-    where(pctl_img$gte(.80), .9)$
-    where(pctl_img$gte(.90), 1)$
-    updateMask(dhf_mask)
-  
-  min <- lower / 100
-  viz <- list(min = min, max = 1, 
-              palette = priorities_3, 
-              values = c('<80%', '>80%', '>90%'))
-  
-  Map$addLayer(eeObject = img, 
-               visParams = viz, 
-               name = name, 
-               shown = shown)
-}
-
 lgnd_top_pctls_3class <- function(lower = 80) {
   
   min <- lower / 100
@@ -451,26 +516,6 @@ lgnd_top_pctls_3class <- function(lower = 80) {
                 name = NA, 
                 position = "bottomright", 
                 color_mapping = "character")
-}
-
-
-map_top_pctls <- function(pctl_img, name = NULL, shown = FALSE) {
-  
-  img <- ee$Image(0.65)$
-    where(pctl_img$gte(.7), .7)$
-    where(pctl_img$gte(.8), .8)$
-    where(pctl_img$gte(.9), .9)$
-    where(pctl_img$gte(.95), .95)$
-    updateMask(dhf_mask)
-  
-  viz <- list(min = 0.75, max = .95, 
-              palette = priorities_4, 
-              values = c('<80%', '>80%', '>90%', '>95%'))
-  
-  Map$addLayer(eeObject = img, 
-               visParams = viz, 
-               name = name, 
-               shown = shown)
 }
 
 lgnd_top_pctls <- function(lower = 70) {
@@ -578,6 +623,53 @@ if(!biome_dhf_id %in% alist$ID) {
 
 dense_humid_forests <- ee$Image(biome_dhf_id)
 dhf_mask <- dense_humid_forests$mask()
+
+# Create Biomes layer ----
+colorUpdates = list(
+  list(ECO_ID = 204, COLOR = '#B3493B'),
+  list(ECO_ID = 245, COLOR = '#267400'),
+  list(ECO_ID = 259, COLOR = '#004600'),
+  list(ECO_ID = 286, COLOR = '#82F178'),
+  list(ECO_ID = 316, COLOR = '#E600AA'),
+  list(ECO_ID = 453, COLOR = '#5AA500'),
+  list(ECO_ID = 317, COLOR = '#FDA87F'),
+  list(ECO_ID = 763, COLOR = '#A93800')
+)
+
+ecoRegions = ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")$
+  map(function(f) {
+    color = f$get('COLOR_BIO')
+    f$set(list(style = list(color = color, width = 0)))
+  })
+
+ecoRegions = ecoRegions$
+  filter(ee$Filter$inList('BIOME_NUM', c(1,2,3,7,14)))$
+  merge(colorUpdates[[i]]$layer)
+
+imageRGB = ecoRegions$style(styleProperty = 'style')
+biomes_lyr <- Map$addLayer(imageRGB, name = 'RESOLVE/ECOREGIONS/2017', show = FALSE)
+
+# Map ecoregions
+# ecoRegions <- ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")
+# ecoRegions = ecoRegions$map(function(f) {
+#   color = f$get('COLOR')
+#   f$set(list(style = list(color = color, width = 0)))
+# })
+# 
+# for (i in 1:length(colorUpdates)) {
+#   colorUpdates[[i]]$layer = ecoRegions$
+#     filterMetadata('ECO_ID', 'equals', colorUpdates[[i]]$ECO_ID)$
+#     map(function(f) {
+#       f$set(list(style = list(color = colorUpdates[[i]]$COLOR, width = 0)))
+#   })
+#   
+#   ecoRegions = ecoRegions$
+#     filterMetadata('ECO_ID','not_equals', colorUpdates[[i]]$ECO_ID)$
+#     merge(colorUpdates[[i]]$layer)
+# }
+# 
+# imageRGB = ecoRegions$style(styleProperty = 'style')
+# Map$addLayer(imageRGB, name = 'RESOLVE/ECOREGIONS/2017');
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # HIH sites ----
@@ -721,8 +813,30 @@ if(!kba_id %in% alist$ID) {
 
 kba_r <- ee$Image(kba_id)
 
-# # View
-# Map$addLayer(eeObject = kba_r, visParams = viz_idx_norm, name = "Key Biodiversity Areas")
+# Reclass values outside of 0-1 range
+kba_r <- kba_r$
+  where(kba_r$lt(0.94), 0.8)$
+  where(kba_r$lt(0.96), 0.9)
+
+# View
+map_norm_idx(kba_r, "Key Biodiversity Areas", TRUE)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Biodiversity Intactness Index, 2005 ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+lbii <- ee$Image(addm('lbii_2005'))
+
+# Rescale
+# get_pctl(infant_mort) # 99.7
+lbii_norm <- rescale_to_pctl(lbii)$updateMask(dhf_mask)
+
+# Ventiles
+lbii_vent <- classify_percentiles(lbii_norm)
+
+# View
+map_eq_int(lbii, 'Average') +
+  map_eq_int(lbii_norm, 'Average and normalize') +
+  map_eq_int(lbii_vent, 'Percentiles')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Development Potential Indices ----
@@ -741,9 +855,9 @@ kba_r <- ee$Image(kba_id)
 #   final_path = addm("DPI")
 # )
 
-dti_id <- addm('DTI_2016_pctls_maskDHF')
+dti_id <- addm('DTI/DTI_2016_pctls_maskDHF')
 
-alist <- ee_manage_assetlist(path_asset = addm(""))
+alist <- ee_manage_assetlist(path_asset = addm("DTI"))
 if(!dti_id %in% alist$ID) {
   
   # Load ImageCollection 
@@ -836,7 +950,7 @@ gHM <- ee$ImageCollection("CSP/HM/GlobalHumanModification")$first() # only image
 hm_norm <- rescale_to_pctl(gHM)$updateMask(dhf_mask)
 
 # Map and reclass to ventiles
-hm_vent <- classify_percentiles(gHM)
+hm_vent <- classify_percentiles(hm_norm)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Human footprint (from Wild Areas v3) ----
@@ -889,7 +1003,7 @@ le <- rescale_to_pctl(le, c(0, 100))$updateMask(dhf_mask)
 le_norm <- le$multiply(-1)$add(1)
 
 # Rescale to Percentiles 
-le_ea <- classify_dentiles(le_norm)$updateMask(dhf_mask)
+le_vent <- classify_percentiles(le_norm)$updateMask(dhf_mask)
 
 # View
 # Map$addLayer(eeObject = le, visParams = viz_idx_norm, name = "Life expectancy")
@@ -920,8 +1034,11 @@ hc_access <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
 
 # Rescale
 # get_pctl(hc_access,  95) # 6380 min
-hc_access <- rescale_to_pctl(hc_access, c(0, 95))$updateMask(dhf_mask)
+hcw_norm <- rescale_to_pctl(hc_access, c(0, 95))$updateMask(dhf_mask)
 # Map$addLayer(eeObject = hc_access, visParams = viz_idx_norm)
+
+# Rescale to Percentiles 
+hcw_vent <- classify_percentiles(hcw_norm)$updateMask(dhf_mask)
 
 # Load 
 hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
@@ -930,8 +1047,11 @@ hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
 
 # Rescale
 # get_pctl(hc_motor,  95)
-hc_motor <- rescale_to_pctl(hc_motor, c(0, 95))$updateMask(dhf_mask)
+hcm_norm <- rescale_to_pctl(hc_motor, c(0, 95))$updateMask(dhf_mask)
 # Map$addLayer(eeObject = hc_motor, visParams = viz_idx_norm)
+
+# Rescale to Percentiles 
+hcm_vent <- classify_percentiles(hcm_norm)$updateMask(dhf_mask)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Protected Areas ----
