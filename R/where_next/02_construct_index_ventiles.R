@@ -22,57 +22,64 @@ source('R/where_next/01_use_rgee.R')
 i_forestbio <- flii_norm$multiply(0.45)$
   add(wcd_vent$multiply(0.225))$
   add(soc_vent$multiply(0.225))$
-  add(lbii_vent$multiply(0.1))
+  add(kba_r$multiply(0.1))$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
 
 i_humz <- imr_vent$multiply(0.33)$
   add(dti_vent$multiply(0.33))$
   add(zs_wpop_vent$multiply(0.33))$
   setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
 
-# Experimental... 
-i_forestbio <- flii_norm$multiply(0.3)$
+# Classify to percentiles for display
+i_forestbio_pctl <- classify_percentiles(i_forestbio)
+i_humz_pctl <- classify_percentiles(i_humz)
+
+# Create composite indicator and transform for display
+v1_80 <- i_forestbio$multiply(0.8)$add(i_humz$multiply(0.2)) %>% classify_ventiles()
+
+# Create composite indicator and transform for display
+v1_70 <- i_forestbio$multiply(0.7)$add(i_humz$multiply(0.3)) %>% classify_ventiles()
+
+# Experimental... ----
+i_forestbio_v2 <- flii_norm$multiply(0.3)$
   add(wcd_vent$multiply(0.3))$
   add(soc_vent$multiply(0.2))$
   add(lbii_vent$multiply(0.1))$
   add(kba_r$multiply(0.1))
 
-i_humz <- imr_vent$multiply(0.25)$
-  add(dti_vent$multiply(0.25))$
-  add(hm_vent$multiply(0.25))$
+# Create composite indicator and transform for display
+v2_80 <- i_forestbio_v2$multiply(0.8)$add(i_humz$multiply(0.2)) %>% classify_ventiles()
+v2_70 <- i_forestbio_v2$multiply(0.7)$add(i_humz$multiply(0.3)) %>% classify_ventiles()
+
+# Experimental... ----
+i_humz_v2 <- dti_vent$multiply(0.5)$
+  # add(hm_vent$multiply(0.25))$
+  add(imr_vent$multiply(0.25))$
   add(zs_wpop_vent$multiply(0.25))$
   setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
 
+# Create composite indicator and transform for display
+v3_80 <- i_forestbio_v2$multiply(0.8)$add(i_humz_v2$multiply(0.2)) %>% classify_ventiles()
+v3_70 <- i_forestbio_v2$multiply(0.7)$add(i_humz_v2$multiply(0.3)) %>% classify_ventiles()
 
+# Break out HHI ---- 
 i_health <- imr_vent$multiply(1)$
   add(zs_wpop_vent$multiply(1))$
   add(hcm_vent$multiply(1))$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000) %>% 
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000) %>%
   classify_ventiles()
 
 i_threats <- dti_vent$multiply(1)$
   add(hm_vent$multiply(1))$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000) %>% 
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000) %>%
   classify_ventiles()
-  
-i_humz <- i_threats$multiply(0.5)$
-  add(i_health$multiply(0.5))$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000) %>% 
-  classify_ventiles()
-  
-  
-# Create composite indicator and transform for display
-vent80 <- i_forestbio$multiply(0.8)$add(i_humz$multiply(0.2))
-vent80_pctl <- classify_percentiles(vent80)
-vent80_vents <- classify_ventiles(vent80)
 
-# Create composite indicator and transform for display
-vent70 <- i_forestbio$multiply(0.7)$add(i_humz$multiply(0.3))
-vent70_pctl <- classify_percentiles(vent70)
-vent70_vents <- classify_ventiles(vent70)
+# i_humz <- i_threats$multiply(0.5)$
+#   add(i_health$multiply(0.5))$
+#   setDefaultProjection(crs = 'EPSG:4326', scale = 1000) %>% 
+#   classify_ventiles()
+  
 
-# Classify to percentiles
-i_forestbio_pctl <- classify_percentiles(i_forestbio)
-i_humz_pctl <- classify_percentiles(i_humz)
 # 
 # vent80_pctls <- i_forestbio_pctl$multiply(0.8)$add(i_humz_pctl$multiply(0.2))$
 #   setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
@@ -83,6 +90,13 @@ i_humz_pctl <- classify_percentiles(i_humz)
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Look at it all together ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Get legends 
+legend <- lgnd_norm_idx()
+lgnd_forestbio <- lgnd_norm_idx(pal_forestbio)
+lgnd_humz <- lgnd_norm_idx(pal_humz)
+lgnd80_3clas <- lgnd_top_pctls_3class()
+lgnd70_4clas <- lgnd_top_pctls()
+
 # Set center
 Map$setCenter(30, 0, zoom = 3)
 Map$setCenter(-53, -5, zoom = 5) # Brazil
@@ -90,12 +104,11 @@ Map$setCenter(46, -21, zoom = 7) # Manombo
 Map$setCenter(112, 0, zoom = 7) # Borneo
 Map$setCenter(136, -2, zoom = 6)  # Papua
 
-# Get legends 
-legend <- lgnd_norm_idx()
-lgnd_forestbio <- lgnd_norm_idx(pal_forestbio)
-lgnd_humz <- lgnd_norm_idx(pal_humz)
-lgnd80_3clas <- lgnd_top_pctls_3class()
-lgnd70_4clas <- lgnd_top_pctls()
+# # Plot for comparison with RAISG 
+# map_eq_int_10(hf_vent, 'Human footprint ventiles', palette = pal_raisg) +
+#   map_eq_int_10(hm_vent, 'Human modification', show = TRUE, palette = pal_raisg) +
+#   map_eq_int_10(dti_vent, 'DTI ventiles', show = TRUE, palette = pal_raisg) +
+#   raisg_lyr
 
 # Input layers
 biomes_lyr +
@@ -113,25 +126,36 @@ biomes_lyr +
   map_eq_int_10(hf_vent, 'Human footprint ventiles', palette = pal_humz) +
   map_eq_int_10(hm_vent, 'Human modification ventiles', palette = pal_humz) +
   map_eq_int_10(zs_wpop_vent, 'Zoonotic spillover risk', palette = pal_humz) +
+  map_eq_int_10(i_threats, 'Threats component', palette = pal_carbontropics) +
   map_eq_int_10(i_health, 'Health component', palette = pal_carbontropics) +
   
   # Components
-  map_norm_idx(i_forestbio_pctl, 'Forest quality', palette = pal_forestbio) +
-  lgnd_forestbio +
-  map_norm_idx(i_humz_pctl, 'Human health and impacts', palette = pal_humz) +
-  lgnd_humz +
+  map_norm_idx(i_forestbio_pctl, 'Forest quality v1', palette = pal_forestbio) +
+  map_norm_idx(i_humz_pctl, 'Human health and impacts v1', palette = pal_humz) +
   
-  # Final options
-  map_norm_idx(vent80_vents, 'FQ + HHI (4:1) ventiles') + 
-  map_norm_idx(vent70_pctl, 'FQ + HHI (4:1) percentiles') + 
-  map_top_pctls(vent80_vents, 'FQ + HHI (4:1), top 20%', TRUE, palette = priorities_11) + 
+  # v1
+  map_norm_idx(v1_80, 'FQ + HHI (4:1) ventiles') + 
+  map_top_pctls(v1_80, 'FQ + HHI (4:1), top 20%', TRUE, palette = priorities_11) + 
+  map_norm_idx(v1_70, 'FQ + HHI (7:3) ventiles', legend = FALSE, palette = priorities_11) + 
+  map_top_pctls(v1_70, 'FQ + HHI (7:3), top 20%', legend = FALSE, palette = priorities_11) + 
   
-  # Final options
-  map_norm_idx(vent70_vents, 'FQ + HHI (7:3) ventiles', legend = FALSE) + 
-  map_top_pctls(vent70_vents, 'FQ + HHI (7:3), top 20%', legend = FALSE) + 
+  # v2
+  map_norm_idx(v2_80, 'FQ + HHI (4:1) v2') + 
+  map_top_pctls(v2_80, 'FQ + HHI (4:1) v2, top 20%', TRUE, palette = priorities_11) + 
+  map_norm_idx(v2_70, 'FQ + HHI (7:3) v2', legend = FALSE, palette = priorities_11) + 
+  map_top_pctls(v2_70, 'FQ + HHI (7:3) v2, top 20%', legend = FALSE, palette = priorities_11) + 
   
-  hih_sites_lyr + hih_pts_lyr + 
-  no_msf_lyr + msf_lyr + pas_lyr
+  # v3
+  map_norm_idx(v3_80, 'FQ + HHI (4:1) v3') + 
+  map_top_pctls(v3_80, 'FQ + HHI (4:1) v3, top 20%', TRUE, palette = priorities_11) + 
+  map_norm_idx(v3_70, 'FQ + HHI (7:3) v3', legend = FALSE, palette = priorities_11) + 
+  map_top_pctls(v3_70, 'FQ + HHI (7:3) v3, top 20%', legend = FALSE, palette = priorities_11) + 
+  
+  hih_sites_lyr + hih_pts_lyr + raisg_lyr +
+  no_msf_lyr + msf_lyr + pas_lyr  + 
+  # lgnd_forestbio +
+  # lgnd_humz +
+  legend
 
 # Slider views ----
 map_top_pctls(i_forestbio, 'Forest quality') + lgnd70_4clas |

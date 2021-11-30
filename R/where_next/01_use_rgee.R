@@ -26,11 +26,13 @@ pal_carbon <- c('#d8d4cd', '#bab4a7', '#9d9786', '#847f6b', '#6b6a52')
 pal_tropics <- c('#d5ead3', '#b1d9ad', '#8bca8b', '#62bd67', '#1ab14b', '#037a31')
 pal_tropics_accents <- c(pal_tropics[6], '#0ecd5d')
 
+pal_raisg <- c('#fdf2a9', '#fdf2a9', '#56b35f', '#2b827b', '#2d477c', '#2e1d4b')
+
 # FQ index
 pal_forestbio <- c(pal_carbon[1], pal_arctic)
 pal_humz <- c(pal_carbon[c(2,1)], pal_risk[1:6])
-demoplot(rev(pal_forestbio), type = 'heatmap')
-demoplot(rev(pal_humz), type = 'heatmap')
+# demoplot(rev(pal_forestbio), type = 'heatmap')
+# demoplot(rev(pal_humz), type = 'heatmap')
 pal_forestbio <- c(pal_carbon[c(1,2,3)], pal_arctic[c(4, 6)], '#00f8ec')
 pal_humz <- c(pal_carbon[c(1,2,3)], pal_risk[c(4, 6)])
 
@@ -691,6 +693,16 @@ hih_sites_lyr <- Map$addLayer(outline, name = 'HIH sites', shown = FALSE)
 hih_pts_lyr <- Map$addLayer(hih_pts, name = 'HIH points', shown = FALSE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# RAISG ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Load assets
+raisg_lim <- ee$FeatureCollection(addm('Lim_Raisg'))
+
+# Paint all the polygon edges with the same number and width, display.
+raisg_outline <- ee$Image()$byte()$paint(featureCollection = raisg_lim, color = 'red', width = 2)
+raisg_lyr <- Map$addLayer(raisg_outline, name = 'RAISG', shown = TRUE)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Carbon density ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 wbd_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_BGB_Mgha")
@@ -819,7 +831,7 @@ kba_r <- kba_r$
   where(kba_r$lt(0.96), 0.9)
 
 # View
-map_norm_idx(kba_r, "Key Biodiversity Areas", TRUE)
+# map_norm_idx(kba_r, "Key Biodiversity Areas", TRUE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Biodiversity Intactness Index, 2005 ----
@@ -833,10 +845,10 @@ lbii_norm <- rescale_to_pctl(lbii)$updateMask(dhf_mask)
 # Ventiles
 lbii_vent <- classify_percentiles(lbii_norm)
 
-# View
-map_eq_int(lbii, 'Average') +
-  map_eq_int(lbii_norm, 'Average and normalize') +
-  map_eq_int(lbii_vent, 'Percentiles')
+# # View
+# map_eq_int(lbii, 'Average') +
+#   map_eq_int(lbii_norm, 'Average and normalize') +
+#   map_eq_int(lbii_vent, 'Percentiles')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Development Potential Indices ----
