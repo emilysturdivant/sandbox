@@ -1,0 +1,218 @@
+{
+  "name": "projects/earthengine-legacy/assets/users/sgorelik/AGB_500m_2003_2016_V6",
+  "tilesets": [
+    {
+      "id": "band_1",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2003_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_2",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2004_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_3",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2005_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_4",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2006_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_5",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2007_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_6",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2008_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_7",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2009_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_8",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2010_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_9",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2011_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_10",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2012_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_11",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2013_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_12",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2014_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_13",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2015_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "band_14",
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2016_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    }
+  ],
+  "bands": [
+    {
+      "id": "mgha_2003",
+      "tileset_id": "band_1"
+    },
+    {
+      "id": "mgha_2004",
+      "tileset_id": "band_2"
+    },
+    {
+      "id": "mgha_2005",
+      "tileset_id": "band_3"
+    },
+    {
+      "id": "mgha_2006",
+      "tileset_id": "band_4"
+    },
+    {
+      "id": "mgha_2007",
+      "tileset_id": "band_5"
+    },
+    {
+      "id": "mgha_2008",
+      "tileset_id": "band_6"
+    },
+    {
+      "id": "mgha_2009",
+      "tileset_id": "band_7"
+    },
+    {
+      "id": "mgha_2010",
+      "tileset_id": "band_8"
+    },
+    {
+      "id": "mgha_2011",
+      "tileset_id": "band_9"
+    },
+    {
+      "id": "mgha_2012",
+      "tileset_id": "band_10"
+    },
+    {
+      "id": "mgha_2013",
+      "tileset_id": "band_11"
+    },
+    {
+      "id": "mgha_2014",
+      "tileset_id": "band_12"
+    },
+    {
+      "id": "mgha_2015",
+      "tileset_id": "band_13"
+    },
+    {
+      "id": "mgha_2016",
+      "tileset_id": "band_14"
+    }
+  ],
+  "pyramiding_policy": "MEAN"
+}

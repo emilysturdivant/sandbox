@@ -1,0 +1,16 @@
+{
+  "name": "projects/earthengine-legacy/assets/users/sgorelik/Woodwell_Global_AGB_500m_2003_2016_V6/2016_mgha",
+  "tilesets": [
+    {
+      "crs": "SR-ORG:6974",
+      "sources": [
+        {
+          "uris": [
+            "gs://woodwell-carbon/Global/2003_2016/V6/annfit/c95/f2003/wm/global_2016_c95_f03_wm.tif"
+          ]
+        }
+      ]
+    }
+  ],
+  "pyramiding_policy": "MEAN"
+}
