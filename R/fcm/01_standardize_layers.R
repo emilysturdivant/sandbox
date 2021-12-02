@@ -20,6 +20,7 @@ library(tidyverse)
 # Initialize variables ----
 # Local paths
 data_dir <- '/Users/emilysturdivant/data'
+export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
 
 # Visualization parameters
 Map$setCenter(30, 0, zoom = 3)
@@ -441,86 +442,85 @@ tropics_bb <- ee$Geometry$Rectangle(
   geodesic = FALSE
 )
 
-# Convert to raster for masking ----
-# Convert to raster
-tropics_r <- ee$FeatureCollection(tropics_bb)$
-  map(function(f) f$set("tropics", 1))$
-  reduceToImage(
-    properties = list('tropics'),
-    reducer = ee$Reducer$first()
-  )
-
-# Dense humid forests biome ----
-biome_dhf_id <- addm('BIOME_Dense_Humid_Forests')
-
-# Get dense humid forests biome
-alist <- ee_manage_assetlist(path_asset = addm(""))
-if(!biome_dhf_id %in% alist$ID) {
-  
-  # Load ecoregions and filter to dense humid forests biome
-  biome_dhf <- ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")$
-    filter(
-      ee$Filter$eq('BIOME_NAME', 'Tropical & Subtropical Moist Broadleaf Forests')
-    )
-  
-  # Convert to raster
-  dense_humid_forests <- biome_dhf$
-    reduceToImage(
-      properties = list('BIOME_NUM'), 
-      reducer = ee$Reducer$first()
-    )$
-    setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-  
-  # Save image as EE asset
-  task_img <- ee_image_to_asset(dense_humid_forests,
-                                'BIOME_Dense_Humid_Forests',
-                                assetId = biome_dhf_id,
-                                # region = tropics_bb,
-                                crs = 'EPSG:4326',
-                                scale = 1000,
-                                maxPixels = 803042888)
-  task_img$start()
-}
-
-dense_humid_forests <- ee$Image(biome_dhf_id)
-dhf_mask <- dense_humid_forests$mask()
-
-# Create Biomes layer ----
-colorUpdates = list(
-  list(ECO_ID = 204, COLOR = '#B3493B'),
-  list(ECO_ID = 245, COLOR = '#267400'),
-  list(ECO_ID = 259, COLOR = '#004600'),
-  list(ECO_ID = 286, COLOR = '#82F178'),
-  list(ECO_ID = 316, COLOR = '#E600AA'),
-  list(ECO_ID = 453, COLOR = '#5AA500'),
-  list(ECO_ID = 317, COLOR = '#FDA87F'),
-  list(ECO_ID = 763, COLOR = '#A93800')
-)
-
-ecoRegions = ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")$
-  map(function(f) {
-    color = f$get('COLOR_BIO')
-    f$set(list(style = list(color = color, width = 0)))
-  })
-
-ecoRegions = ecoRegions$
-  filter(ee$Filter$inList('BIOME_NUM', c(1,2,3,7,14)))$
-  merge(colorUpdates[[i]]$layer)
-
-imageRGB = ecoRegions$style(styleProperty = 'style')
-biomes_lyr <- Map$addLayer(imageRGB, name = 'RESOLVE/ECOREGIONS/2017', show = FALSE)
+# # Convert to raster for masking ----
+# # Convert to raster
+# tropics_r <- ee$FeatureCollection(tropics_bb)$
+#   map(function(f) f$set("tropics", 1))$
+#   reduceToImage(
+#     properties = list('tropics'),
+#     reducer = ee$Reducer$first()
+#   )
+# 
+# # Dense humid forests biome ----
+# biome_dhf_id <- addm('BIOME_Dense_Humid_Forests')
+# 
+# # Get dense humid forests biome
+# alist <- ee_manage_assetlist(path_asset = addm(""))
+# if(!biome_dhf_id %in% alist$ID) {
+#   
+#   # Load ecoregions and filter to dense humid forests biome
+#   biome_dhf <- ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")$
+#     filter(
+#       ee$Filter$eq('BIOME_NAME', 'Tropical & Subtropical Moist Broadleaf Forests')
+#     )
+#   
+#   # Convert to raster
+#   dense_humid_forests <- biome_dhf$
+#     reduceToImage(
+#       properties = list('BIOME_NUM'), 
+#       reducer = ee$Reducer$first()
+#     )$
+#     setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+#   
+#   # Save image as EE asset
+#   task_img <- ee_image_to_asset(dense_humid_forests,
+#                                 'BIOME_Dense_Humid_Forests',
+#                                 assetId = biome_dhf_id,
+#                                 # region = tropics_bb,
+#                                 crs = 'EPSG:4326',
+#                                 scale = 1000,
+#                                 maxPixels = 803042888)
+#   task_img$start()
+# }
+# 
+# dense_humid_forests <- ee$Image(biome_dhf_id)
+# dhf_mask <- dense_humid_forests$mask()
+# 
+# # Create Biomes layer ----
+# colorUpdates = list(
+#   list(ECO_ID = 204, COLOR = '#B3493B'),
+#   list(ECO_ID = 245, COLOR = '#267400'),
+#   list(ECO_ID = 259, COLOR = '#004600'),
+#   list(ECO_ID = 286, COLOR = '#82F178'),
+#   list(ECO_ID = 316, COLOR = '#E600AA'),
+#   list(ECO_ID = 453, COLOR = '#5AA500'),
+#   list(ECO_ID = 317, COLOR = '#FDA87F'),
+#   list(ECO_ID = 763, COLOR = '#A93800')
+# )
+# 
+# ecoRegions = ee$FeatureCollection("RESOLVE/ECOREGIONS/2017")$
+#   map(function(f) {
+#     color = f$get('COLOR_BIO')
+#     f$set(list(style = list(color = color, width = 0)))
+#   })
+# 
+# ecoRegions = ecoRegions$
+#   filter(ee$Filter$inList('BIOME_NUM', c(1,2,3,7,14)))$
+#   merge(colorUpdates[[i]]$layer)
+# 
+# imageRGB = ecoRegions$style(styleProperty = 'style')
+# biomes_lyr <- Map$addLayer(imageRGB, name = 'RESOLVE/ECOREGIONS/2017', show = FALSE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # AGB+BGB carbon density ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 wbd_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_BGB_Mgha")
-soc_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_SOC_Mgha")
 
 # Get mask
-c_mask <- wbd_mgha$updateMask(dhf_mask)$mask()
+c_mask <- wbd_mgha$gt(0)
 
 # Convert to carbon density 
-wcd_mgcha <- wbd_mgha$divide(2)$updateMask(dhf_mask)
+wcd_mgcha <- wbd_mgha$divide(2)$updateMask(c_mask)
 
 # Normalize WCD to 0-1 from 0-200 MgC/ha
 wcd_mgcha <- wcd_mgcha$unitScale(0, 200)
@@ -529,9 +529,41 @@ wcd_norm <- wcd_mgcha$
   where(wcd_mgcha$lt(0.0), 0.0)
 
 # # View
-# map_norm_idx(wcd_norm, 'Woody biomass carbon', palette = pal_idx)
+# map_norm_idx(wcd_norm, 'Woody biomass carbon', palette = pal_idx) +
+#   Map$addLayer(c_mask)
 
-# Look at histogram
+# Look at histogram ----
+img <- wcd_norm
+
+# Take sample at random points within the region
+sample <-  img$sampleRegions(tropics_bb, NULL, scale = 2000)
+sample <-  img$sample(numPixels = 1e4) # couldn't export
+
+# Export
+task_name <- 'sample_wcd_norm_1e4'
+task_vector <- sample %>% 
+  ee_table_to_drive(description = task_name,
+                    folder = basename(export_path),
+                    fileFormat = 'CSV', 
+                    timePrefix = FALSE)
+task_vector$start()
+
+# Import CSV for plot
+samp_csv <- here::here(export_path, str_c(task_name, '.csv'))
+samp_df <- read_csv(samp_csv)
+n <- nrow(samp_df)
+
+# Plot histogram
+samp_df %>% 
+  ggplot() +
+  geom_histogram() +
+  labs(y = str_glue('Number of pixels (N = {n})'), 
+       x = 'WCD (tC/ha)') +
+  theme_minimal()
+
+# Save
+ggsave(here::here('outputs/fcm/histograms', str_c(task_name, '.png')),
+       width = 4, height = 3.5)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # SOC carbon density ----
@@ -547,6 +579,10 @@ soc_norm <- soc_mgcha$
   where(soc_mgcha$gt(1.0), 1.0)$
   where(soc_mgcha$lt(0.0), 0.0)
 
+# # View
+# map_norm_idx(soc_norm, 'Soil organic carbon', palette = pal_idx) +
+#   Map$addLayer(c_mask)
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Forest Landscape Integrity Index ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -560,192 +596,50 @@ flii <- ee$ImageCollection(c(
 ))
 
 # Mask each image
-flii <- flii$map(function(img) {
-  img$updateMask(img$neq(-9999))
-  })
+flii <- flii$map(function(img) { img$updateMask(img$neq(-9999)) })
 
 # Mosaic
-flii <- flii$mosaic()$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 300)
+flii <- flii$mosaic()$setDefaultProjection(crs = 'EPSG:4326', scale = 300)
 
 # Normalize to 0-1 from 0-9666
-flii <- flii$unitScale(0, 9600)
-flii_norm <- flii$
-  where(flii$gt(1.0), 1.0)$
-  where(flii$lt(0.0), 0.0)$
+flii_scale <- flii$unitScale(0, 10000)
+flii_norm <- flii_scale$
+  where(flii_scale$gt(1.0), 1.0)$
+  where(flii_scale$lt(0.0), 0.0)$
   updateMask(c_mask)
 
 # # View
 # map_norm_idx(flii, 'FLII', palette = pal_idx) +
-#   # map_norm_idx(flii_vent1, 'FLII ventiles', palette = pal_idx) +
-#   map_norm_idx(flii_norm, 'FLII normalized', palette = pal_idx) +
-#   map_norm_idx(flii_vent, "FLII normalized ventiles", palette = pal_idx)
+#   map_norm_idx(flii_norm, 'FLII normalized', palette = pal_idx, show = TRUE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Biodiversity Intactness Index, 2005 ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 lbii <- ee$Image(addm('lbii_2005'))
 
-# Normalize to 0-1 from 0-9666
-lbii <- lbii$unitScale(0, 9600)
-lbii_norm <- lbii$
-  where(lbii$gt(1.0), 1.0)$
-  where(lbii$lt(0.0), 0.0)$
+# Normalize to 0-1 from 0-1
+lbii_scale <- lbii$unitScale(0, 1) # The lowest value is around 0.5
+lbii_norm <- lbii_scale$
+  where(lbii_scale$gt(1.0), 1.0)$ 
+  where(lbii_scale$lt(0.0), 0.0)$
   updateMask(c_mask)
 
 # # View
-# map_eq_int(lbii, 'Average', palette = pal_idx) +
-#   map_eq_int(lbii_norm, 'Average and normalize', palette = pal_idx) +
-#   map_eq_int(lbii_vent, 'Percentiles', palette = pal_idx)
+# map_norm_idx(lbii, 'Average', palette = pal_idx) +
+#   map_norm_idx(lbii_norm, 'Average and normalize', palette = pal_idx)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Development Potential Indices ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# # Create ImageCollection
-# ee_manage_create(
-#   path_asset = addm("DPI"),
-#   asset_type = "ImageCollection"
-# )
-# 
-# dpi_eelist <- ee_manage_assetlist(path_asset = addm("DPI_v1"))
-# 
-# # Move images from DPI_v1 folder into ImageCollection
-# ee_manage_move(
-#   path_asset = addm("DPI_v1"),
-#   final_path = addm("DPI")
-# )
-
-dti_id <- addm('DTI/DTI_2016_pctls_maskDHF')
-
-alist <- ee_manage_assetlist(path_asset = addm("DTI"))
-if(!dti_id %in% alist$ID) {
-  
-  # Load ImageCollection 
-  dpi_eelist <- ee_manage_assetlist(path_asset = addm("DPI"))
-  
-  # Reclass each index to dense humid forest biome
-  dpi <- dpi_eelist$ID %>% 
-    purrr::map(function(x) {
-      img <- ee$Image(x)$unmask()
-      # rescale_to_pctl(img, c(0, 100))
-      classify_percentiles(img)
-    }) %>% 
-    ee$ImageCollection()
-  
-  # Additive / equal weights / simple average 
-  dti <- dpi$
-    sum()$
-    setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
-    updateMask(dhf_mask)
-  
-  # Normalize
-  dti_norm <- rescale_to_pctl(dti, c(0, 100))
-  
-  # Save image to EE asset
-  task_img2 <- ee_image_to_asset(dti_norm,
-                                 'DTI_2016', 
-                                 assetId = dti_id,
-                                 region = tropics_bb,
-                                 crs = 'EPSG:4326',
-                                 scale = 1000,
-                                 maxPixels = 312352344, 
-                                 overwrite = TRUE)
-  task_img2$start()
-  
-}
-
-dti_norm <- ee$Image(dti_id)$updateMask(dhf_mask)
-
-dti_vent <- classify_percentiles(dti_norm)
-
-# # View
-# map_norm_idx(dti_norm, 'Average and normalize', palette = pal_idx) +
-#   map_norm_idx(dti_vent, 'Ventiles', palette = pal_idx) +
-#     map_norm_idx(carbon_vent, 'Carbon', palette = pal_idx)
-
-# map_eq_int(dti, 'Average', palette = pal_idx) +
-#   map_eq_int(dti_norm, 'Average and normalize', palette = pal_idx) +
-#   map_eq_int(dti_vent, 'Percentiles', palette = pal_idx) 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Subnational Infant Mortality Rate ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load 
-infant_mort <- ee$Image(addm("subnational_infant_mortality_rates_v2_01"))
-
-# Mask 
-infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
-
-# Rescale
-# get_pctl(infant_mort) # 99.7
-imr_norm <- rescale_to_pctl(infant_mort)$updateMask(dhf_mask)
-
-# Ventiles
-imr_vent <- classify_percentiles(imr_norm)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Zoonotic spillover risk (from Allen et al. 2017) ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load 
-zoonotic_risk_all <- ee$Image(addm("zoonotic_eid_risk"))$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 100000)$
-  resample() # Downsample zoonotic risk to smooth for display
-
-# Reweighted by population
-zs_weight_pop <- zoonotic_risk_all$select('b3')$updateMask(dhf_mask)
-zs_wpop_norm <- rescale_to_pctl(zs_weight_pop)
-zs_wpop_vent <- classify_percentiles(zs_weight_pop)
-
-# # View
-# map_eq_int(zs_wpubs_norm, 'ZS', palette = pal_idx) +
-#   map_eq_int(zs_wpubs_ea, 'ZS', palette = pal_idx)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Human modification ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load
-gHM <- ee$ImageCollection("CSP/HM/GlobalHumanModification")$first() # only image is '2016'
-
-# Rescale
-# get_pctl(gHM, 100) # 99th: 0.76; 98th: 0.72; 95th: 0.66; max: 0.99
-hm_norm <- rescale_to_pctl(gHM)$updateMask(dhf_mask)
-
-# Map and reclass to ventiles
-hm_vent <- classify_percentiles(hm_norm)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Human footprint (from Wild Areas v3) ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load 
-hf <- ee$Image(addm("wildareas-v3-2009-human-footprint"))$updateMask(dhf_mask)
-
-# Rescale
-# get_pctl(hf, 98) # max: 50; 99th: 24.6; 98th: 20.7
-hf_norm <- rescale_to_pctl(hf, c(0, 98))
-# Map$addLayer(eeObject = hf_norm, visParams = viz_idx_norm)
-
-# Map and reclass to ventiles
-hf_vent <- classify_percentiles(hf)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Population density ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load 
-popd <- ee$ImageCollection("CIESIN/GPWv411/GPW_UNWPP-Adjusted_Population_Density")$
-  first()$
-  updateMask(dhf_mask)
-
-# Rescale
-# get_pctl(popd, 100) # 98th: 36 p/km2; max: 162974.2
-popd_norm <- rescale_to_pctl(popd)$updateMask(dhf_mask)
-# Map$addLayer(eeObject = popd_norm, visParams = viz_idx_norm)
-
-# Map and reclass to ventiles
-popd_vent <- classify_percentiles(popd)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# GDL Health indicators ----
+# Subnational HDI ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 hdi_fc <- ee$FeatureCollection(addm('GDL_subnational_hdi_le_hi'))
+
+# Human development index ----
+hdi <- hdi_fc$
+  reduceToImage(properties = list('shdi'), reducer = ee$Reducer$first())$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+
+# View
+map_norm_idx(hdi, 'Subnational Human Development Index', palette = pal_idx)
 
 # Life expectancy ----
 le <- hdi_fc$
@@ -774,123 +668,18 @@ hi <- hdi_fc$
   setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
 hi_norm <- rescale_to_pctl(hi, c(0, 100))$updateMask(dhf_mask)
 
-# Human development index ----
-hdi <- hdi_fc$
-  reduceToImage(properties = list('shdi'), reducer = ee$Reducer$first())$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-hdi_norm <- rescale_to_pctl(hdi, c(0, 100))$updateMask(dhf_mask)
-
-# Map$addLayer(eeObject = hdi,
-#              visParams = viz_idx_norm, 
-#              name = "SHDI")
-
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Accessibility to Healthcare ----
+# Subnational Infant Mortality Rate ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load 
-hc_access <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
-  select('accessibility_walking_only')$
-  rename('b1')
+infant_mort <- ee$Image(addm("subnational_infant_mortality_rates_v2_01"))
+
+# Mask 
+infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
 
 # Rescale
-# get_pctl(hc_access,  95) # 6380 min
-hcw_norm <- rescale_to_pctl(hc_access, c(0, 95))$updateMask(dhf_mask)
-# Map$addLayer(eeObject = hc_access, visParams = viz_idx_norm)
+# get_pctl(infant_mort) # 99.7
+imr_norm <- rescale_to_pctl(infant_mort)$updateMask(dhf_mask)
 
-# Rescale to Percentiles 
-hcw_vent <- classify_percentiles(hcw_norm)$updateMask(dhf_mask)
-
-# Load 
-hc_motor <- ee$Image("Oxford/MAP/accessibility_to_healthcare_2019")$
-  select('accessibility')$
-  rename('b1')
-
-# Rescale
-# get_pctl(hc_motor,  95)
-hcm_norm <- rescale_to_pctl(hc_motor, c(0, 95))$updateMask(dhf_mask)
-# Map$addLayer(eeObject = hc_motor, visParams = viz_idx_norm)
-
-# Rescale to Percentiles 
-hcm_vent <- classify_percentiles(hcm_norm)$updateMask(dhf_mask)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Protected Areas ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load
-pas <- ee$FeatureCollection("WCMC/WDPA/current/polygons")$
-  filter(ee$Filter(c(
-    ee$Filter$neq('MARINE', '2'),
-    ee$Filter$gt('REP_AREA', 0))))$
-  filterBounds(tropics_bb)
-
-# pas$size()$getInfo()
-
-pa_lyr <- Map$addLayer(eeObject = pas, name = "Protected areas", opacity = 0.5)
-
-# Create fill
-pas_fill <- pas$draw(color = 'green', strokeWidth = 0)
-pas_lyr <- Map$addLayer(pas_fill, name = 'Protected areas', 
-                        opacity = 0.5, shown = FALSE)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# MSF interventions ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-countries_msf_shp <- file.path(data_dir, 'gadm', 'gadm0_tropics_simp01big9.shp')
-countries <- st_read(countries_msf_shp) %>% 
-  mutate(MSF = ifelse(is.na(MSF), 0, 1))
-
-# Upload countries
-countries_ee <- countries %>% sf_as_ee()
-
-# Filter to MSF countries
-msf_ee <- countries_ee$filter(ee$Filter$eq('MSF', 1))
-
-# Simplify
-msf_simp <- msf_ee$map(
-  function(f) f$simplify(maxError = ee$ErrorMargin(50000, 'meters'))
-)
-
-# Create outline
-msf_outline <- ee$Image()$byte()$paint(featureCollection = msf_simp, width = 2)
-msf_lyr <- Map$addLayer(msf_outline, list(palette = c('#bdbdbd')),
-                        name = 'MSF operations', shown = FALSE)
-msf_lyr <- Map$addLayer(msf_outline, list(palette = c('black')),
-                        name = 'MSF operations', shown = FALSE)
-
-# Get non-MSF countries
-no_msf_id <- addm('non_MSF_countries_masked')
-alist <- ee_manage_assetlist(path_asset = addm(""))
-if(!no_msf_id %in% alist$ID) {
-  
-  no_msf_ee <- countries_ee$filter(ee$Filter$neq('MSF', 1))
-  
-  # Convert to raster
-  no_msf_r <- no_msf_ee$
-    reduceToImage(
-      properties = list('MSF'), 
-      reducer = ee$Reducer$first()
-    )$
-    setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
-    updateMask(dhf_mask)
-  
-  # Save image as EE asset
-  task_img <- ee_image_to_asset(no_msf_r,
-                                'non_MSF_countries_masked',
-                                assetId = ,
-                                region = tropics_bb,
-                                crs = 'EPSG:4326',
-                                scale = 1000,
-                                maxPixels = 191434770)
-  task_img$start()
-}
-
-no_msf_r <- ee$Image(no_msf_id)
-
-# Create layer
-no_msf_lyr <- Map$addLayer(no_msf_r, list(palette = c('#bdbdbd')),
-                           name = 'non-MSF', 
-                           opacity = 0.8, shown = FALSE)
-
-no_msf_lyr <- Map$addLayer(no_msf_r, list(palette = c('black')),
-                           name = 'non-MSF', 
-                           opacity = 0.8, shown = FALSE)
+# Ventiles
+imr_vent <- classify_percentiles(imr_norm)
