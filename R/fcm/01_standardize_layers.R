@@ -532,38 +532,38 @@ wcd_norm <- wcd_mgcha$
 # map_norm_idx(wcd_norm, 'Woody biomass carbon', palette = pal_idx) +
 #   Map$addLayer(c_mask)
 
-# Look at histogram ----
-img <- wcd_norm
-
-# Take sample at random points within the region
-sample <-  img$sampleRegions(tropics_bb, NULL, scale = 2000)
-sample <-  img$sample(numPixels = 1e4) # couldn't export
-
-# Export
-task_name <- 'sample_wcd_norm_1e4'
-task_vector <- sample %>% 
-  ee_table_to_drive(description = task_name,
-                    folder = basename(export_path),
-                    fileFormat = 'CSV', 
-                    timePrefix = FALSE)
-task_vector$start()
-
-# Import CSV for plot
-samp_csv <- here::here(export_path, str_c(task_name, '.csv'))
-samp_df <- read_csv(samp_csv)
-n <- nrow(samp_df)
-
-# Plot histogram
-samp_df %>% 
-  ggplot() +
-  geom_histogram() +
-  labs(y = str_glue('Number of pixels (N = {n})'), 
-       x = 'WCD (tC/ha)') +
-  theme_minimal()
-
-# Save
-ggsave(here::here('outputs/fcm/histograms', str_c(task_name, '.png')),
-       width = 4, height = 3.5)
+# # Look at histogram ----
+# img <- wcd_norm
+# 
+# # Take sample at random points within the region
+# sample <-  img$sampleRegions(tropics_bb, NULL, scale = 2000)
+# sample <-  img$sample(numPixels = 1e4) # couldn't export
+# 
+# # Export
+# task_name <- 'sample_wcd_norm_1e4'
+# task_vector <- sample %>% 
+#   ee_table_to_drive(description = task_name,
+#                     folder = basename(export_path),
+#                     fileFormat = 'CSV', 
+#                     timePrefix = FALSE)
+# task_vector$start()
+# 
+# # Import CSV for plot
+# samp_csv <- here::here(export_path, str_c(task_name, '.csv'))
+# samp_df <- read_csv(samp_csv)
+# n <- nrow(samp_df)
+# 
+# # Plot histogram
+# samp_df %>% 
+#   ggplot() +
+#   geom_histogram() +
+#   labs(y = str_glue('Number of pixels (N = {n})'), 
+#        x = 'WCD (tC/ha)') +
+#   theme_minimal()
+# 
+# # Save
+# ggsave(here::here('outputs/fcm/histograms', str_c(task_name, '.png')),
+#        width = 4, height = 3.5)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # SOC carbon density ----
@@ -629,57 +629,22 @@ lbii_norm <- lbii_scale$
 #   map_norm_idx(lbii_norm, 'Average and normalize', palette = pal_idx)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Subnational HDI ----
+# Subnational Human Development Index ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-hdi_fc <- ee$FeatureCollection(addm('GDL_subnational_hdi_le_hi'))
+shdi <- ee$Image(addm('shdi_2arcmin'))
 
-# Human development index ----
-hdi <- hdi_fc$
-  reduceToImage(properties = list('shdi'), reducer = ee$Reducer$first())$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+shdi <- shdi$updateMask(shdi$gt(0))
+
+# Normalize to 0-1 from 0-1
+shdi_scale <- shdi$unitScale(0, 1) # The lowest value is around 0.5
+shdi_norm <- shdi_scale$
+  where(shdi_scale$gt(1.0), 1.0)$ 
+  where(shdi_scale$lt(0.0), 0.0)$
+  updateMask(c_mask)
 
 # View
-map_norm_idx(hdi, 'Subnational Human Development Index', palette = pal_idx)
-
-# Life expectancy ----
-le <- hdi_fc$
-  reduceToImage(
-    properties = list('LE'), 
-    reducer = ee$Reducer$first()
-  )$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-
-# Rescale
-# get_pctl(le, 1) # 51.9 years is the 1st percentile and 47.75 is the min
-le <- rescale_to_pctl(le, c(0, 100))$updateMask(dhf_mask)
-
-# Invert values
-le_norm <- le$multiply(-1)$add(1)
-
-# Rescale to Percentiles 
-le_vent <- classify_percentiles(le_norm)$updateMask(dhf_mask)
-
-# View
-# Map$addLayer(eeObject = le, visParams = viz_idx_norm, name = "Life expectancy")
-
-# Health index ----
-hi <- hdi_fc$
-  reduceToImage(properties = list('HI'), reducer = ee$Reducer$first())$
-  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
-hi_norm <- rescale_to_pctl(hi, c(0, 100))$updateMask(dhf_mask)
+map_norm_idx(shdi_norm, 'Subnational Human Development Index', palette = pal_idx, show = TRUE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Subnational Infant Mortality Rate ----
+# Global Competitiveness Index ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load 
-infant_mort <- ee$Image(addm("subnational_infant_mortality_rates_v2_01"))
-
-# Mask 
-infant_mort <- infant_mort$updateMask(infant_mort$gte(0))
-
-# Rescale
-# get_pctl(infant_mort) # 99.7
-imr_norm <- rescale_to_pctl(infant_mort)$updateMask(dhf_mask)
-
-# Ventiles
-imr_vent <- classify_percentiles(imr_norm)

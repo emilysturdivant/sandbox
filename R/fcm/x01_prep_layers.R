@@ -12,29 +12,284 @@ library(terra)
 library(tmap)
 tmap_mode('view')
 library(tidyverse)
+library(countrycode)
 
 # Initialize ----
 data_dir <- '~/data'
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Global Data Lab ----
+# Subnational HDI (rasterize) ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-gdl_dir <- here::here(data_dir, 'raw_data', 'human_dev', 'GDL_2019')
+gdl_dir <- here::here(data_dir, 'raw_data', 'sociopolitical', 'GDL_2019')
 
-# Download from https://globaldatalab.org/shdi/shapefiles/
+# Downloaded from https://globaldatalab.org/shdi/shapefiles/
 shp <- here::here(gdl_dir, 'GDL Shapefiles V4', 'GDL_Shapefiles_V4.shp')
 
-# Rasterize to LBII resolution
+# Rasterize to 4x LBII resolution ----
 shdi_v <- terra::vect(shp)
-
 lbii_tif <- file.path(data_dir, 'biodiversity/lbii_from_ascii.tif')
 lbii_r <- terra::rast(lbii_tif)
 temp_r <- aggregate(lbii_r, 4)
 shdi_r <- terra::rasterize(shdi_v, temp_r, field = 'shdi', 
                  fun = function(x) min(x, na.rm = TRUE))
 
-shdi_tif <- here::here(data_dir, 'human_dev', 'shdi_2arcmin.tif')
+shdi_tif <- here::here(data_dir, 'sociopolitical', 'shdi_2arcmin.tif')
 shdi_r %>% writeRaster(shdi_tif, datatype = 'FLT4S', overwrite = TRUE)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Worldwide Governance Indicators ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+wgi_xls <- here::here(data_dir, 'raw_data', 'sociopolitical', 'governance_wgi', 
+                      'wgidataset.xlsx')
+
+# Load all data
+wgi_all <- readxl::read_excel(wgi_xls, sheet = 2, col_names = FALSE, skip = 13,
+                              na = '#N/A')
+colnames(wgi_all) <- str_c(wgi_all[2, 3:ncol(wgi_all)], 
+                           wgi_all[1, 3:ncol(wgi_all)], collapse = '_')
+
+wgi_all %>% 
+  pivot_longer(cols = 3:134)
+
+# Select 2020 estimate
+wgi <- wgi_all %>% 
+  select(Attribute:ZWE) %>%
+  filter(`Series Global ID` == 'GCI4',
+         Edition == '2019') %>% 
+  pivot_longer(cols = AGO:ZWE,
+               names_to = 'COUNTRY_CODE') %>% 
+  pivot_wider(names_from = Attribute, 
+              names_repair = 'universal') %>% 
+  mutate(across(VALUE:SCORE, ~ as.numeric(.x)), 
+         SOURCE.DATE = as.numeric(SOURCE.DATE),
+         FIPS = countrycode(COUNTRY_CODE, origin = 'wb', 
+                            destination = 'fips'),
+         GAUL = countrycode(COUNTRY_CODE, origin = 'wb', 
+                            destination = 'gaul')) 
+
+gci_vals <- gci %>% select(COUNTRY_CODE, COUNTRY_NAME, FIPS, GAUL, RANK, SCORE)
+
+# Upload to asset
+gci_csv <- here::here(data_dir, 'sociopolitical', 'wef_gci', 'GCI4_2019.csv')
+gci_vals %>% write_csv(gci_csv)
+
+# Large Scale International Boundaries ----
+# 'country_co' FIPS: wikipedia.org/wiki/List_of_FIPS_country_codes
+countries <- ee$FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+data <- ee$FeatureCollection(list()) # Empty table
+for (row in 1:nrow(gci_vals)) {
+  
+  code <- gci_vals[[row, "FIPS"]]
+  score  <- gci_vals[[row, "SCORE"]]
+  
+  fc <- countries$filter(ee$Filter$eq('country_co', code))
+  fc <- fc$map(function(f) {
+    f$set(list(gci = score))
+  })$
+    copyProperties(countries)
+  
+  data <- data$merge(fc)
+}
+gci_ee2 <- data
+gci_ee2$first()$get('gci')$getInfo()
+Map$addLayer(gci_ee2, list(), name='GCI')
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Global Competitiveness Index ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+gci_xls <- here::here(data_dir, 'raw_data', 'sociopolitical', 'wef_gci', 
+                      'WEF_GCI_4.0_2019_Dataset.xlsx')
+
+# Load all data
+gci_all <- readxl::read_excel(gci_xls, sheet = 'Data', col_names = FALSE, skip = 2)
+names <- c(unname(as_vector(gci_all[2, 1:10])), 
+           unname(as_vector(gci_all[1, 11:ncol(gci_all)])))
+colnames(gci_all) <- names
+gci_all[2, 1:10] <- NA
+gci_all$`Series Global ID`[2] <- 'GCI4'
+gci_all$Attribute[2] <- 'COUNTRY_NAME'
+gci_all$Edition[2] <- '2019'
+
+# Filter to GCI 
+gci <- gci_all %>% 
+  filter(`Series Global ID` == 'GCI4',
+         Edition == '2019') %>% 
+  select(Attribute:ZWE) %>%
+  pivot_longer(cols = AGO:ZWE,
+               names_to = 'COUNTRY_CODE') %>% 
+  pivot_wider(names_from = Attribute, 
+              names_repair = 'universal') %>% 
+  mutate(across(VALUE:SCORE, ~ as.numeric(.x)), 
+         SOURCE.DATE = as.numeric(SOURCE.DATE),
+         FIPS = countrycode(COUNTRY_CODE, origin = 'wb', 
+                                 destination = 'fips'),
+         GAUL = countrycode(COUNTRY_CODE, origin = 'wb', 
+                                 destination = 'gaul')) 
+
+gci_vals <- gci %>% select(COUNTRY_CODE, COUNTRY_NAME, FIPS, GAUL, RANK, SCORE)
+
+# Upload to asset
+gci_csv <- here::here(data_dir, 'sociopolitical', 'wef_gci', 'GCI4_2019.csv')
+gci_vals %>% write_csv(gci_csv)
+
+# Large Scale International Boundaries ----
+# 'country_co' FIPS: wikipedia.org/wiki/List_of_FIPS_country_codes
+countries <- ee$FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+data <- ee$FeatureCollection(list()) # Empty table
+for (row in 1:nrow(gci_vals)) {
+  
+  code <- gci_vals[[row, "FIPS"]]
+  score  <- gci_vals[[row, "SCORE"]]
+  
+  fc <- countries$filter(ee$Filter$eq('country_co', code))
+  fc <- fc$map(function(f) {
+    f$set(list(gci = score))
+  })$
+    copyProperties(countries)
+  
+  data <- data$merge(fc)
+}
+gci_ee2 <- data
+gci_ee2$first()$get('gci')$getInfo()
+Map$addLayer(gci_ee2, list(), name='GCI')
+
+# This doesn't work: 
+countries <- countries$map(function(f) {
+  
+  lsib_code <- f$get('country_co')$getInfo()
+  gci_row <- gci_vals %>% filter(FIPS == lsib_code)
+  
+  if(nrow(gci_row) == 1){
+    f$set('gci', gci_row$SCORE)
+  } else {
+    f$set('gci', NULL)
+  }
+  
+})
+
+# Option 3: for-loop (WATCH OUT!)
+size <- countries$size()
+print(size$getInfo()) # 312
+countriesList <- countries$toList(1) # Adjust size.
+
+for (j in (seq_len(countriesList$length()$getInfo()) - 1)) {
+  feature <- ee$Feature(countriesList$get(j))
+  # Convert ImageCollection > FeatureCollection
+  fc <- ee$FeatureCollection(
+    imagery$map(
+      function(image) {
+        ee$Feature(
+          feature$geometry()$centroid(100),
+          image$reduceRegion(
+            reducer = ee$Reducer$mean(),
+            geometry = feature$geometry(),
+            scale = 500
+          )
+        )$set(
+          list(
+            time = image$date()$millis(),
+            date = image$date()$format()
+          )
+        )$copyProperties(feature)
+      }
+    )
+  )
+  data <- data$merge(fc)
+}
+print(data$first()$getInfo())
+# n <- countries$size()$getInfo()
+# for (c in 1:n) {
+dict <- countries$first()$toDictionary(list('country_co'))
+dict$getInfo()
+ee_print(dict)
+
+
+
+# It worked!
+f_list <- list()
+for (row in 1:nrow(gci_vals)) {
+  
+  code <- gci_vals[[row, "FIPS"]]
+  score  <- gci_vals[[row, "SCORE"]]
+  rank  <- gci_vals[[row, "RANK"]]
+  
+  f <- countries$filter(ee$Filter$eq('country_co', code))$geometry()
+  f <- ee$Feature(f,
+    list(gci = score,
+         gci_rank = rank,
+         fips = code))
+  
+  f_list[row] <- c(f)
+}
+gci_ee <- ee$FeatureCollection(f_list)
+gci_ee$first()$get('fips')$getInfo()
+
+# Save FC
+task_vector <- ee_table_to_asset(gci_ee, assetId = addm('WEF_GCI4_2019'))
+task_vector$start()
+
+# Convert to raster
+gci_ic <- gci_ee$
+  reduceToImage(
+    properties = list('gci'),
+    reducer = ee$Reducer$first()
+  )
+Map$addLayer(gci_ic, list(), name='GCI')
+
+
+
+# Option 3: for-loop (WATCH OUT!)
+size <- countriesTable$size()
+print(size$getInfo()) # 312
+countriesList <- countriesTable$toList(1) # Adjust size.
+data <- ee$FeatureCollection(list()) # Empty table.
+for (j in (seq_len(countriesList$length()$getInfo()) - 1)) {
+  feature <- ee$Feature(countriesList$get(j))
+  # Convert ImageCollection > FeatureCollection
+  fc <- ee$FeatureCollection(
+    imagery$map(
+      function(image) {
+        ee$Feature(
+          feature$geometry()$centroid(100),
+          image$reduceRegion(
+            reducer = ee$Reducer$mean(),
+            geometry = feature$geometry(),
+            scale = 500
+          )
+        )$set(
+          list(
+            time = image$date()$millis(),
+            date = image$date()$format()
+          )
+        )$copyProperties(feature)
+      }
+    )
+  )
+  data <- data$merge(fc)
+}
+print(data$first()$getInfo())
+
+
+
+# GAUL ----
+countries <- ee$FeatureCollection("FAO/GAUL_SIMPLIFIED_500m/2015/level0")
+f <- countries$first()
+f$get('ADM0_NAME')$getInfo()
+f$get('gci')$getInfo()
+countries$get('ADM0_NAME')
+# Codes at: https://www.fao.org/in-action/countrystat/news-and-events/events/training-material/gaul-codes2014/en/
+
+gci_country_list <- gci_vals %>% distinct(ISO) %>% deframe()
+countrycode::countrycode("Congo, Democratic Rep.", origin = 'country.name', 
+                         destination = 'gaul')
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Subnational HDI (simplify) ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+gdl_dir <- here::here(data_dir, 'raw_data', 'sociopolitical', 'GDL_2019')
+
+# Downloaded from https://globaldatalab.org/shdi/shapefiles/
+shp <- here::here(gdl_dir, 'GDL Shapefiles V4', 'GDL_Shapefiles_V4.shp')
 
 # Simplify and subset to those that intersect tropics
 sf <- st_read(shp)
@@ -42,6 +297,11 @@ sfs <- sf %>% st_simplify(dTolerance = 0.01)
 sf.st <- sfs[unlist(st_intersects(tropics_26, sfs)),]
 
 tm_shape(sfs) + tm_polygons(col = 'shdi')
+
+
+cts <- sf %>% st_drop_geometry() %>% 
+  drop_na(shdi) %>% 
+  distinct(country)
 
 # # Load other indicators
 # csv <- file.path(gdl_dir, 'GDL-Life-expectancy-data.csv')
