@@ -13,9 +13,95 @@ library(tmap)
 tmap_mode('view')
 library(tidyverse)
 library(countrycode)
+library(rgee)
+ee_Initialize()
 
 # Initialize ----
 data_dir <- '~/data'
+
+# Prep to get paths to assets
+user <- ee_get_assethome()
+addm <- function(x) sprintf("%s/%s", user, x)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# EPI ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Downloaded from https://sedac.ciesin.columbia.edu/data/set/epi-environmental-performance-index-2020/data-download
+epi_xls <- here::here(data_dir, 'raw_data', 'sociopolitical', 'epi', 
+                      '2020-epi-xlsx', '2020-epi.xlsx')
+
+# Load all data
+epi_all <- readxl::read_excel(epi_xls, sheet = '3_EPI_Results', 
+                              col_names = TRUE, na = 'NA',
+                              .name_repair = ~ str_replace_all(.x, '\\.', '_')) %>% 
+  mutate(FIPS = countrycode(iso, origin = 'iso3c', destination = 'fips'),
+         GAUL = countrycode(iso, origin = 'iso3c', destination = 'gaul')) 
+
+# Look
+epi %>% filter(!is.na(EPI.new)) %>% count(iso, EPI.new) %>% arrange(desc(n))
+
+# Large Scale International Boundaries ----
+# 'country_co' FIPS: wikipedia.org/wiki/List_of_FIPS_country_codes
+countries <- ee$FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+epi_fc <- ee$FeatureCollection(list()) # Empty table
+for (row in 1:nrow(epi)) {
+  
+  # Get values for the given country: FIPS code and values
+  code <- epi_all[[row, "FIPS"]]
+  score  <- epi_all %>% 
+    slice(row) %>% 
+    select(EPI_new:HLT_new) %>% # Doesn't work with all the columns, maybe because of NAs?
+    as.list()
+  
+  # Filter FC to the country
+  fc <- countries$filter(ee$Filter$eq('country_co', code))
+  
+  # Set the properties for every feature from the values in the input table
+  fc <- fc$map( function(f){ f$set(score) })$
+    copyProperties(countries)
+  
+  # Append country FC to output FC
+  epi_fc <- epi_fc$merge(fc)
+}
+epi_fc$first()$get('HLT_new')$getInfo()
+Map$addLayer(epi_fc, list(), name='GCI')
+
+# Save FC
+task_vector <- ee_table_to_asset(epi_fc, assetId = addm('EPI_2020_LSIB'))
+task_vector$start()
+
+# Convert to raster
+epi_ic <- epi_fc$
+  reduceToImage(
+    properties = list('EPI_new'),
+    reducer = ee$Reducer$first()
+  )
+Map$addLayer(epi_ic, list(), name='EPI')
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# World Bank ESG data ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Downloaded from https://datacatalog.worldbank.org/search/dataset/0037651/Environment,%20Social%20and%20Governance%20Data
+esg_dir <- here::here(data_dir, 'raw_data', 'sociopolitical', 'worldbank', 
+                      'WB_EnvSocGov_data')
+
+# Load and look
+countries_csv <- here::here(esg_dir, 'ESGCountry.csv')
+esg_countries <- read_csv(countries_csv)
+esg_countries %>% tbl_vars()
+esg_countries %>% distinct(`Latest agricultural census`)
+
+# Load and look
+series_csv <- here::here(esg_dir, 'ESGSeries.csv')
+esg_series <- read_csv(series_csv)
+esg_series %>% tbl_vars()
+esg_series %>% distinct(Topic)
+esg_series %>% group_by(Topic) %>% distinct(`Indicator Name`) %>% 
+  filter(str_detect(Topic, regex('governance: gender', ignore_case = TRUE)))
+t <- esg_series %>% 
+  filter(str_detect(`Indicator Name`, regex('school enrollment', ignore_case = TRUE))) 
+t <- esg_series %>% distinct(Source)
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Subnational HDI (rasterize) ----
@@ -642,6 +728,13 @@ r <- terra::rast(fp)
 # # Load shapefile (polygons)
 # (shp_fp <- list.files(miao, pattern = "polygons\\.shp$", full.names=TRUE, recursive = TRUE))
 # pa <- st_read(shp_fp[[1]])
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Spatial database of planted trees ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+sdpt_zip <- file.path(data_dir, 'raw_data/biodiversity/plantations_v1_3_dl.gdb.zip')
+sdpt <- download.file('http://gfw-files.s3.amazonaws.com/plantations/final/global/plantations_v1_3_dl.gdb.zip', 
+                      destfile = sdpt_zip)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Local biodiversity intactness index ----
