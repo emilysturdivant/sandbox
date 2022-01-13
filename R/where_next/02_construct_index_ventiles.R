@@ -13,7 +13,7 @@
 #     * add different health metric...
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-source('R/where_next/01_use_rgee.R')
+source(here::here('R/where_next/01_use_rgee.R'))
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Combine indicators ----
@@ -22,7 +22,8 @@ source('R/where_next/01_use_rgee.R')
 i_forestbio <- flii_norm$multiply(0.45)$
   add(wcd_vent$multiply(0.225))$
   add(soc_vent$multiply(0.225))$
-  add(kba_r$multiply(0.1))$
+  # add(kba_r$multiply(0.1))$
+  add(rich_vent$multiply(0.1))$
   setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
 
 i_humz <- imr_vent$multiply(0.33)$
@@ -94,7 +95,7 @@ i_threats <- dti_vent$multiply(1)$
 legend <- lgnd_norm_idx()
 lgnd_forestbio <- lgnd_norm_idx(pal_forestbio)
 lgnd_humz <- lgnd_norm_idx(pal_humz)
-lgnd80_3clas <- lgnd_top_pctls_3class()
+lgnd80_3clas <- lgnd_top_pctls_3class(priorities_11)
 lgnd70_4clas <- lgnd_top_pctls()
 
 # Set center
@@ -118,20 +119,20 @@ biomes_lyr +
   map_eq_int_10(carbon_vent, 'Carbon ventiles', palette = pal_forestbio) +
   map_norm_idx(kba_r, 'KBAs', palette = pal_forestbio) +
   map_eq_int_10(lbii_vent, 'LBII', palette = pal_forestbio) +
-  map_eq_int_10(imr_vent, 'Infant mortality rate ventiles', palette = pal_humz) +
-  map_eq_int_10(le_vent, 'Life expectancy ventiles', palette = pal_humz) +
-  map_eq_int_10(hcw_vent, 'HC access walking ventiles', palette = pal_humz) +
-  map_eq_int_10(hcm_vent, 'HC access motorized ventiles', palette = pal_humz) +
-  map_eq_int_10(dti_vent, 'DTI ventiles', palette = pal_humz) +
-  map_eq_int_10(hf_vent, 'Human footprint ventiles', palette = pal_humz) +
-  map_eq_int_10(hm_vent, 'Human modification ventiles', palette = pal_humz) +
-  map_eq_int_10(zs_wpop_vent, 'Zoonotic spillover risk', palette = pal_humz) +
+  map_eq_int_10(imr_vent, 'Infant mortality rate ventiles', palette = pal_carbontropics) + # pal_humz
+  map_eq_int_10(le_vent, 'Life expectancy ventiles', palette = pal_carbontropics) +
+  map_eq_int_10(hcw_vent, 'HC access walking ventiles', palette = pal_carbontropics) +
+  map_eq_int_10(hcm_vent, 'HC access motorized ventiles', palette = pal_carbontropics) +
+  map_eq_int_10(dti_vent, 'DTI ventiles', palette = pal_carbontropics) +
+  map_eq_int_10(hf_vent, 'Human footprint ventiles', palette = pal_carbontropics) +
+  map_eq_int_10(hm_vent, 'Human modification ventiles', palette = pal_carbontropics) +
+  map_eq_int_10(zs_wpop_vent, 'Zoonotic spillover risk', palette = pal_carbontropics) + # pal_humz
   map_eq_int_10(i_threats, 'Threats component', palette = pal_carbontropics) +
   map_eq_int_10(i_health, 'Health component', palette = pal_carbontropics) +
   
   # Components
   map_norm_idx(i_forestbio_pctl, 'Forest quality v1', palette = pal_forestbio) +
-  map_norm_idx(i_humz_pctl, 'Human health and impacts v1', palette = pal_humz) +
+  map_norm_idx(i_humz_pctl, 'Human health and impacts v1', palette = pal_carbontropics) + # pal_humz
   
   # v1
   map_norm_idx(v1_80, 'FQ + HHI (4:1) ventiles') + 
@@ -151,11 +152,12 @@ biomes_lyr +
   map_norm_idx(v3_70, 'FQ + HHI (7:3) v3', legend = FALSE, palette = priorities_11) + 
   map_top_pctls(v3_70, 'FQ + HHI (7:3) v3, top 20%', legend = FALSE, palette = priorities_11) + 
   
-  hih_sites_lyr + hih_pts_lyr + raisg_lyr +
-  no_msf_lyr + msf_lyr + pas_lyr  + 
+  hih_sites_lyr + hih_pts_lyr + pas_lyr + 
+  # no_msf_lyr + msf_lyr + raisg_lyr +
   # lgnd_forestbio +
   # lgnd_humz +
-  legend
+  legend +
+  lgnd80_3clas 
 
 # Slider views ----
 map_top_pctls(i_forestbio, 'Forest quality') + lgnd70_4clas |

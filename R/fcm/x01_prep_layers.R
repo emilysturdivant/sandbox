@@ -37,20 +37,21 @@ epi_all <- readxl::read_excel(epi_xls, sheet = '3_EPI_Results',
   mutate(FIPS = countrycode(iso, origin = 'iso3c', destination = 'fips'),
          GAUL = countrycode(iso, origin = 'iso3c', destination = 'gaul')) 
 
-# Look
-epi %>% filter(!is.na(EPI.new)) %>% count(iso, EPI.new) %>% arrange(desc(n))
-
+# Replace NAs with -1
+epi_all <- epi_all %>% 
+  mutate(across(EPI_new:WWT_rnk_new, ~ replace_na(.x, -1)))
+  
 # Large Scale International Boundaries ----
 # 'country_co' FIPS: wikipedia.org/wiki/List_of_FIPS_country_codes
 countries <- ee$FeatureCollection("USDOS/LSIB_SIMPLE/2017")
 epi_fc <- ee$FeatureCollection(list()) # Empty table
-for (row in 1:nrow(epi)) {
+for (row in 1:nrow(epi_all)) {
   
   # Get values for the given country: FIPS code and values
   code <- epi_all[[row, "FIPS"]]
   score  <- epi_all %>% 
     slice(row) %>% 
-    select(EPI_new:HLT_new) %>% # Doesn't work with all the columns, maybe because of NAs?
+    select(EPI_new, HLT_new, ECO_new, BDH_new, ECS_new, CCH_new, AGR_new) %>% # Doesn't work with all the columns, maybe because of NAs?
     as.list()
   
   # Filter FC to the country
@@ -63,11 +64,12 @@ for (row in 1:nrow(epi)) {
   # Append country FC to output FC
   epi_fc <- epi_fc$merge(fc)
 }
-epi_fc$first()$get('HLT_new')$getInfo()
-Map$addLayer(epi_fc, list(), name='GCI')
+epi_fc$first()$get('BDH_new')$getInfo()
+Map$addLayer(epi_fc, list(), name='EPI')
 
 # Save FC
-task_vector <- ee_table_to_asset(epi_fc, assetId = addm('EPI_2020_LSIB'))
+task_vector <- ee_table_to_asset(epi_fc, assetId = addm('EPI_2020_LSIB_eco'),
+                                 overwrite = TRUE)
 task_vector$start()
 
 # Convert to raster
@@ -728,6 +730,59 @@ r <- terra::rast(fp)
 # # Load shapefile (polygons)
 # (shp_fp <- list.files(miao, pattern = "polygons\\.shp$", full.names=TRUE, recursive = TRUE))
 # pa <- st_read(shp_fp[[1]])
+
+# # Create ImageCollection
+# ee_manage_create(
+#   path_asset = addm("DPI"),
+#   asset_type = "ImageCollection"
+# )
+# 
+# dpi_eelist <- ee_manage_assetlist(path_asset = addm("DPI_v1"))
+# 
+# # Move images from DPI_v1 folder into ImageCollection
+# ee_manage_move(
+#   path_asset = addm("DPI_v1"),
+#   final_path = addm("DPI")
+# )
+
+dti_id <- addm('DTI/DTI_2016_pctls_maskDHF')
+
+alist <- ee_manage_assetlist(path_asset = addm("DTI"))
+if(!dti_id %in% alist$ID) {
+  
+  # Load ImageCollection 
+  dpi_eelist <- ee_manage_assetlist(path_asset = addm("DPI"))
+  
+  # Reclass each index to dense humid forest biome
+  dpi <- dpi_eelist$ID %>% 
+    purrr::map(function(x) {
+      img <- ee$Image(x)$unmask()
+      # rescale_to_pctl(img, c(0, 100))
+      classify_percentiles(img)
+    }) %>% 
+    ee$ImageCollection()
+  
+  # Additive / equal weights / simple average 
+  dti <- dpi$
+    sum()$
+    setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
+    updateMask(dhf_mask)
+  
+  # Normalize
+  dti_norm <- rescale_to_pctl(dti, c(0, 100))
+  
+  # Save image to EE asset
+  task_img2 <- ee_image_to_asset(dti_norm,
+                                 'DTI_2016', 
+                                 assetId = dti_id,
+                                 region = tropics_bb,
+                                 crs = 'EPSG:4326',
+                                 scale = 1000,
+                                 maxPixels = 312352344, 
+                                 overwrite = TRUE)
+  task_img2$start()
+  
+}
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Spatial database of planted trees ----

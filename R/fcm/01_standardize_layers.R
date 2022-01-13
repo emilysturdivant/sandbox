@@ -360,7 +360,7 @@ map_eq_int_10 <- function(img, name, shown = FALSE, palette = NULL,
 
 # Map top 20th percentile in 3 intervals (80-90, 90-95, 95-100)
 map_top_pctls <- function(pctl_img, name = NULL, shown = FALSE, palette = NULL, 
-                          legend = TRUE) {
+                          legend = TRUE, eemask = NULL) {
   
   # Set palette
   if (is.null(palette)) {
@@ -372,9 +372,12 @@ map_top_pctls <- function(pctl_img, name = NULL, shown = FALSE, palette = NULL,
     where(pctl_img$gte(.7), .7)$
     where(pctl_img$gte(.8), .8)$
     where(pctl_img$gte(.9), .9)$
-    where(pctl_img$gte(.95), .95)$
-    updateMask(dhf_mask)
+    where(pctl_img$gte(.95), .95)
   
+  if (!is.null(eemask)) {
+    img <- img$updateMask(eemask)
+  }
+
   # Visualization parameters
   viz <- list(min = 0.75, max = .95, 
               palette = palette, 
@@ -613,20 +616,30 @@ flii_norm <- flii_scale$
 #   map_norm_idx(flii_norm, 'FLII normalized', palette = pal_idx, show = TRUE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Biodiversity Intactness Index, 2005 ----
+# Species richness 5km ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-lbii <- ee$Image(addm('lbii_2005'))
+rich <- ee$Image(addm('IUCN_Richness_all_5km'))
 
-# Normalize to 0-1 from 0-1
-lbii_scale <- lbii$unitScale(0, 1) # The lowest value is around 0.5
-lbii_norm <- lbii_scale$
-  where(lbii_scale$gt(1.0), 1.0)$ 
-  where(lbii_scale$lt(0.0), 0.0)$
-  updateMask(c_mask)
+# Rescale
+rich_norm <- rescale_to_pctl(rich)
 
-# # View
-# map_norm_idx(lbii, 'Average', palette = pal_idx) +
-#   map_norm_idx(lbii_norm, 'Average and normalize', palette = pal_idx)
+# Ventiles
+rich_vent <- classify_percentiles(rich_norm)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Key Biodiversity Areas ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+kba_id <- addm('KBAs_2021_Sep02_maskDHF')
+
+kba_r <- ee$Image(kba_id)
+
+# Reclass values outside of 0-1 range
+kba_r <- kba_r$
+  where(kba_r$lt(0.94), 0.8)$
+  where(kba_r$lt(0.96), 0.9)
+
+# View
+# map_norm_idx(kba_r, "Key Biodiversity Areas", TRUE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Subnational Human Development Index ----
@@ -642,9 +655,65 @@ shdi_norm <- shdi_scale$
   where(shdi_scale$lt(0.0), 0.0)$
   updateMask(c_mask)
 
-# View
-map_norm_idx(shdi_norm, 'Subnational Human Development Index', palette = pal_idx, show = TRUE)
+# # View
+# map_norm_idx(shdi_norm, 'Subnational Human Development Index', palette = pal_idx, show = TRUE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Global Competitiveness Index ----
+# Development Potential Indices ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+dti_id <- addm('DTI/DTI_2016_pctls_maskDHF')
+
+dti_norm <- ee$Image(dti_id)$updateMask(c_mask)
+
+# Invert values
+dti_inv <- dti_norm$multiply(-1)$add(1)
+
+# Rescale to percentiles
+dti_vent <- classify_percentiles(dti_inv)
+
+# # View
+# map_norm_idx(dti_norm, palette = pal_idx, 'Average and normalize') +
+#   map_norm_idx(dti_inv, palette = pal_idx, 'Invert') +
+#   map_norm_idx(dti_vent, palette = pal_idx, 'Percentiles')
+# 
+# map_eq_int(dti_norm, palette = pal_idx, 'Average and normalize') +
+#   map_eq_int(dti_inv, palette = pal_idx, 'Invert') +
+#   map_eq_int(dti_vent, palette = pal_idx, 'Percentiles')
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# EPI ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+epi_fc <- ee$FeatureCollection(addm('EPI_2020_LSIB'))
+
+# Convert to raster
+epi_ic <- epi_fc$
+  reduceToImage(properties = list('EPI_new'), reducer = ee$Reducer$first())$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+
+# Rescale
+epi_norm <- rescale_to_pctl(epi_ic)$updateMask(c_mask)
+
+# Ventiles
+epi_vent <- classify_percentiles(epi_norm)
+
+# # View
+# map_norm_idx(epi_vent, 'EPI', palette = pal_idx, show = TRUE)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# EPI: Ecosystem Vitality ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+epi_fc <- ee$FeatureCollection(addm('EPI_2020_LSIB'))
+
+# Convert to raster
+epieco <- epi_fc$
+  reduceToImage(properties = list('ECO_new'), reducer = ee$Reducer$first())$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 1000)
+
+# Rescale
+eco_norm <- rescale_to_pctl(epieco)$updateMask(c_mask)
+
+# Ventiles
+eco_vent <- classify_percentiles(eco_norm)
+
+# # View
+# map_norm_idx(eco_vent, 'EPI', palette = pal_idx, show = TRUE)

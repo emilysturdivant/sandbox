@@ -851,6 +851,23 @@ lbii_vent <- classify_percentiles(lbii_norm)
 #   map_eq_int(lbii_vent, 'Percentiles')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Species richness 5km ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+rich <- ee$Image(addm('IUCN_Richness_all_5km'))
+
+# Rescale
+# get_pctl(infant_mort) # 99.7
+rich_norm <- rescale_to_pctl(rich)$updateMask(dhf_mask)
+
+# Ventiles
+rich_vent <- classify_percentiles(rich_norm)
+
+# # View
+# map_eq_int(lbii, 'Average') +
+#   map_eq_int(lbii_norm, 'Average and normalize') +
+#   map_eq_int(lbii_vent, 'Percentiles')
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Development Potential Indices ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # # Create ImageCollection
