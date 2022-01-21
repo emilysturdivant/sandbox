@@ -91,7 +91,7 @@ tidy_forest_loss_df_sf <- function(df) {
 get_piecewise_line <- function(df_zone) {
   
   # Get linear regression
-  out.lm <- lm(c_loss_MtC ~ year, data = df_zone)
+  out.lm <- lm(c_loss_flex ~ year, data = df_zone)
   dat2 = data.frame(x = df_zone$year, y = out.lm$fitted.values)
   
   # BIC-based selection - throws error when 0 breakpoints are found
@@ -145,7 +145,7 @@ get_piecewise_line_scorebased <- function(df_zone) {
   return(dat2)
 }
 
-plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (MtC)') {
+plot_pw_fit <- function(df_zone, div_name, pw_fit) {
   
   yrvec <- min(df_zone$year):max(df_zone$year)
   labels <- str_c(str_sub(yrvec-1, 3,4), str_sub(yrvec, 3,4), sep = '-')
@@ -154,7 +154,7 @@ plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (MtC)') {
     
   # Plot
   p <- df_zone %>% 
-    ggplot(aes(x = year, y = c_loss_MtC)) +
+    ggplot(aes(x = year, y = c_loss_flex)) +
     geom_point(size = .3, color = 'grey30') +
     geom_line(color = 'grey30', size = .5) + 
     geom_line(data = pw_fit, aes(x = x, y = y), color = 'firebrick3', size = .6) +
@@ -162,12 +162,14 @@ plot_pw_fit <- function(df_zone, div_name, pw_fit, y_name = 'AGC loss (MtC)') {
                        breaks = 2001:2020,
                        expand = c(0.01, 0.01),
                        labels = labels) +
-    scale_y_continuous(name = y_name,
-                       #labels = scales::comma
+    scale_y_continuous(name = str_c('AGC loss (', c_units, ')'),
+                       labels = scales::comma
                        ) +
     labs(title = div_name) +
     theme_bw() +
     theme(
+      text = element_text(family = 'Times'),
+      axis.text = element_text(family = 'Helvetica'),
       axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
       panel.grid.minor = element_blank()) 
  
@@ -232,7 +234,7 @@ get_params <- function(n) {
   return(list(n = n, ncol=ncol, png_width=png_width, png_height=png_height))
 }
 
-layout_plots <- function(plots, params, title = TRUE, fix_y = TRUE) {
+layout_plots <- function(plots, params, title = TRUE, y_lim = c(0, 0.25)) {
   
   # Create patchwork
   ps <- plots %>% 
@@ -245,9 +247,9 @@ layout_plots <- function(plots, params, title = TRUE, fix_y = TRUE) {
     theme(title = element_text(size = 10))
   
   # Conditionally fix y-scale
-  if(fix_y){
+  if (!is.null(y_lim)) {
     ps <- ps &
-      scale_y_continuous(limits = c(0, 0.25))
+      scale_y_continuous(limits = y_lim)
   }
 
   # Conditionally remove every-other x-axis label
@@ -267,19 +269,19 @@ layout_plots <- function(plots, params, title = TRUE, fix_y = TRUE) {
   
   # Set y-axis title based on plot size
   if(params$png_height < 3) {
-    y_lab <- grid::textGrob("AGC loss (MtC)", 
-                            gp = grid::gpar(fontsize=10), 
+    y_lab <- grid::textGrob(str_c('AGC loss (', c_units, ')'), 
+                            gp = grid::gpar(fontsize=10, fontfamily='Times'), 
                             rot = 90)
   } else {
-    y_lab <- grid::textGrob("Aboveground carbon loss (MtC)", 
-                            gp = grid::gpar(fontsize=10), 
+    y_lab <- grid::textGrob(str_c('Aboveground carbon loss (', c_units, ')'), 
+                            gp = grid::gpar(fontsize=10, fontfamily='Times'), 
                             rot = 90)
   }
   
   # Set x-axis title
   if(params$n > 1) {
     ps <- ps & theme(axis.title = element_blank())
-    x_lab <- grid::textGrob("Year", gp = grid::gpar(fontsize=10))
+    x_lab <- grid::textGrob("Year", gp = grid::gpar(fontsize=10, fontfamily='Times'))
   } else {
     ps <- ps & theme(axis.title.y = element_blank())
     x_lab <- NULL

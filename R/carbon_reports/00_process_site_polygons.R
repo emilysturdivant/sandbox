@@ -18,6 +18,8 @@ sites_dir <- '~/data/hih_sites'
 polys_dir <- file.path(sites_dir, 'final_sites')
 final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
 
+export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Estonia ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

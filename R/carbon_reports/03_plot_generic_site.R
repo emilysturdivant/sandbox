@@ -23,10 +23,14 @@ library(tmap)
 
 # Prep paths
 export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
-polys_fp <- here::here('~/data', 'sites_for_c_report', 'estonia_div_nolakes.shp')
+# polys_fp <- here::here('~/data', 'sites_for_c_report', 'estonia_div_nolakes.shp')
 task_name <- tools::file_path_sans_ext(basename(polys_fp))
-out_fp <- file.path(export_path, str_c(task_name, '.geojson'))
+out_fp <- file.path(export_path, 'v1', str_c(task_name, '.geojson'))
 
+site_name_var <- 'HIH_site' # Estonia: 'name'
+site_div_var <- 'name' # Estonia: 'div1'
+div_column_name <- 'Zone'
+  
 # Run GEE process
 # source('R/carbon_reports/01_calculate_loss_with_rgee.R')
 
@@ -37,11 +41,13 @@ source('R/carbon_reports/02_functions.R')
 # Load new sf for all sites ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load data
-df_sf <- st_read(out_fp) %>% filter(div1 != 'Peipsi')
+df_sf <- st_read(out_fp)# %>% filter(div1 != 'Peipsi')
 
 # Get site and division names 
-(site <- unique(df_sf$name))
+(site <- unique(df_sf[[site_name_var]]))
 site_code <- abbreviate(site, minlength = 3)
+(site <- 'BBBR')
+site_code <- site
 
 # Get values by county ----
 df_sf_sums <- df_sf %>% 
@@ -53,7 +59,7 @@ df_sf_sums <- df_sf %>%
          c_dens_loss_pct = c_dens_loss_tCha / c_dens_2000_tCha * 100,
          forest_loss_pct = forest_loss_ha / forest_2000_ha * 100
          ) %>% 
-  select(div1, 
+  select(any_of(site_div_var), 
          area_ha,
          forest_2000_ha, 
          forest_loss_ha,
@@ -69,20 +75,27 @@ df_sf_sums <- df_sf %>%
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create output table of 20-year loss ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Totals row
-df_total <- df_sf_sums %>% 
-  st_drop_geometry() %>% 
-  summarize(
-    across(any_of(ends_with('_ha')), ~ sum(.x, na.rm = TRUE)),
-    across(any_of(ends_with('_MtC')), ~ sum(.x, na.rm = TRUE)),
-    across(any_of(ends_with('_pct')), ~ mean(.x, na.rm = TRUE)),
-    across(any_of(ends_with('_tCha')), ~ mean(.x, na.rm = TRUE))) %>% 
-  mutate(div1 = 'Estonia')
-
-# Combine and change column names
-df_out <- df_sf_sums %>% 
-  st_drop_geometry() %>% 
-  bind_rows(df_total)
+if( nrow(df_sf_sums) > 1 ) {
+  # Totals row
+  df_total <- df_sf_sums %>% 
+    st_drop_geometry() %>% 
+    summarize(
+      across(any_of(ends_with('_ha')), ~ sum(.x, na.rm = TRUE)),
+      across(any_of(ends_with('_MtC')), ~ sum(.x, na.rm = TRUE)),
+      across(any_of(ends_with('_pct')), ~ mean(.x, na.rm = TRUE)),
+      across(any_of(ends_with('_tCha')), ~ mean(.x, na.rm = TRUE))) %>% 
+    mutate({{site_div_var}} := 'Total')
+  
+  # Combine and change column names
+  df_out <- df_sf_sums %>% 
+    st_drop_geometry() %>% 
+    bind_rows(df_total)
+  
+} else {
+  
+  df_out <- df_sf_sums %>% 
+    st_drop_geometry()
+}
 
 # Format table ----
 ft <- df_out %>% 
@@ -98,8 +111,8 @@ ft <- df_out %>%
   ) %>%
   select(-area_ha, -forest_loss_pct, -c_loss_pct, -c_dens_loss_pct) %>% 
   flextable() %>% 
-  mk_par(j = 'div1', part = 'header', 
-          value = as_paragraph('County')) %>% 
+  mk_par(j = site_div_var, part = 'header', 
+          value = as_paragraph('')) %>% 
   mk_par(j = 'forest_2000_ha', part = 'header', 
           value = as_paragraph('Forest area in 2000 (ha)')) %>% 
   mk_par(j = 'forest_loss_ha', part = 'header', 
@@ -126,8 +139,8 @@ ft <- df_out %>%
   bold(part = 'header') %>% 
   align(part = 'header', align = 'center') %>% 
   valign(part = 'header', valign = 'bottom') %>% 
-  align(j = 'div1', align = 'left', part = 'header') %>% 
-  bold(j = 'div1') %>% 
+  align(j = site_div_var, align = 'left', part = 'header') %>% 
+  bold(j = site_div_var) %>% 
   bg(part = 'body', i = seq(1, nrow(df_out), 2), bg = "#EFEFEF") %>% 
   hline_top(border = fp_border(width = 1), part = 'all') %>% 
   hline_bottom(border = fp_border(width = 1), part = 'all') %>% 
@@ -137,11 +150,12 @@ ft <- df_out %>%
   width(j = 'c_dens_loss_tCha', width = 1, unit = 'in') %>% 
   width(j = 'forest_loss_ha', width = 1.1, unit = 'in') %>%
   width(j = 'forest_2000_ha', width = 0.7, unit = 'in') %>% 
-  width(j = 'div1', width = 0.85, unit = 'in')
+  width(j = site_div_var, width = 0.85, unit = 'in')
 ft
 
 # Save in Word doc to copy to report
 sums_doc <- here::here('outputs', site, 'loss_table_pcts.docx')
+dir.create(dirname(sums_doc), showWarnings = FALSE)
 save_as_docx(ft, path = sums_doc)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -151,9 +165,19 @@ save_as_docx(ft, path = sums_doc)
 df <- df_sf %>% st_drop_geometry()
 df_site <- tidy_forest_loss_df(df)
 
-(div_names <- df_sf_sums$div1)
-df_site_t <- df_site %>% 
-  mutate(c_loss_MtC = carbon_loss_MgC / 1e6)
+(div_names <- df_sf_sums[[site_div_var]])
+
+# convert units to million metric tons of carbon (MtC) if it makes sense 
+if (round(max(df_site$carbon_loss_MgC)/1e6) > 1) {
+  df_site_t <- df_site %>% 
+    mutate(c_loss_flex = carbon_loss_MgC / 1e6)
+  
+  c_units = 'MtC'
+} else {
+  df_site_t <- df_site %>% 
+    mutate(c_loss_flex = carbon_loss_MgC)
+  c_units = 'tC'
+}
 
 plots <- list()
 for (i in 1:length(div_names)) {
@@ -161,7 +185,7 @@ for (i in 1:length(div_names)) {
   print('')
   print(paste0(i, ': ', div_name))
   
-  df_zone <- filter(df_site_t, div1 == div_name)
+  df_zone <- filter(df_site_t, .data[[site_div_var]] == div_name)
   
   try(rm(pw_fit))
   pw_fit <- get_piecewise_line(df_zone)
@@ -172,9 +196,12 @@ for (i in 1:length(div_names)) {
 }
 
 params <- get_params(length(div_names))
-formatted_plots <- layout_plots(plots, params)
+y_max <- max(df_site_t$c_loss_flex)
+y_maxr <- signif(y_max, 2) 
+y_min <- round(y_maxr - y_max) * -2
+formatted_plots <- layout_plots(plots, params, y_lim = c(y_min, y_maxr))
 
-ggsave(file.path('outputs', site, str_c(site_code, '_counties_2001_2020_pw.png')), 
+ggsave(file.path('outputs', site, str_c(site_code, '_zones_2001_2020_pw.png')), 
        plot = formatted_plots,
        width = params$png_width,
        height = params$png_height)
@@ -188,8 +215,10 @@ df_tot <- df_site %>%
   summarize(across(where(is.double), ~ sum(.x, na.rm = TRUE))) %>% 
   ungroup()
 
-df_tot_t <- df_tot %>% 
-  mutate(c_loss_MtC = carbon_loss_MgC / 1e6)
+if (round(max(df_tot$carbon_loss_MgC)/1e6) > 1) {
+  df_tot_t <- df_site %>% 
+    mutate(c_loss_flex = carbon_loss_MgC / 1e6)
+}
 
 try(rm(pw_fit))
 df_zone <- df_tot_t
