@@ -8,7 +8,7 @@
 #     * esturdivant@woodwellclimate.org, 2021-11-30
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-source('R/where_next/01_standardize_layers.R')
+source(here::here('R/fcm/01_standardize_layers.R'))
 
 # Palettes ----
 # Woodwell Carbon and Tropics palettes
