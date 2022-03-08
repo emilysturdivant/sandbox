@@ -661,6 +661,29 @@ shdi_norm <- shdi_scale$
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Development Potential Indices ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+dpi_id <- addm('DPI/crop_dpi_geo_int')
+dpi_crop <- ee$Image(dpi_id)
+dpicrop_pctl <- rescale_to_pctl(dpi_crop, c(20,99))
+dpicrop_pctl <- rescale_to_pctl(dpi_crop, c(0,100))
+
+dpi_id <- addm('DPI/bio_dpi_geo_int')
+dpi_bio <- ee$Image(dpi_id)
+dpibio_pctl <- rescale_to_pctl(dpi_bio, c(20,99))
+dpibio_pctl <- rescale_to_pctl(dpi_bio, c(0,100))
+
+pal <- choose_palette(pal = sequential_hcl)
+pal <- pal(7)
+pal <- c("#FFCC58", "#FF9370", "#F06289", "#CB3598", "#9D0B9A", "#630391", "#001889")
+map_norm_idx(dpicrop_pctl, name = 'Cropland DPI', palette = pal, shown = TRUE) +
+  map_norm_idx(dpibio_pctl, name = 'Biofuelds DPI', palette = pal)
+
+
+map_eq_int_10(dpicrop_pctl, name = 'Cropland DPI', palette = pal) +
+  map_eq_int_10(dpibio_pctl, name = 'Biofuelds DPI', palette = pal)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Development Potential Indices ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 dti_id <- addm('DTI/DTI_2016_pctls_maskDHF')
 
 dti_norm <- ee$Image(dti_id)$updateMask(c_mask)
