@@ -104,6 +104,119 @@ t <- esg_series %>%
   filter(str_detect(`Indicator Name`, regex('school enrollment', ignore_case = TRUE))) 
 t <- esg_series %>% distinct(Source)
 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# World Bank API ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Search for a term and manually get the ID 
+f.rents.code <- wb_search(pattern = 'forest area')
+ag.va.code <- wb_search(pattern = 'value added')
+ag.va.code <- wb_search(pattern = 'area')
+ag.va.code <- wb_search(pattern = 'value-added')
+ag.va.code <- wb_search(pattern = 'total factor productivity')
+
+View(f.rents.code)
+# NY.GDP.FRST.RT.ZS = Forest rents (% of GDP) = 
+# Forest rents are roundwood harvest times the product of average prices and a region-specific rental rate.
+
+# Agriculture, forestry, and fishing, value added (annual % growth) =
+# "Annual growth rate for agricultural value added based on constant local currency. 
+# Aggregates are based on constant 2010 U.S. dollars. 
+# Agriculture corresponds to ISIC divisions 1-5 and 
+# includes forestry, hunting, and fishing, as well as 
+# cultivation of crops and livestock production. 
+# Value added is the net output of a sector after adding up all outputs and 
+# subtracting intermediate inputs. It is calculated without making deductions for 
+# depreciation of fabricated assets or depletion and degradation of natural resources."
+
+
+# Get yearly values for forest rents, GDP, agriculture value-added, etc. 
+# Fill data gaps with the most recent non-empty value.
+f.rents <- wb_data(indicator = 
+                     c("NY.GDP.FRST.RT.ZS", # Forest rents (% of GDP)
+                       "NY.GDP.PCAP.PP.KD", # GDP, PPP (constant 2017 international $)
+                       "AG.LND.FRST.K2", # Forest area (sq. km)
+                       "NV.AGR.TOTL.ZS", # Agriculture, forestry, and fishing, value added (% of GDP)
+                       "NV.AGR.TOTL.KD", # Agriculture, forestry, and fishing, value added (constant 2015 US$)
+                       'AG.LND.AGRI.K2'), # Agricultural land area (sq. km; DOES NOT include forestry)
+                   # mrnev = 1, # number of most recent non-empty values
+                   mrv = 2, # number of most recent values (didn't work with '1' so I specify 2 and later filter to 2020)
+                   freq = 'Y', # yearly values
+                   gapfill = TRUE) 
+
+# Filter to 2020 (see above) and calculate derivative columns
+f.rents <- f.rents %>% 
+  filter(date == 2020) %>% 
+  mutate(
+    # Remove forest rents from Agriculture value-added
+    ag.fish.zs = NV.AGR.TOTL.ZS - NY.GDP.FRST.RT.ZS,
+    # Convert sq. km to ha
+    AG.LND.FRST.HA = AG.LND.FRST.K2 * 1e6, 
+    # AG.LND.AGRI.HA = AG.LND.AGRI.K2 * 1e6, 
+    # Convert rents and value-added to $/ha
+    frst.rt.dha = NY.GDP.FRST.RT.ZS * NY.GDP.PCAP.PP.KD / AG.LND.FRST.HA, 
+    # ag.va.dha = NV.AGR.TOTL.KD / AG.LND.AGRI.HA
+    )
+
+# Sort by NY.GDP.FRST.RT.ZS (forest rents in % of GDP)
+f.rents %>% 
+  arrange(desc(NY.GDP.FRST.RT.ZS)) %>% 
+  select(country, NY.GDP.FRST.RT.ZS)
+
+# Look at agriculture value added (%), forest rents (%), and ag value added (%) without forest rents
+t <- f.rents %>% 
+  select(country, NV.AGR.TOTL.ZS, NY.GDP.FRST.RT.ZS, ag.fish.zs)
+View(t)
+
+# look at distributions
+f.rents %>% 
+  pivot_longer(cols = any_of(c('ag.va.dha', 'NV.AGR.TOTL.ZS', 'frst.rt.dha', 'NY.GDP.FRST.RT.ZS'))) %>% 
+  mutate(value = log(value)) %>% 
+  ggplot(aes(x = value)) +
+  geom_histogram() +
+  facet_wrap(vars(name), scales = 'free')
+
+# # scatterplot: $/ha
+# f.rents %>% 
+#   # mutate(ag.va.dha = log(ag.va.dha),
+#   #        frst.rt.dha = log(frst.rt.dha)) %>%
+#   ggplot(aes(x = ag.va.dha, y = frst.rt.dha)) +
+#   geom_point() +
+#   geom_smooth(method = 'lm') +
+#   scale_x_continuous(trans = 'log10') + scale_y_continuous(trans = 'log10') +
+#   xlab('Agricultural value-added ($/ha; logarithmic scale)') +
+#   ylab('Forest rents ($/ha; logarithmic scale)') +
+#   theme_bw()
+
+# scatterplot
+f.rents %>% 
+  ggplot(aes(x = NV.AGR.TOTL.ZS, y = NY.GDP.FRST.RT.ZS)) +
+  geom_point() +
+  geom_smooth(method = 'lm') +
+  scale_x_continuous(trans = 'log10') + scale_y_continuous(trans = 'log10') +
+  xlab('Agriculture, forestry, and fishing value-added (% of GDP; logarithmic scale)') +
+  ylab('Forest rents (% of GDP; logarithmic scale)') +
+  theme_bw()
+
+# scatterplot
+f.rents %>% 
+  ggplot(aes(x = ag.fish.zs, y = NY.GDP.FRST.RT.ZS)) +
+  geom_point() +
+  geom_smooth(method = 'lm') +
+  scale_x_continuous(trans = 'log10') + scale_y_continuous(trans = 'log10') +
+  xlab('Agriculture and fishing value-added (% of GDP; logarithmic scale)') +
+  ylab('Forest rents (% of GDP; logarithmic scale)') +
+  theme_bw()
+
+# Individual indicators
+f.rents <- wb_data(indicator = "NY.GDP.FRST.RT.ZS", mrnev = 1, freq = 'Y')
+frst.k2 <- wb_data(indicator = "AG.LND.FRST.K2", mrnev = 1, freq = 'Y' ) 
+frst.rt <- wb_data(indicator = "NY.GDP.FRST.RT.ZS", mrnev = 1, freq = 'Y' ) 
+gdp.ppp <- wb_data(indicator = "NY.GDP.PCAP.PP.KD", mrnev = 1, freq = 'Y' ) 
+
+ag.va <- wb_data(indicator = "NV.AGR.TOTL.KD", mrnev = 1, freq = 'Y' ) 
+ag.k2 <- wb_data(indicator = "AG.LND.AGRI.K2", mrnev = 1, freq = 'Y' ) 
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Subnational HDI (rasterize) ----
