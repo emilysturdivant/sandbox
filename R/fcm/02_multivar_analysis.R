@@ -35,6 +35,7 @@ west_bb <- ee$Geometry$Rectangle(
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Extract sample for tests ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+samp_n <- 2e3
 
 # Plot histogram of sample exported from GEE ----
 img <- wcd_norm
@@ -43,10 +44,10 @@ img <- wcd_norm
 sample <-  img$sampleRegions(tropics_bb, NULL, scale = 2000)
 
 # Take sample at X random points
-sample <-  img$sample(numPixels = 5e3) # couldn't export
+sample <-  img$sample(numPixels = samp_n) # couldn't export
 
 # Export
-task_name <- 'sample_wcd_norm_5e3'
+task_name <- str_c('sample_wcd_norm_', samp_n)
 task_vector <- sample %>%
   ee_table_to_drive(description = task_name,
                     folder = basename(export_path),
