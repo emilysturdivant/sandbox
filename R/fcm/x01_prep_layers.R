@@ -24,6 +24,65 @@ user <- ee_get_assethome()
 addm <- function(x) sprintf("%s/%s", user, x)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Worldwide Governance Indicators ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+wgi_xls <- here::here(data_dir, 'raw_data', 'sociopolitical', 'governance_wgi', 
+                      'wgidataset.xlsx')
+
+# Load all data
+wgi_all <- readxl::read_excel(wgi_xls, sheet = 2, col_names = FALSE, skip = 13,
+                              na = '#N/A')
+
+# Reset column names
+cnames <- str_c(wgi_all[2, 3:ncol(wgi_all)], wgi_all[1, 3:ncol(wgi_all)])
+colnames(wgi_all) <- c(str_remove_all(wgi_all[2, 1:2], '/Territory'), cnames)
+wgi_all <- wgi_all %>% slice(-1:-2)
+  
+wgi <- wgi_all %>%
+  # Select 2020 estimate
+  select(Country, Code, ends_with('2020')) %>% 
+  pivot_longer(cols = 3:8) %>% 
+  # Convert value to numeric
+  mutate(value = as.numeric(value),
+         name = str_remove_all(name, '2020')) %>% 
+  pivot_wider(names_from = name) %>% 
+  mutate(FIPS_iso = countrycode(Code, origin = 'iso3c',
+                            destination = 'fips'),
+         GAUL_iso = countrycode(Code, origin = 'iso3c',
+                            destination = 'gaul')) %>%
+  mutate(FIPS = countrycode(Country, origin = 'country.name', 
+                            destination = 'fips'),
+         GAUL = countrycode(Country, origin = 'country.name', 
+                            destination = 'gaul')) 
+
+wgi_vals <- wgi %>% select(Code, Country, FIPS, GAUL, Estimate, Rank)
+
+# Upload to asset
+gci_csv <- here::here(data_dir, 'sociopolitical', 'wef_gci', 'GCI4_2019.csv')
+gci_vals %>% write_csv(gci_csv)
+
+# Large Scale International Boundaries ----
+# 'country_co' FIPS: wikipedia.org/wiki/List_of_FIPS_country_codes
+countries <- ee$FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+data <- ee$FeatureCollection(list()) # Empty table
+for (row in 1:nrow(gci_vals)) {
+  
+  code <- gci_vals[[row, "FIPS"]]
+  score  <- gci_vals[[row, "SCORE"]]
+  
+  fc <- countries$filter(ee$Filter$eq('country_co', code))
+  fc <- fc$map(function(f) {
+    f$set(list(gci = score))
+  })$
+    copyProperties(countries)
+  
+  data <- data$merge(fc)
+}
+gci_ee2 <- data
+gci_ee2$first()$get('gci')$getInfo()
+Map$addLayer(gci_ee2, list(), name='GCI')
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # EPI ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Downloaded from https://sedac.ciesin.columbia.edu/data/set/epi-environmental-performance-index-2020/data-download
@@ -236,64 +295,6 @@ shdi_r <- terra::rasterize(shdi_v, temp_r, field = 'shdi',
 
 shdi_tif <- here::here(data_dir, 'sociopolitical', 'shdi_2arcmin.tif')
 shdi_r %>% writeRaster(shdi_tif, datatype = 'FLT4S', overwrite = TRUE)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Worldwide Governance Indicators ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-wgi_xls <- here::here(data_dir, 'raw_data', 'sociopolitical', 'governance_wgi', 
-                      'wgidataset.xlsx')
-
-# Load all data
-wgi_all <- readxl::read_excel(wgi_xls, sheet = 2, col_names = FALSE, skip = 13,
-                              na = '#N/A')
-colnames(wgi_all) <- str_c(wgi_all[2, 3:ncol(wgi_all)], 
-                           wgi_all[1, 3:ncol(wgi_all)], collapse = '_')
-
-wgi_all %>% 
-  pivot_longer(cols = 3:134)
-
-# Select 2020 estimate
-wgi <- wgi_all %>% 
-  select(Attribute:ZWE) %>%
-  filter(`Series Global ID` == 'GCI4',
-         Edition == '2019') %>% 
-  pivot_longer(cols = AGO:ZWE,
-               names_to = 'COUNTRY_CODE') %>% 
-  pivot_wider(names_from = Attribute, 
-              names_repair = 'universal') %>% 
-  mutate(across(VALUE:SCORE, ~ as.numeric(.x)), 
-         SOURCE.DATE = as.numeric(SOURCE.DATE),
-         FIPS = countrycode(COUNTRY_CODE, origin = 'wb', 
-                            destination = 'fips'),
-         GAUL = countrycode(COUNTRY_CODE, origin = 'wb', 
-                            destination = 'gaul')) 
-
-gci_vals <- gci %>% select(COUNTRY_CODE, COUNTRY_NAME, FIPS, GAUL, RANK, SCORE)
-
-# Upload to asset
-gci_csv <- here::here(data_dir, 'sociopolitical', 'wef_gci', 'GCI4_2019.csv')
-gci_vals %>% write_csv(gci_csv)
-
-# Large Scale International Boundaries ----
-# 'country_co' FIPS: wikipedia.org/wiki/List_of_FIPS_country_codes
-countries <- ee$FeatureCollection("USDOS/LSIB_SIMPLE/2017")
-data <- ee$FeatureCollection(list()) # Empty table
-for (row in 1:nrow(gci_vals)) {
-  
-  code <- gci_vals[[row, "FIPS"]]
-  score  <- gci_vals[[row, "SCORE"]]
-  
-  fc <- countries$filter(ee$Filter$eq('country_co', code))
-  fc <- fc$map(function(f) {
-    f$set(list(gci = score))
-  })$
-    copyProperties(countries)
-  
-  data <- data$merge(fc)
-}
-gci_ee2 <- data
-gci_ee2$first()$get('gci')$getInfo()
-Map$addLayer(gci_ee2, list(), name='GCI')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Global Competitiveness Index ----
