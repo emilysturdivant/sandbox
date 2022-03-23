@@ -16,9 +16,13 @@
 library(rgee)
 ee_Initialize()
 
+# Initialize
+final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
+export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
+
 shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
 (polys_fp <- shps[[2]])
-  
+
 site_name_var <- 'HIH_site' # Estonia: 'name'
 site_div_var <- 'name' # Estonia: 'div1'
 
@@ -372,6 +376,45 @@ task_vector$start()
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Use Hansens's 2000-2020 loss to mask our 30m AGC ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Mask 2000 tree cover with loss band
+loss <- hansen_30m$select(c('loss'))
+fc2020_fromloss <- forest_mask$updateMask(loss$neq(1))
+
+# View
+Map$addLayer(eeObject = forest_mask, 
+             visParams = list(min = 0, max = 1, palette = viridis),
+             name = 'Forest 2000') +
+Map$addLayer(eeObject = fc2020_fromloss, 
+             visParams = list(min = 0, max = 1, palette = agb_pal),
+             name = 'Forest 2020')
+
+(site <- str_split(basename(polys_fp), '[_\\W]', simplify = TRUE)[,1])
+task_name <- str_c('FC_2020_', site)
+
+# Create extent rectangle ----
+library(tmap)
+tmap_mode('view')
+
+site_sf <- st_read(polys_fp)
+site_buff <- site_sf %>% st_buffer(0.4)
+bb <- site_buff %>% st_bbox()
+
+qtm(site_buff) + qtm(site_sf)
+
+site_bb <- ee$Geometry$Rectangle(
+  coords = c(bb$xmin, bb$ymin, bb$xmax, bb$ymax),
+  proj = "EPSG:4326",
+  geodesic = FALSE
+)
+
+task_img_to_drive <- fc2020_fromloss %>% 
+  ee_image_to_drive(description = task_name,
+                    folder = basename(export_path),
+                    region = site_bb,
+                    scale = 30)
+
+task_img_to_drive$start()
 
 # 
 # # Mask AGC with loss band

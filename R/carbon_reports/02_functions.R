@@ -15,6 +15,21 @@ library(segmented)
 library(tidyverse)
 
 # Function ----
+tidy_forest_loss <- function(df) {
+  # Get DF with annual forest area loss
+  df_area <- df %>% 
+    dplyr::select(!starts_with('carbon')) %>%
+    # dplyr::select(starts_with('forest'), name) %>% 
+    pivot_longer(starts_with('forest_loss'), 
+                 names_to = 'year',
+                 values_to = 'forest_loss_ha') %>% 
+    mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
+             lubridate::year())
+  
+  # Return
+  return(df_area)
+}
+
 tidy_forest_loss_df <- function(df) {
   # Get DF with annual carbon loss
   df_carbon <- df %>% 
@@ -27,14 +42,7 @@ tidy_forest_loss_df <- function(df) {
              lubridate::year(), )
   
   # Get DF with annual forest area loss
-  df_area <- df %>% 
-    dplyr::select(!starts_with('carbon')) %>%
-    # dplyr::select(starts_with('forest'), name) %>% 
-    pivot_longer(starts_with('forest_loss'), 
-                 names_to = 'year',
-                 values_to = 'forest_loss_ha') %>% 
-    mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
-             lubridate::year())
+  df_area <- df %>% tidy_forest_loss()
   
   # Join forest carbon and area loss values
   df_tidy <- df_carbon %>% 

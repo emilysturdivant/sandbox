@@ -23,7 +23,7 @@ export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Estonia ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# # ~~ TESTING ~~ ----
+# # ~~ TESTING ~~ 
 # agb_500m_2003_vrt <- here::here('~/data/raw_data/biomass/2003_2018/global.vrt')
 # agb_500m <- raster::stack(agb_500m_2003_vrt, bands = 1:16)
 # agb_500m %>% object.size() %>% print(units = 'MB')
@@ -41,7 +41,7 @@ export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
 # agb_500m_2003 %>% raster_as_ee(assetId = addm("global_biomass_500m_2003"))
 
 
-# GADM ----
+# ~GADM ----
 countries_shp <- here::here('~/data', 'raw_data', 'world_context', 'gadm', 'gadm36_1.shp')
 estonia <- st_read(countries_shp) %>% 
   filter(str_detect(NAME_0, regex('estonia', ignore_case = TRUE)),
@@ -77,21 +77,22 @@ est_diss_nolks_simp %>% st_write(estonia_shp, append = FALSE)
 
 
 
-# Rasterize (at Hansen resolution) ----
+# ~Rasterize (at Hansen resolution) ----
 # Set ID field 
 est_nolks <- est_nolks %>% rownames_to_column('ID')
 est_nolks %>% terra::rasterize()
 
 
 
-# Natural Earth ----
+# ~Natural Earth ----
 lakes <- ne_download(scale = 'small', type = 'lakes', category = 'physical', 
             destdir = here::here('~/data', 'raw_data', 'world_context', 'natural_earth'), 
             load = TRUE, returnclass = 'sf')
 
 
-
-# Get area for site polygons ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Get area for Brazil sites ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tdm_shp <- file.path(final_polys_dir, 'TdM_all_dissolved_gapfilled.shp')
 tdm <- st_read(tdm_shp)
 tdm %>% tbl_vars()
@@ -115,7 +116,9 @@ tdm_union %>%
   mutate(area_ha = format(area_ha, big.mark = ','))
 
 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Troubleshoot Manombo polygon ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 site <- 'Manombo'
 manombo_shp_new <- file.path(final_polys_dir, 'ManomboNP_all.shp')
 
@@ -149,7 +152,7 @@ man_pa$area_ha <- man_pa%>%
   units::set_units('ha') %>%
   units::set_units(NULL)
 
-# KBAs ----
+# ~KBAs ----
 man_kbas <- st_read('/Users/emilysturdivant/data/biodiversity/KBAsGlobal_2021_September_02/KBAsGlobal_2021_September_02_POL.shp') %>%
   filter(ISO3 == 'MDG') %>%
   filter(str_detect(IntName, regex('manombo', ignore_case = TRUE)) |
@@ -203,7 +206,7 @@ efatsy$area_ha <- efatsy %>%
   units::set_units(NULL)
 
 
-# GERP ----
+# ~GERP ----
 fps <- list.files(file.path(sites_dir, 'Manombo', 'GERP'), 'shp$', full.names = TRUE)
 sf_list <- fps %>% purrr::map(st_read)
 names <- fps %>% purrr::map(function(x) {
@@ -248,7 +251,7 @@ tm_shape(limite_AP_manombo) + tm_polygons(col = 'seagreen3') +
   tm_shape(manombo_sr) + tm_borders(lwd = 3) +
   tm_shape(efatsy) + tm_borders()
 
-# Manombo from Centre ValBio ----
+# ~Manombo from Centre ValBio ----
 dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/Manombo/Centre_ValBio'
 fps <- list.files(dir, 'kml$', full.names = TRUE)
 
