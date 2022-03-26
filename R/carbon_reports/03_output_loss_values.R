@@ -29,7 +29,7 @@ final_polys_dir <- '~/Downloads/hih_sites'
 export_path <- here::here('data/gee_exports')
 
 shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
-(polys_fp <- shps[[3]])
+(polys_fp <- shps[[2]])
 
 # polys_fp <- here::here('~/data', 'sites_for_c_report', 'estonia_div_nolakes.shp')
 task_name <- tools::file_path_sans_ext(basename(polys_fp))
@@ -54,19 +54,24 @@ params <- list(
                                   ym('2021-01'))), 
                  event = c('Radical Listening', 'Healthcare', 
                            'Alternative Livelihoods', 
-                           'Reciprocity Agreements / Incentive System'))
+                           'Reciprocity Agreements / Incentive System'),
+                 label = c('RL', 'HC', 'AL', 'RA/IS'),
+                 y_pos = c(620, 580, 620, 580))
 )
 
-# GPNP
-params <- list(
-  hih_site = 'GPNP',
-  shp = "/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites/GPNP_dissolved.shp",
-  dates = tibble(year = as_date(c(ym('2006-01'), ym('2007-06'), ym('2008-01'),
-                                  ym('2008-09'), ym('2009-11'), ym('2017-01'))),
-                 event = c('Radical Listening', 'Healthcare',
-                           'Incentive System', 'Alternative Livelihoods',
-                           'Reforestation', 'Chainsaw Buyback'))
-)
+# # GPNP
+# params <- list(
+#   hih_site = 'GPNP',
+#   shp = "/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites/GPNP_dissolved.shp",
+#   dates = tibble(year = as_date(c(ym('2006-01'), ym('2007-06'), ym('2008-01'),
+#                                   ym('2008-09'), ym('2009-11'), ym('2017-01'))),
+#                  event = c('Radical Listening', 'Healthcare',
+#                            'Incentive System', 'Alternative Livelihoods',
+#                            'Reforestation', 'Chainsaw Buyback'),
+#                  label = c('RL', 'HC', 'IS', 'AL', 'RF', 'CB'),
+#                  y_pos = c(620, 580, 620, 
+#                            580, 620, 580))
+# )
 # 
 # # Manombo
 # params <- list(
@@ -160,15 +165,14 @@ area_totals <- df_out %>%
 # Plot time series ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Tidy 
-df_total <- df_sums %>% 
-  filter(.data[[site_div_var]] == 'Total')
+df_total <- df_sums %>% slice_tail()
 df_site <- tidy_forest_loss(df_total) %>% 
   filter(!is.na(year))
 (div_names <- df_total[[site_div_var]])
 
 df_site_t <- df_site
 div_name <- div_names[[1]]
-df_zone <- filter(df_site_t, .data[[site_div_var]] == div_name) %>% 
+df_zone <- df_site_t %>% 
   mutate(year = year %>% str_c('0101') %>% as_date())
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -218,26 +222,29 @@ val_var <- 'forest_loss_ha'
 y_name <- str_c('Forest loss (ha)')# from previous year
 ymax <- max(df_zone[[val_var]])
 
-# extract rows from df_zone for HIH start dates
-hih_yrs <- params$dates$year %>% year() %>% str_c('0101') %>% as_date()
-hih_yrs_loss <- df_zone %>% filter(year %in% hih_yrs)
-
-hih_pts <- params$dates %>% slice(1)
+# get DF of HIH start dates for vertical lines
+hih_pts <- params$dates 
 hih_start <- hih_pts$year
 
 # Plot ----
 p <- df_zone %>% 
   ggplot(aes(x = year, y = .data[[val_var]])) +
+  # Add vertical line/s
   geom_linerange(aes(x = year, ymin = -Inf, ymax = Inf), 
-                 data = hih_pts, color = 'dodgerblue3', size = .6,
+                 data = hih_pts, color = 'grey30', size = .4,
                  inherit.aes = FALSE) + 
   geom_line(color = 'grey80', size = 1) + 
-  # geom_point(data = hih_0pts, aes(x = year, y = y), size = .6, color = 'dodgerblue3') +
-  # geom_vline(xintercept = hih_start[[1]], color = 'dodgerblue3', size = .6) + 
-  geom_text(aes(x = hih_start[[1]], y = 130, label = 'HIH activity starts'), 
-            nudge_x = -100, show.legend = FALSE, 
-            color = 'dodgerblue3', hjust = 1, 
-            family = 'Helvetica') + 
+  # geom_point(data = hih_0pts, aes(x = year, y = y), size = .6, color = 'grey10') +
+  # geom_vline(xintercept = hih_start[[1]], color = 'grey10', size = .6) + 
+  # geom_text(aes(x = hih_start[[1]]), label = 'HIH activity starts', 
+  #           y = 620, hjust = 0, nudge_x = 100, 
+  #           show.legend = FALSE, 
+  #           color = 'grey10', family = 'Helvetica') + 
+  geom_text(aes(x = year, label = label, y = y_pos), 
+            data = hih_pts,
+            hjust = 0, nudge_x = 20, 
+            show.legend = FALSE, 
+            color = 'grey30', family = 'Helvetica', size = 2) + 
   geom_line(data = pw_fit, aes(x = x, y = y), color = 'firebrick3', size = 1.2) +
   scale_x_date(name = "Year", expand = c(0.01, 0.01), breaks = '3 years', 
                labels = function(x) year(x)) +
@@ -252,11 +259,13 @@ p <- df_zone %>%
     axis.text = element_text(family = 'Helvetica', color = 'grey30'),
     axis.title = element_text(family = 'Helvetica', color = 'grey30'),
     axis.title.y = element_text(angle = 90),
+    axis.title.x = element_blank(),
     panel.grid.minor = element_blank()) 
 p
 
 # Save as PNG ----
-ggsave(here::here('outputs', site, str_c(site_code, '_fcloss20yr_hih_pw.png')), 
+ggsave(here::here('outputs', site, str_c(site_code, '_fcloss20yr_hihall_pw.png')), 
        plot = p,
-       width = 4,
-       height = 2.4)
+       width = 6,
+       height = 3.5,
+       dpi = 150)

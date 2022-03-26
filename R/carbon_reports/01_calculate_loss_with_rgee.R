@@ -21,7 +21,7 @@ final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hi
 export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
 
 shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
-(polys_fp <- shps[[2]])
+(polys_fp <- shps[[6]])
 
 site_name_var <- 'HIH_site' # Estonia: 'name'
 site_div_var <- 'name' # Estonia: 'div1'
@@ -374,10 +374,9 @@ task_vector$start()
 
 # ~~~~~~ EXTRAS ~~~~~~~~ ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Use Hansens's 2000-2020 loss to mask our 30m AGC ----
+# Uxe Hansens's 2000-2020 loss to mask ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# Mask 2000 tree cover with loss band
+# Mask 2000 tree cover ----
 loss <- hansen_30m$select(c('loss'))
 fc2020_fromloss <- forest_mask$updateMask(loss$neq(1))
 
@@ -408,6 +407,7 @@ site_bb <- ee$Geometry$Rectangle(
   geodesic = FALSE
 )
 
+# Export
 task_img_to_drive <- fc2020_fromloss %>% 
   ee_image_to_drive(description = task_name,
                     folder = basename(export_path),
@@ -417,7 +417,7 @@ task_img_to_drive <- fc2020_fromloss %>%
 task_img_to_drive$start()
 
 # 
-# # Mask AGC with loss band
+# # Mask AGC with loss band ----
 # loss <- hansen_30m$select(c('loss'))
 # loss <- loss$updateMask(loss$neq(1))
 # agb2020_fromloss <- carbon_mgc$
