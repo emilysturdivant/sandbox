@@ -23,10 +23,17 @@ library(tmap)
 library(lubridate)
 
 # Prep paths
+final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
 export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
+final_polys_dir <- '~/Downloads/hih_sites'
+export_path <- here::here('data/gee_exports')
+
+shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
+(polys_fp <- shps[[3]])
+
 # polys_fp <- here::here('~/data', 'sites_for_c_report', 'estonia_div_nolakes.shp')
 task_name <- tools::file_path_sans_ext(basename(polys_fp))
-out_fp <- file.path(export_path, 'v1', str_c(task_name, '.geojson'))
+out_fp <- file.path(export_path, str_c(task_name, '.geojson'))
 
 site_name_var <- 'HIH_site' # Estonia: 'name'
 site_div_var <- 'name' # Estonia: 'div1'
@@ -49,18 +56,17 @@ params <- list(
                            'Alternative Livelihoods', 
                            'Reciprocity Agreements / Incentive System'))
 )
-hih_start <- params$dates[1,1]
-# 
-# # GPNP
-# params <- list(
-#   hih_site = 'GPNP',
-#   shp = "/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites/GPNP_dissolved.shp",
-#   dates = tibble(year = as_date(c(ym('2006-01'), ym('2007-06'), ym('2008-01'), 
-#                                   ym('2008-09'), ym('2009-11'), ym('2017-01'))), 
-#                  event = c('Radical Listening', 'Healthcare', 
-#                            'Incentive System', 'Alternative Livelihoods', 
-#                            'Reforestation', 'Chainsaw Buyback'))
-# )
+
+# GPNP
+params <- list(
+  hih_site = 'GPNP',
+  shp = "/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites/GPNP_dissolved.shp",
+  dates = tibble(year = as_date(c(ym('2006-01'), ym('2007-06'), ym('2008-01'),
+                                  ym('2008-09'), ym('2009-11'), ym('2017-01'))),
+                 event = c('Radical Listening', 'Healthcare',
+                           'Incentive System', 'Alternative Livelihoods',
+                           'Reforestation', 'Chainsaw Buyback'))
+)
 # 
 # # Manombo
 # params <- list(
@@ -87,7 +93,7 @@ hih_start <- params$dates[1,1]
 # Load new sf for all sites ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load data
-df_sf <- st_read(out_fp)# %>% filter(div1 != 'Peipsi')
+df_sf <- st_read(out_fp)
 
 # Get site and division names 
 (site <- unique(df_sf[[site_name_var]]))
@@ -162,134 +168,95 @@ df_site <- tidy_forest_loss(df_total) %>%
 
 df_site_t <- df_site
 div_name <- div_names[[1]]
-df_zone <- filter(df_site_t, .data[[site_div_var]] == div_name)
-
-yrvec <- min(df_zone$year):max(df_zone$year)
-labels <- str_c(str_sub(yrvec-1, 3,4), str_sub(yrvec, 3,4), sep = '-')
-
-val_var <- 'forest_loss_ha'
-y_name <- str_c('Forest loss (ha)')
-
-params$dates
-
-# Plot
-p <- df_zone %>% 
-  mutate(year = year %>% str_c('0101') %>% as_date()) %>% 
-  ggplot(aes(x = year, y = .data[[val_var]])) +
-  geom_point(size = .3, color = 'grey40') +
-  geom_line(color = 'grey40', size = 1) + 
-  # geom_vline(mapping = aes(x = year), data = params$dates) + 
-  geom_vline(xintercept = hih_start[[1]], color = 'dodgerblue3', size = .6) + 
-  geom_text(aes(x = hih_start[[1]], y = 120, label = 'HIH activity starts'), 
-            nudge_x = -100, show.legend = FALSE, 
-            color = 'dodgerblue4', hjust = 1, 
-            family = 'Helvetica') + 
-  # geom_line(data = pw_fit, aes(x = x, y = y), color = 'firebrick3', size = .6) +
-  # scale_x_continuous(name = "Year",
-  #                    breaks = 2001:2020,
-  #                    expand = c(0.01, 0.01),
-  #                    labels = labels) +
-  scale_x_date(name = "Year", expand = c(0.01, 0.01)) +
-  scale_y_continuous(name = y_name,
-                     labels = scales::comma
-  ) +
-  theme_minimal() +
-  theme(
-    text = element_text(family = 'Helvetica'), # Times
-    axis.text = element_text(family = 'Helvetica'),
-    # axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
-    # axis.title.x = element_blank(),
-    axis.title.y = element_text(angle = 0, hjust = 1),
-    panel.grid.minor = element_blank()) 
-
-p
-
-params <- get_params(length(div_names))
-ggsave(here::here('outputs', site, str_c(site_code, '_fcloss20yr_hih.png')), 
-       plot = p,
-       width = 4,
-       height = 2.4
-       # width = params$png_width,
-       # height = params$png_height
-       )
+df_zone <- filter(df_site_t, .data[[site_div_var]] == div_name) %>% 
+  mutate(year = year %>% str_c('0101') %>% as_date())
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create piecewise regression plots ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Tidy 
-df_total <- df_sums %>% 
-  filter(.data[[site_div_var]] == 'Total')
-df_site <- tidy_forest_loss(df_total) %>% 
-  filter(!is.na(year))
-(div_names <- df_total[[site_div_var]])
-
-plots <- list()
-for (i in 1:length(div_names)) {
-  div_name <-  div_names[[i]]
-  print('')
-  print(paste0(i, ': ', div_name))
+get_pw_line_fc <- function(df_zone) {
   
-  df_zone <- filter(df_site_t, .data[[site_div_var]] == div_name)
+  # Get linear regression
+  out.lm <- lm(forest_loss_ha ~ year, data = df_zone)
+  dat2 = data.frame(x = df_zone$year, y = out.lm$fitted.values)
   
-  try(rm(pw_fit))
-  pw_fit <- get_piecewise_line(df_zone)
-  p <- plot_pw_fit(df_zone, div_name, pw_fit)
-  try(rm(pw_fit))
-  plots[[i]] <- p
+  # BIC-based selection - throws error when 0 breakpoints are found
+  try(dev.off)
+  try(rm(os_bic))
+  set.seed(1)
+  os_bic <- try(selgmented(out.lm, Kmax=4, type="bic", 
+                           return.fit = TRUE, msg = FALSE))
   
+  if(any(class(os_bic) == 'try-error')) {
+    print('**** BIC-based selection threw error so running Score-based. ****')
+    
+    # Score-based breakpoint selection - returns 0 breakpoints without error
+    set.seed(1)
+    os <- selgmented(out.lm)  
+    
+    # Use selgmented fit if there are breakpoints
+    if( os$selection.psi$npsi > 0 ) {
+      print('**** Getting line from score-based breakpoints. ****')
+      dat2 = data.frame(x = df_zone$year, y = os$fitted.values)
+    } 
+    
+  } else {
+    print('**** Getting line from BIC-based breakpoints. ****')
+    # Get piecewise trend from os_bic BIC results
+    # npsi <- nrow(os_bic$psi)
+    # dat2 = data.frame(x = df_zone$year, y = broken.line(os_bic)$fit)
+    dat2 = data.frame(x = df_zone$year, y = os_bic$fitted.values)
+  }
+  
+  pw_fit <- dat2
+  return(pw_fit)
 }
 
-params <- get_params(length(div_names))
-y_max <- max(df_site_t$c_loss_flex)
-y_maxr <- signif(y_max, 2) 
-y_min <- round(y_maxr - y_max) * -2
-formatted_plots <- layout_plots(plots, params, y_lim = c(y_min, y_maxr))
+pw_fit <- get_pw_line_fc(df_zone)
 
-ggsave(file.path('outputs', site, str_c(site_code, '_zones_2001_2020_pw.png')), 
-       plot = formatted_plots,
-       width = params$png_width,
-       height = params$png_height)
+val_var <- 'forest_loss_ha'
+y_name <- str_c('Forest loss (ha)')# from previous year
+ymax <- max(df_zone[[val_var]])
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Total piecewise regression plot ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-df_tot <- df_site %>% 
-  group_by(year) %>% 
-  select(any_of(c('carbon_loss_MgC', 'forest_loss_ha'))) %>% 
-  summarize(across(where(is.double), ~ sum(.x, na.rm = TRUE))) %>% 
-  ungroup()
+# extract rows from df_zone for HIH start dates
+hih_yrs <- params$dates$year %>% year() %>% str_c('0101') %>% as_date()
+hih_yrs_loss <- df_zone %>% filter(year %in% hih_yrs)
 
-if (round(max(df_tot$carbon_loss_MgC)/1e6) > 1) {
-  df_tot_t <- df_site %>% 
-    mutate(c_loss_flex = carbon_loss_MgC / 1e6)
-}
+hih_pts <- params$dates %>% slice(1)
+hih_start <- hih_pts$year
 
-try(rm(pw_fit))
-df_zone <- df_tot_t
-pw_fit <- get_piecewise_line(df_tot_t)
-p <- plot_pw_fit(df_tot_t, site, pw_fit)
-try(rm(pw_fit))
+# Plot ----
+p <- df_zone %>% 
+  ggplot(aes(x = year, y = .data[[val_var]])) +
+  geom_linerange(aes(x = year, ymin = -Inf, ymax = Inf), 
+                 data = hih_pts, color = 'dodgerblue3', size = .6,
+                 inherit.aes = FALSE) + 
+  geom_line(color = 'grey80', size = 1) + 
+  # geom_point(data = hih_0pts, aes(x = year, y = y), size = .6, color = 'dodgerblue3') +
+  # geom_vline(xintercept = hih_start[[1]], color = 'dodgerblue3', size = .6) + 
+  geom_text(aes(x = hih_start[[1]], y = 130, label = 'HIH activity starts'), 
+            nudge_x = -100, show.legend = FALSE, 
+            color = 'dodgerblue3', hjust = 1, 
+            family = 'Helvetica') + 
+  geom_line(data = pw_fit, aes(x = x, y = y), color = 'firebrick3', size = 1.2) +
+  scale_x_date(name = "Year", expand = c(0.01, 0.01), breaks = '3 years', 
+               labels = function(x) year(x)) +
+  scale_y_continuous(name = y_name,
+                     labels = scales::comma, 
+                     limits = c(0, ymax + 20), 
+                     expand = c(0, 0.1)
+  ) +
+  theme_minimal() +
+  theme(
+    text = element_text(family = 'Helvetica'), # Times
+    axis.text = element_text(family = 'Helvetica', color = 'grey30'),
+    axis.title = element_text(family = 'Helvetica', color = 'grey30'),
+    axis.title.y = element_text(angle = 90),
+    panel.grid.minor = element_blank()) 
+p
 
-# plots <- create_pw_plot_list(div_names, df_tot_t)
-params <- get_params(1)
-formatted_plots <- layout_plots(p, params, fix_y = FALSE)
-
-ggsave(file.path('outputs', site, str_c(site_code, '_total_2001_2020_pw.png')), 
-       plot = formatted_plots,
-       width = params$png_width,
-       height = params$png_height)
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Map, choropleth by carbon loss ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-df_sf_sums %>% 
-  st_write(here::here('outputs', site, 'counties_carbon_loss.gpkg'),
-           append = FALSE)
-
-tmap_mode('plot')
-p1 <- tm_shape(df_sf_sums) + 
-  tm_polygons(col = 'c_loss_MtC', palette = 'Reds', title = 'Carbon stock loss (MtC)')
-p2 <- tm_shape(df_sf_sums) + 
-  tm_polygons(col = 'c_loss_pct', palette = 'Reds', title = 'Carbon stock loss (%)')
-
-# 
+# Save as PNG ----
+ggsave(here::here('outputs', site, str_c(site_code, '_fcloss20yr_hih_pw.png')), 
+       plot = p,
+       width = 4,
+       height = 2.4)
