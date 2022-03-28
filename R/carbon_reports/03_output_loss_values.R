@@ -56,7 +56,7 @@ params <- list(
                            'Alternative Livelihoods', 
                            'Reciprocity Agreements / Incentive System'),
                  label = c('RL', 'HC', 'AL', 'RA/IS'),
-                 y_pos = c(620, 580, 620, 580))
+                 y_pos = c(98, 98, 98, 98))
 )
 
 # # GPNP
@@ -165,7 +165,7 @@ area_totals <- df_out %>%
 # Plot time series ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Tidy 
-df_total <- df_sums %>% slice_tail()
+df_total <- df_sums %>% slice(3) #slice_tail()
 df_site <- tidy_forest_loss(df_total) %>% 
   filter(!is.na(year))
 (div_names <- df_total[[site_div_var]])
@@ -173,7 +173,10 @@ df_site <- tidy_forest_loss(df_total) %>%
 df_site_t <- df_site
 div_name <- div_names[[1]]
 df_zone <- df_site_t %>% 
-  mutate(year = year %>% str_c('0101') %>% as_date())
+  mutate(year = year %>% str_c('0101') %>% as_date(),
+         # Get forest area for each year based on loss
+         fc_loss_post00_ha = cumsum(forest_loss_ha),
+         fc_ha = forest_2000_ha - cumsum(forest_loss_ha))
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create piecewise regression plots ----
@@ -218,15 +221,19 @@ get_pw_line_fc <- function(df_zone) {
 
 pw_fit <- get_pw_line_fc(df_zone)
 
+# get DF of HIH start dates for vertical lines
+hih_pts <- params$dates %>% slice(1)
+hih_start <- hih_pts$year
+
+df_zone %>% select(area_ha, forest_2000_ha) %>% slice(1)
+df_zone %>% filter(year == hih_start) %>% select(year, fc_ha) 
+df_zone %>% slice_tail() %>% select(year, fc_ha) 
+
+# Plot ----
 val_var <- 'forest_loss_ha'
 y_name <- str_c('Forest loss (ha)')# from previous year
 ymax <- max(df_zone[[val_var]])
 
-# get DF of HIH start dates for vertical lines
-hih_pts <- params$dates 
-hih_start <- hih_pts$year
-
-# Plot ----
 p <- df_zone %>% 
   ggplot(aes(x = year, y = .data[[val_var]])) +
   # Add vertical line/s
@@ -236,21 +243,21 @@ p <- df_zone %>%
   geom_line(color = 'grey80', size = 1) + 
   # geom_point(data = hih_0pts, aes(x = year, y = y), size = .6, color = 'grey10') +
   # geom_vline(xintercept = hih_start[[1]], color = 'grey10', size = .6) + 
-  # geom_text(aes(x = hih_start[[1]]), label = 'HIH activity starts', 
-  #           y = 620, hjust = 0, nudge_x = 100, 
+  geom_text(aes(x = hih_start[[1]]), label = 'HIH activity starts',
+            y = ymax*1.02, hjust = 1, nudge_x = -100,
+            show.legend = FALSE,
+            color = 'grey30', family = 'Helvetica') +
+  # geom_text(aes(x = year, label = label, y = y_pos), 
+  #           data = hih_pts,
+  #           hjust = 0, nudge_x = 20, 
   #           show.legend = FALSE, 
-  #           color = 'grey10', family = 'Helvetica') + 
-  geom_text(aes(x = year, label = label, y = y_pos), 
-            data = hih_pts,
-            hjust = 0, nudge_x = 20, 
-            show.legend = FALSE, 
-            color = 'grey30', family = 'Helvetica', size = 2) + 
+  #           color = 'grey30', family = 'Helvetica', size = 2) + 
   geom_line(data = pw_fit, aes(x = x, y = y), color = 'firebrick3', size = 1.2) +
   scale_x_date(name = "Year", expand = c(0.01, 0.01), breaks = '3 years', 
                labels = function(x) year(x)) +
   scale_y_continuous(name = y_name,
                      labels = scales::comma, 
-                     limits = c(0, ymax + 20), 
+                     limits = c(0, ymax*1.1), 
                      expand = c(0, 0.1)
   ) +
   theme_minimal() +
@@ -264,8 +271,8 @@ p <- df_zone %>%
 p
 
 # Save as PNG ----
-ggsave(here::here('outputs', site, str_c(site_code, '_fcloss20yr_hihall_pw.png')), 
+ggsave(here::here('outputs', site, str_c(site_code, '_fcloss20yr_hih_pw.png')), 
        plot = p,
-       width = 6,
-       height = 3.5,
+       width = 4.5,
+       height = 3,
        dpi = 150)
