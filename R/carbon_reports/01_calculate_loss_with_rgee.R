@@ -19,9 +19,11 @@ ee_Initialize()
 # Initialize
 final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
 export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
+final_polys_dir <- '~/Downloads/hih_sites'
+export_path <- here::here('data/gee_exports')
 
 shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
-(polys_fp <- shps[[6]])
+(polys_fp <- shps[[9]])
 
 site_name_var <- 'HIH_site' # Estonia: 'name'
 site_div_var <- 'name' # Estonia: 'div1'
@@ -33,6 +35,11 @@ task_name <- tools::file_path_sans_ext(basename(polys_fp))
 out_fp <- file.path(export_path, str_c(task_name, '.geojson'))
 
 fc_sf <- st_read(polys_fp) %>% st_zm()
+# fc_sf <- fc_sf %>% 
+#   filter(type1 == 'RESEX' | type == 'PARNA' | type == 'ESEC' |
+#            str_detect(nombre, 'TI Kuru|Apyterewa|Trincheira')) %>% 
+#   group_by() %>% 
+#   summarize()
 fc <- fc_sf %>% sf_as_ee()
 fc_dissolved <- fc$union()
 

@@ -29,9 +29,8 @@ final_polys_dir <- '~/Downloads/hih_sites'
 export_path <- here::here('data/gee_exports')
 
 shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
-(polys_fp <- shps[[2]])
+(polys_fp <- shps[[9]])
 
-# polys_fp <- here::here('~/data', 'sites_for_c_report', 'estonia_div_nolakes.shp')
 task_name <- tools::file_path_sans_ext(basename(polys_fp))
 out_fp <- file.path(export_path, str_c(task_name, '.geojson'))
 
@@ -46,18 +45,18 @@ div_column_name <- 'Zone'
 source('R/carbon_reports/02_functions.R')
 
 # Site parameters ----
-# BBBR
-params <- list(
-  hih_site = 'BBBR',
-  shp = "/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites/BBBR_dissolved_v3.shp",
-  dates = tibble(year = as_date(c(ym('2017-01'), ym('2018-09'), ym('2019-06'), 
-                                  ym('2021-01'))), 
-                 event = c('Radical Listening', 'Healthcare', 
-                           'Alternative Livelihoods', 
-                           'Reciprocity Agreements / Incentive System'),
-                 label = c('RL', 'HC', 'AL', 'RA/IS'),
-                 y_pos = c(98, 98, 98, 98))
-)
+# # BBBR
+# params <- list(
+#   hih_site = 'BBBR',
+#   shp = "/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites/BBBR_dissolved_v3.shp",
+#   dates = tibble(year = as_date(c(ym('2017-01'), ym('2018-09'), ym('2019-06'),
+#                                   ym('2021-01'))),
+#                  event = c('Radical Listening', 'Healthcare',
+#                            'Alternative Livelihoods',
+#                            'Reciprocity Agreements / Incentive System'),
+#                  label = c('RL', 'HC', 'AL', 'RA/IS'),
+#                  y_pos = c(98, 98, 98, 98))
+# )
 
 # # GPNP
 # params <- list(
@@ -69,28 +68,28 @@ params <- list(
 #                            'Incentive System', 'Alternative Livelihoods',
 #                            'Reforestation', 'Chainsaw Buyback'),
 #                  label = c('RL', 'HC', 'IS', 'AL', 'RF', 'CB'),
-#                  y_pos = c(620, 580, 620, 
+#                  y_pos = c(620, 580, 620,
 #                            580, 620, 580))
 # )
-# 
+
 # # Manombo
 # params <- list(
 #   hih_site = 'Manombo',
 #   shp = "/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites/ManomboNP_all.shp",
-#   dates = tibble(year = as_date(c(ym('2019-09'), ym('2020-02'), ym('2020-09'), 
-#                                   ym('2020-10'), ym('2021-05'))), 
-#                  event = c('Radical Listening', 
+#   dates = tibble(year = as_date(c(ym('2019-09'), ym('2020-02'), ym('2020-09'),
+#                                   ym('2020-10'), ym('2021-05'))),
+#                  event = c('Radical Listening',
 #                            'reciprocity agreements / incentive system',
 #                            'alternative livelihoods (agriculture training)',
 #                            'healthcare',
 #                            'reforestation'))
 # )
-# 
+
 # # Xingu
 # params <- list(
 #   hih_site = 'TdM',
 #   shp = "/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites/TdM_all_dissolved_gapfilled.shp",
-#   dates = tibble(year = as_date(c(ym('2020-07'), ym('2020-09'))), 
+#   dates = tibble(year = as_date(c(ym('2020-07'), ym('2020-09'))),
 #                  event = c('Radical Listening', 'Healthcare'))
 # )
 
@@ -166,6 +165,7 @@ area_totals <- df_out %>%
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Tidy 
 df_total <- df_sums %>% slice(3) #slice_tail()
+df_total <- df_sums %>% slice_tail() #GPNP, TdM, Manombo
 df_site <- tidy_forest_loss(df_total) %>% 
   filter(!is.na(year))
 (div_names <- df_total[[site_div_var]])
@@ -222,41 +222,53 @@ get_pw_line_fc <- function(df_zone) {
 pw_fit <- get_pw_line_fc(df_zone)
 
 # get DF of HIH start dates for vertical lines
-hih_pts <- params$dates %>% slice(1)
-hih_start <- hih_pts$year
+hih_pts <- params$dates %>% slice(2)
+hih_start <- hih_pts$year 
 
 df_zone %>% select(area_ha, forest_2000_ha) %>% slice(1)
-df_zone %>% filter(year == hih_start) %>% select(year, fc_ha) 
-df_zone %>% slice_tail() %>% select(year, fc_ha) 
+df_zone %>% select(year, fc_ha) %>% 
+  filter(str_sub(year, 1, 4) == str_sub(hih_start, 1, 4) |
+         str_sub(year, 1, 4) == '2020')
+
+df_zone2 <- df_zone %>% 
+  left_join(rename(pw_fit, year = 'x', pw_fit = 'y'))
+
+# Save as CSV ----
+df_zone2 %>% 
+  select(year, fc_loss_ha = forest_loss_ha, pw_fit) %>% 
+  mutate(year = year %>% str_sub(1,4)) %>% 
+  write_csv(here::here('outputs', 'forest_cover', site, 
+                       str_c(site_code, '_FCloss_20yr_pw.csv')))
 
 # Plot ----
 val_var <- 'forest_loss_ha'
 y_name <- str_c('Forest loss (ha)')# from previous year
 ymax <- max(df_zone[[val_var]])
 
-p <- df_zone %>% 
+p <- df_zone2 %>% 
   ggplot(aes(x = year, y = .data[[val_var]])) +
+  geom_line(color = 'grey80', size = 1) + 
   # Add vertical line/s
   geom_linerange(aes(x = year, ymin = -Inf, ymax = Inf), 
-                 data = hih_pts, color = 'grey30', size = .4,
+                 data = hih_pts, color = 'grey30', size = .6,
+                 linetype = 'dashed',
                  inherit.aes = FALSE) + 
-  geom_line(color = 'grey80', size = 1) + 
   # geom_point(data = hih_0pts, aes(x = year, y = y), size = .6, color = 'grey10') +
   # geom_vline(xintercept = hih_start[[1]], color = 'grey10', size = .6) + 
   geom_text(aes(x = hih_start[[1]]), label = 'HIH activity starts',
             y = ymax*1.02, hjust = 1, nudge_x = -100,
-            show.legend = FALSE,
+            show.legend = FALSE, 
             color = 'grey30', family = 'Helvetica') +
   # geom_text(aes(x = year, label = label, y = y_pos), 
   #           data = hih_pts,
   #           hjust = 0, nudge_x = 20, 
   #           show.legend = FALSE, 
   #           color = 'grey30', family = 'Helvetica', size = 2) + 
-  geom_line(data = pw_fit, aes(x = x, y = y), color = 'firebrick3', size = 1.2) +
+  geom_line(aes(y = pw_fit), color = 'firebrick3', size = 1.2) +
   scale_x_date(name = "Year", expand = c(0.01, 0.01), breaks = '3 years', 
                labels = function(x) year(x)) +
   scale_y_continuous(name = y_name,
-                     labels = scales::comma, 
+                     labels = function(x) str_c(format(x, big.mark = ','), ' ha'), 
                      limits = c(0, ymax*1.1), 
                      expand = c(0, 0.1)
   ) +
@@ -265,14 +277,15 @@ p <- df_zone %>%
     text = element_text(family = 'Helvetica'), # Times
     axis.text = element_text(family = 'Helvetica', color = 'grey30'),
     axis.title = element_text(family = 'Helvetica', color = 'grey30'),
-    axis.title.y = element_text(angle = 90),
-    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
     panel.grid.minor = element_blank()) 
 p
 
 # Save as PNG ----
-ggsave(here::here('outputs', site, str_c(site_code, '_fcloss20yr_hih_pw.png')), 
+ggsave(here::here('outputs', 'forest_cover', site, 
+                  str_c(site_code, '_fcloss20yr_hih_pw.png')), 
        plot = p,
        width = 4.5,
-       height = 3,
+       height = 2.9,
        dpi = 150)
+

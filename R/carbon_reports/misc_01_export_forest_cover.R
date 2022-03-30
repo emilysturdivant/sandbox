@@ -29,7 +29,7 @@ final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hi
 export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
 
 shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
-(polys_fp <- shps[[2]])
+(polys_fp <- shps[[9]])
 (site <- str_split(basename(polys_fp), '[_\\W]', simplify = TRUE)[,1])
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -37,7 +37,7 @@ shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create extent rectangle ----
 site_sf <- st_read(polys_fp)
-site_buff <- site_sf %>% st_buffer(0.6)
+site_buff <- site_sf %>% st_buffer(2) # 0.6 for little sites, 1-2 for TdM
 bb <- site_buff %>% st_bbox()
 
 qtm(site_buff) + qtm(site_sf)
@@ -61,7 +61,7 @@ viridis <- c('#440154', '#433982', '#30678D', '#218F8B', '#36B677', '#8ED542', '
 # polys_lyr <- Map$addLayer(outline, name = 'Site boundary')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Use Hansens's 2000-2020 loss to mask our Hansen 2000 TC ----
+# Use Hansens loss to mask Hansen 2000 TC ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Hansen forest cover and loss
 hansen_30m <- ee$Image("UMD/hansen/global_forest_change_2020_v1_8")
@@ -92,7 +92,8 @@ task_img_to_drive <- fc2020_fromloss %>%
   ee_image_to_drive(description = task_name,
                     folder = basename(export_path),
                     region = site_bb,
-                    scale = 30)
+                    scale = 90, 
+                    maxPixels = 105713753)
 
 task_img_to_drive$start()
 
@@ -108,11 +109,11 @@ task_img_to_drive$start()
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Use Hansens's 2000-2020 loss to mask our AGB ----
+# Use Hansen loss to mask 500m AGB ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 wbd_mgha <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_Mgha")
 
-# Mask 2000 tree cover with loss band ----
+# Mask 
 agb16_fromloss <- wbd_mgha$updateMask(loss$neq(1))
 
 # View
@@ -120,7 +121,7 @@ Map$addLayer(eeObject = agb16_fromloss,
              visParams = list(min = 0, max = 200, palette = viridis),
              name = 'AGB 2016')
 
-# Export Hansen ----
+# Export
 task_name <- str_c('AGB_2016_', site)
 
 task_img_to_drive <- agb16_fromloss %>% 
@@ -136,7 +137,7 @@ task_img_to_drive$start()
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 agb_mgha <- ee$Image("users/sgorelik/global_AGB_2000_30m_Mgha_V4")
 
-# Mask 2000 tree cover with loss band ----
+# Mask
 agb00_fromloss <- agb_mgha$updateMask(loss$neq(1))
 
 # View
@@ -144,10 +145,32 @@ Map$addLayer(eeObject = agb00_fromloss,
              visParams = list(min = 0, max = 200, palette = viridis),
              name = 'AGB 2000')
 
-# Export Hansen ----
+# Export 
 task_name <- str_c('AGB_2000_', site)
 
 task_img_to_drive <- agb00_fromloss %>% 
+  ee_image_to_drive(description = task_name,
+                    folder = basename(export_path),
+                    region = site_bb,
+                    scale = 30)
+
+task_img_to_drive$start()
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Export SRTM DEM ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+img <- ee$Image("USGS/SRTMGL1_003")
+dem <- img$select('elevation')
+
+# View
+Map$addLayer(eeObject = dem, 
+             visParams = list(min = 0, max = 2000, palette = viridis),
+             name = 'DEM')
+
+# Export 
+task_name <- str_c('SRTM_DEM_', site)
+
+task_img_to_drive <- dem %>% 
   ee_image_to_drive(description = task_name,
                     folder = basename(export_path),
                     region = site_bb,
