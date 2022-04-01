@@ -11,26 +11,13 @@
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Initialize ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+source(here::here('R/carbon_reports', '000_initialize.R'))
+
 # Load libraries 
 library(rgee)
 ee_Initialize()
 
-library(flextable)
-library(officer)
-library(sf)
-library(patchwork)
-library(segmented)
-library(tidyverse)
-library(tmap)
 tmap_mode('view')
-
-# Initialize
-final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
-export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
-
-shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
-(polys_fp <- shps[[9]])
-(site <- str_split(basename(polys_fp), '[_\\W]', simplify = TRUE)[,1])
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Upload shapefile ----
@@ -40,7 +27,7 @@ site_sf <- st_read(polys_fp)
 site_buff <- site_sf %>% st_buffer(2) # 0.6 for little sites, 1-2 for TdM
 bb <- site_buff %>% st_bbox()
 
-qtm(site_buff) + qtm(site_sf)
+# qtm(site_buff) + qtm(site_sf)
 
 site_bb <- ee$Geometry$Rectangle(
   coords = c(bb$xmin, bb$ymin, bb$xmax, bb$ymax),
@@ -55,10 +42,12 @@ agb_pal <- c('75322B','ffe215','B2B659','9EA850','909E49','819443','71893C',
   str_c("#", .)
 viridis <- c('#440154', '#433982', '#30678D', '#218F8B', '#36B677', '#8ED542', '#FDE725')
 
-# # Paint all the polygon edges with the same number and width, display.
-# outline <- ee$Image()$byte()$
-#   paint(featureCollection = fc_dissolved, color = 1, width = 2)
-# polys_lyr <- Map$addLayer(outline, name = 'Site boundary')
+# Paint all the polygon edges with the same number and width, display.
+fc <- site_sf %>% st_zm() %>% sf_as_ee()
+fc_dissolved <- fc$union()
+outline <- ee$Image()$byte()$
+  paint(featureCollection = fc_dissolved, color = 1, width = 2)
+polys_lyr <- Map$addLayer(outline)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Use Hansens loss to mask Hansen 2000 TC ----
@@ -83,7 +72,23 @@ Map$addLayer(eeObject = forest_mask,
              name = 'Forest 2000') +
 Map$addLayer(eeObject = fc2020_fromloss, 
                visParams = list(min = 0, max = 1, palette = agb_pal),
-               name = 'Forest 2020')
+               name = 'Forest 2020') +
+  polys_lyr
+
+# Look at forest loss in 2015 and 2016 ----
+loss_year$filter(ee$Filter$eq())
+  
+# Reclass values outside of range of interest
+loss_year_focus <- loss_year$
+  updateMask(loss_year$lte(17))$
+  updateMask(loss_year$gt(14))
+
+Map$addLayer(eeObject = loss_year_focus, 
+             visParams = list(min = 14, max = 17, palette = viridis),
+             name = 'Loss year') +
+  polys_lyr +
+  Map$addLegend(list(min = 14, max = 17, palette = viridis), 
+                color_mapping = 'discrete')
 
 # Export Hansen ----
 task_name <- str_c('FC_2020_', site)
