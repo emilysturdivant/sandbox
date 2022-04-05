@@ -7,6 +7,10 @@
 #     * 02_report_from_Hansen_data.R for functions following the GEE section
 # Author:
 #     * esturdivant@woodwellclimate.org, 2021-10-10
+# Notes:
+#   https://www.globalforestwatch.org/blog/data-and-research/tree-cover-loss-satellite-data-trend-analysis/
+#     * Data inputs and methods change over the course of the Hansen time series.
+#     * It's recommended to apply a 3-yr moving average to analyze the time series.
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
