@@ -12,6 +12,7 @@ library(terra)
 library(tmap)
 tmap_mode('view')
 library(tidyverse)
+library(colorspace)
 library(countrycode)
 library(rgee)
 ee_Initialize()
@@ -22,6 +23,52 @@ data_dir <- '~/data'
 # Prep to get paths to assets
 user <- ee_get_assethome()
 addm <- function(x) sprintf("%s/%s", user, x)
+
+# visualization 
+pal_idx <- sequential_hcl(n = 10, 'inferno')
+demoplot(pal_idx)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Emerging Hotspots (GFW; Harris et al. 2017) ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hs_id <- addm('Hotspots_GFW_2020_v2')
+hotspots_lu <- tibble(gfw_fid = c(1,2,3,4,5),
+                      pattern = c('Diminishing', 'Intensifying',
+                                  'New', 'Persistent', 'Sporadic'))
+
+hotspots <- ee$FeatureCollection(addm('gfw_emerging_hot_spots_v2020'))
+ee_print(hotspots)
+
+# Convert to raster
+hs_r <- hotspots$
+  reduceToImage(
+    properties = list('gfw_fid'), 
+    reducer = ee$Reducer$first()
+  )$
+  # unmask()$
+  setDefaultProjection(crs = 'EPSG:4326', scale = 500)$
+  toUint8()
+
+# Look
+viz <- list(min=min(hotspots_lu$gfw_fid), 
+            max = max(hotspots_lu$gfw_fid), 
+            palette = pal_idx, 
+            values = hotspots_lu$pattern)
+Map$addLayer(hs_r, viz, 'Hot Spots') +
+  Map$addLegend(visParams = viz,
+                name = 'Hot Spot Pattern', 
+                color_mapping = "character")
+
+# Save image as EE asset
+task_img <- ee_image_to_asset(hs_r,
+                              'gfw_emerging_hot_spots_v2020', 
+                              assetId = hs_id,
+                              # region = tropics_bb,
+                              crs = 'EPSG:4326',
+                              scale = 500,
+                              maxPixels = 3212171552,
+                              overwrite = TRUE)
+task_img$start()
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Worldwide Governance Indicators ----
@@ -531,7 +578,60 @@ sf.ind %>% st_write(file.path(gdl_dir, 'GDL_subnational_hdi_le_hi.shp'),
 # ee_monitoring()
 
 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# KBAs ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+kba_id <- addm('KBAs_2021_Sep02_maskDHF')
 
+alist <- ee_manage_assetlist(path_asset = addm(""))
+if(!kba_id %in% alist$ID) {
+  
+  # Load and convert to raster where KBA = 0.5 and AZE = 1
+  kbas <- ee$FeatureCollection(addm("KBAsGlobal_2021_September_02_POL"))
+  
+  # Set sig_level to 1 or 0.9 to indicate significance level of site
+  aze_true <- kbas$
+    filter(ee$Filter$eq('AzeStatus', 'confirmed'))$
+    map(function(f) {f$set("sig_level", 1)})
+  aze_false <- kbas$
+    filter(ee$Filter$neq('AzeStatus', 'confirmed'))$
+    map(function(f) {f$set("sig_level", 0.95)})
+  
+  # Merge the subsets
+  kbas <- aze_true$merge(aze_false)
+  
+  # Convert to raster
+  kba_r <- kbas$
+    reduceToImage(
+      properties = list('sig_level'), 
+      reducer = ee$Reducer$first()
+    )$
+    unmask()$
+    setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
+    updateMask(dhf_mask)
+  
+  # Save image as EE asset
+  task_img <- ee_image_to_asset(kba_r,
+                                'KBAs_2021_Sep02_masked', 
+                                assetId = kba_id,
+                                region = tropics_bb,
+                                crs = 'EPSG:4326',
+                                scale = 1000,
+                                maxPixels = 312352344,
+                                overwrite = TRUE)
+  task_img$start()
+  
+}
+
+kba_r <- ee$Image(kba_id)
+
+# Reclass values outside of 0-1 range
+kba_r <- kba_r$
+  where(kba_r$lt(0.94), 0.8)$
+  where(kba_r$lt(0.96), 0.9)
+
+# View
+# map_norm_idx(kba_r, "Key Biodiversity Areas", TRUE)
 
 
 

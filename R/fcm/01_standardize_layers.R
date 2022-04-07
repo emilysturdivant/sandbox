@@ -642,6 +642,23 @@ kba_r <- kba_r$
 # map_norm_idx(kba_r, "Key Biodiversity Areas", TRUE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Deforestation Hot Spots (Harris et al. 2017 via GFW) ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+hs_id <- addm('Hotspots_GFW_2020')
+hs_r <- ee$Image(hs_id)
+
+# Reclass values outside of 0-1 range
+hs_r <- hs_r$
+  unmask()$
+  where(hs_r$eq(2), 1)$    # Intensifying
+  where(hs_r$eq(4), 0.9)$  # Persistent
+  where(hs_r$eq(3), 0.8)$  # New
+  where(hs_r$eq(5), 0.7)$  # Sporadic
+  where(hs_r$eq(1), 0.6)   # Diminishing
+
+map_norm_idx(hs_r, 'Hotspots', palette = pal_idx)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Subnational Human Development Index ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 shdi <- ee$Image(addm('shdi_2arcmin'))
