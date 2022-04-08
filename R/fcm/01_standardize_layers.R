@@ -619,9 +619,11 @@ flii_norm <- flii_scale$
 # Species richness 5km ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 rich <- ee$Image(addm('IUCN_Richness_all_5km'))
+rsr_id <- addm('IUCN_Richness_5km_2018/RangeSizeRarity_all')
+rsr <- ee$Image(rsr_id)
 
 # Rescale
-rich_norm <- rescale_to_pctl(rich)
+rich_norm <- rescale_to_pctl(rsr)
 
 # Ventiles
 rich_vent <- classify_percentiles(rich_norm)

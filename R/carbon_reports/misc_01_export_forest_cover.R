@@ -50,7 +50,7 @@ outline <- ee$Image()$byte()$
 polys_lyr <- Map$addLayer(outline)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Use Hansens loss to mask Hansen 2000 TC ----
+# Use Hansen loss to mask Hansen 2000 TC ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Hansen forest cover and loss
 hansen_30m <- ee$Image("UMD/hansen/global_forest_change_2020_v1_8")

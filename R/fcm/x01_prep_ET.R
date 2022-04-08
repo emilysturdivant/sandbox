@@ -31,12 +31,6 @@ ee_Initialize()
 et <- ee$ImageCollection("MODIS/006/MOD16A2")$
   select('ET') # kg/m^2/8day 	
 
-# et$get('period_mapping')$getInfo()
-# i <- et$
-#   filter(ee$Filter$calendarRange(2022, 2022, 'year'))$
-#   filter(ee$Filter$calendarRange(3, 3, 'month'))
-# ee_print(i)
-
 # Get yearly averages, first averaging by month ----
 # Group by year and month, and then reduce within groups by mean().
 # The result is an ImageCollection with one image for each
