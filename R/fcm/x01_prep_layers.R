@@ -73,61 +73,95 @@ task_img$start()
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Worldwide Governance Indicators ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+year <- '2020'
+wgi_csv <- here::here(data_dir, 'sociopolitical', 'wgi', 
+                      str_c('wgi_estimate_', year, '.csv'))
+wgi_id <- addm(str_c('wgi_estimate_', year))
+
+# Load raw
 wgi_xls <- here::here(data_dir, 'raw_data', 'sociopolitical', 'governance_wgi', 
                       'wgidataset.xlsx')
 
-# Load all data
-wgi_all <- readxl::read_excel(wgi_xls, sheet = 2, col_names = FALSE, skip = 13,
-                              na = '#N/A')
-
-# Reset column names
-cnames <- str_c(wgi_all[2, 3:ncol(wgi_all)], wgi_all[1, 3:ncol(wgi_all)])
-colnames(wgi_all) <- c(str_remove_all(wgi_all[2, 1:2], '/Territory'), cnames)
-wgi_all <- wgi_all %>% slice(-1:-2)
+load_wgi_indicator <- function(sheet) {
   
-wgi <- wgi_all %>%
-  # Select 2020 estimate
-  select(Country, Code, ends_with('2020')) %>% 
-  pivot_longer(cols = 3:8) %>% 
-  # Convert value to numeric
-  mutate(value = as.numeric(value),
-         name = str_remove_all(name, '2020')) %>% 
-  pivot_wider(names_from = name) %>% 
-  mutate(FIPS_iso = countrycode(Code, origin = 'iso3c',
-                            destination = 'fips'),
-         GAUL_iso = countrycode(Code, origin = 'iso3c',
-                            destination = 'gaul')) %>%
+  # Load data for one sheet
+  wgi_all <- readxl::read_excel(wgi_xls, sheet = sheet, col_names = FALSE, skip = 13,
+                                na = '#N/A')
+  
+  # Reset column names
+  cnames <- str_c(wgi_all[2, 3:ncol(wgi_all)], wgi_all[1, 3:ncol(wgi_all)])
+  colnames(wgi_all) <- c(str_remove_all(wgi_all[2, 1:2], '/Territory'), cnames)
+  wgi_all <- wgi_all %>% slice(-1:-2)
+  
+  wgi <- wgi_all %>%
+    # Select 2020 estimate
+    select(Country, Code, ends_with(year)) %>% 
+    pivot_longer(cols = 3:8) %>% 
+    # Convert value to numeric
+    mutate(value = as.numeric(value),
+           name = str_remove_all(name, year)) %>% 
+    pivot_wider(names_from = name) %>% 
+    mutate(indicator = str_remove_all(sheet, ' '))
+  
+  wgi_vals <- wgi %>% 
+    select(indicator, Code, Country, Estimate, Rank)
+}
+
+sheetnames <- readxl::excel_sheets(path = wgi_xls)
+wgi_df <- sheetnames[2:7] %>% purrr::map_dfr(load_wgi_indicator)
+
+wgi_vals <- wgi_df %>% 
+  pivot_wider(id_cols = starts_with('Co'), 
+              names_from = indicator, values_from = Estimate) %>% 
   mutate(FIPS = countrycode(Country, origin = 'country.name', 
-                            destination = 'fips'),
-         GAUL = countrycode(Country, origin = 'country.name', 
-                            destination = 'gaul')) 
+                            destination = 'fips',
+                            custom_match = c(`South Sudan` = 'OD'))) 
 
-wgi_vals <- wgi %>% select(Code, Country, FIPS, GAUL, Estimate, Rank)
+# Save to CSV 
+wgi_vals %>% write_csv(wgi_csv)
 
-# Upload to asset
-gci_csv <- here::here(data_dir, 'sociopolitical', 'wef_gci', 'GCI4_2019.csv')
-gci_vals %>% write_csv(gci_csv)
+# Join to Large Scale International Boundaries for upload as GEE asset 
+wgi_vals <- read_csv(wgi_csv)
 
-# Large Scale International Boundaries ----
 # 'country_co' FIPS: wikipedia.org/wiki/List_of_FIPS_country_codes
 countries <- ee$FeatureCollection("USDOS/LSIB_SIMPLE/2017")
-data <- ee$FeatureCollection(list()) # Empty table
-for (row in 1:nrow(gci_vals)) {
+wgi_fc <- ee$FeatureCollection(list()) # Empty table
+
+wgi_vals <- wgi_vals %>% mutate(across(everything(), ~ replace_na(.x, -99)))
+varnames <- wgi_vals %>% tbl_vars() %>% 
+  str_subset('Voice|Political|Government|Regulatory|Rule|Control')
+
+for (row in 1:nrow(wgi_vals)) {
   
-  code <- gci_vals[[row, "FIPS"]]
-  score  <- gci_vals[[row, "SCORE"]]
+  # Get values for the given country: FIPS code and values
+  code <- wgi_vals[[row, "FIPS"]]
+  # code <- wgi_vals[[row, "Country"]]
+  score  <- wgi_vals %>% 
+    slice(row) %>% 
+    select(any_of(varnames)) %>% # Doesn't work with all the columns, maybe because of NAs?
+    as.list()
   
+  # Filter FC to the country
   fc <- countries$filter(ee$Filter$eq('country_co', code))
-  fc <- fc$map(function(f) {
-    f$set(list(gci = score))
-  })$
+  # fc <- countries$filter(ee$Filter$eq('country_na', code))
+  
+  # Set the properties for every feature from the values in the input table
+  fc <- fc$map( function(f){ f$set(score) })$
     copyProperties(countries)
   
-  data <- data$merge(fc)
+  # Append country FC to output FC
+  wgi_fc <- wgi_fc$merge(fc)
 }
-gci_ee2 <- data
-gci_ee2$first()$get('gci')$getInfo()
-Map$addLayer(gci_ee2, list(), name='GCI')
+
+wgi_fc$first()$get(varnames[1])$getInfo()
+Map$addLayer(wgi_fc, list(), name='WGI')
+
+# Save FC
+task_vector <- wgi_fc %>% 
+  ee_table_to_asset(assetId = wgi_id, overwrite = TRUE)
+task_vector$start()
+
+
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # EPI ----
@@ -147,7 +181,7 @@ epi_all <- readxl::read_excel(epi_xls, sheet = '3_EPI_Results',
 epi_all <- epi_all %>% 
   mutate(across(EPI_new:WWT_rnk_new, ~ replace_na(.x, -1)))
   
-# Large Scale International Boundaries ----
+# Large Scale International Boundaries
 # 'country_co' FIPS: wikipedia.org/wiki/List_of_FIPS_country_codes
 countries <- ee$FeatureCollection("USDOS/LSIB_SIMPLE/2017")
 epi_fc <- ee$FeatureCollection(list()) # Empty table
@@ -381,7 +415,7 @@ gci_vals <- gci %>% select(COUNTRY_CODE, COUNTRY_NAME, FIPS, GAUL, RANK, SCORE)
 gci_csv <- here::here(data_dir, 'sociopolitical', 'wef_gci', 'GCI4_2019.csv')
 gci_vals %>% write_csv(gci_csv)
 
-# Large Scale International Boundaries ----
+# Large Scale International Boundaries
 # 'country_co' FIPS: wikipedia.org/wiki/List_of_FIPS_country_codes
 countries <- ee$FeatureCollection("USDOS/LSIB_SIMPLE/2017")
 data <- ee$FeatureCollection(list()) # Empty table
@@ -563,7 +597,7 @@ cts <- sf %>% st_drop_geometry() %>%
 #   select(GDLcode = GDLCODE,
 #          HI = `2019`)
 
-# Join to GDL subnational units ----
+# Join to GDL subnational units
 sf.le <- sfs %>% left_join(le, by = 'GDLcode')
 sf.ind <- sf.le %>% left_join(hi, by = 'GDLcode')
 
@@ -634,166 +668,6 @@ kba_r <- kba_r$
 # map_norm_idx(kba_r, "Key Biodiversity Areas", TRUE)
 
 
-
-
-# Create tropics extent ----
-e <- ext(c(xmin = -180, xmax = 180, ymin = -23.3, ymax = 23.3))
-bb <- c(e$xmin, e$ymin, e$xmax, e$ymax)
-tropics_rect <- st_as_sfc(st_bbox(bb, crs = st_crs(4326)))
-
-tropics_rect_shp <- file.path(data_dir, 'context', 'tropics_rect.shp')
-if(!file.exists(tropics_rect_shp)) {
-  tropics_rect %>% st_write(tropics_rect_shp)
-}
-
-# Create tropics extent ----
-e <- ext(c(xmin = -180, xmax = 180, ymin = -26, ymax = 26))
-bb <- c(e$xmin, e$ymin, e$xmax, e$ymax)
-tropics_26 <- st_as_sfc(st_bbox(bb, crs = st_crs(4326)))
-
-# Extract countries in tropics and add MSF flag ----
-standardize_text <- function(x){
-  x %>% as.character() %>% 
-    str_trim() %>% 
-    str_to_upper() %>% 
-    stringi::stri_trans_general(str=., id='Latin-ASCII') %>% 
-    str_replace_all(' +', ' ') %>% 
-    str_replace_all('(, )+', ', ') %>% 
-    str_replace_all('( ,)+', ',') %>% 
-    str_remove_all('^,') %>% 
-    str_trim()
-}
-
-# Load GADM country boundaries as singlepart
-gadm_shp <- file.path(data_dir, 'gadm', 'gadm36_0.shp')
-countries <- st_read(gadm_shp, promote_to_multi = TRUE) %>% 
-  st_cast("POLYGON")
-
-# Simplify and subset to those that intersect tropics
-countries <- countries %>% st_simplify(dTolerance = 0.01)
-countries <- countries[unlist(st_intersects(tropics_rect, countries)),]
-
-# Remove parts of countries < 2km2
-countries['area'] <- countries %>% st_area()
-countries <- countries %>% 
-  filter(area > units::set_units(9, 'km^2')) %>% 
-  group_by(NAME_0) %>% 
-  summarize()
-
-# Extract Protected Areas in the tropics ----
-# Protected area polygons ----
-pa_zips <- list.files(
-  file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_Public_shp'),
-  pattern = ".zip$", full.names=TRUE, recursive = TRUE)
-# 
-# # Unzip
-# unzip_and_filter_pa_polygons <- function(z) {
-#   # z <- pa_zips[[1]]
-#   
-#   # Unzip to temp dir
-#   miao <- tempfile()
-#   unzip(z, exdir = miao)
-#   
-#   # Load shapefile (polygons)
-#   (shp_fp <- list.files(miao, pattern = ".shp$", full.names=TRUE, recursive = TRUE))
-#   pa <- st_read(shp_fp[[2]])
-#   
-#   # Filter
-#   pa <- pa %>% 
-#     filter(MARINE != 2) %>% 
-#     st_simplify(dTolerance = 0.001) 
-#   
-#   # subset polygons to those that intersect tropics rectangle
-#   pa_tropics <- pa[unlist(st_intersects(tropics_rect, pa)),]
-#   
-#   return(pa_tropics)
-# }
-# 
-# pa_tropics <- pa_zips %>% purrr::map_dfr(unzip_and_filter_pa_polygons)
-# pa_tropics %>% 
-#   st_write(file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_polygons_tropics_simp001.gpkg'))
-# 
-# # Protected area points ----
-# # pa_zip <- file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_Public_shp', 'WDPA_Oct2021_Public_shp.zip')
-# pa_zips <- list.files(
-#   file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_Public_shp'),
-#   pattern = ".zip$", full.names=TRUE, recursive = TRUE)
-# 
-# # Unzip
-# unzip_and_filter_pa_points <- function(z) {
-#   # z <- pa_zips[[1]]
-#   
-#   # Unzip to temp dir
-#   miao <- tempfile()
-#   unzip(z, exdir = miao)
-#   
-#   # Load shapefile (polygons)
-#   (shp_fp <- list.files(miao, pattern = "points\\.shp$", full.names=TRUE, recursive = TRUE))
-#   pa <- st_read(shp_fp[[1]])
-#   
-#   pa <- pa[unlist(st_intersects(tropics_rect, pa)),]
-#   pa <- pa %>% filter(REP_AREA > 0, MARINE != 2)
-#   pa_buff <- pa %>% st_buffer(8.5*0.001)
-#   
-#   return(pa_buff)
-# }
-# 
-# pa_tropics <- pa_zips %>% purrr::map_dfr(unzip_and_filter_pa_points)
-# pa_tropics %>% 
-#   st_write(file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_points_tropics_buff0085.gpkg'))
-# 
-# # Merge
-# pa_polys <- st_read(file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_polygons_tropics_simp001.gpkg'))
-# pa_tropics2 <- bind_rows(pa_polys, pa_tropics)
-# 
-# pa_tropics2 %>% object.size() %>% print(units = "MB")
-# pa_tropics2 %>% 
-#   st_write(file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_tropics_simp001_buff0085.gpkg'))
-
-# OECM polygons ----
-# pa_zip <- file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_Public_shp', 'WDPA_Oct2021_Public_shp.zip')
-pa_zips <- list.files(
-  file.path(data_dir, 'protected_areas', 'WDOECM_Oct2021_Public_shp'),
-  pattern = ".zip$", full.names=TRUE, recursive = TRUE)
-
-# Unzip
-unzip_and_filter_pas <- function(z) {
-  # z <- pa_zips[[1]]
-  
-  # Unzip to temp dir
-  miao <- tempfile()
-  unzip(z, exdir = miao)
-  
-  # Load shapefile (polygons)
-  (shp_fp <- list.files(miao, pattern = "polygons\\.shp$", full.names=TRUE, recursive = TRUE))
-  pa <- st_read(shp_fp[[1]])
-  
-  # Filter
-  pa <- pa %>% 
-    filter(MARINE != 2) %>% 
-    st_simplify(dTolerance = 0.001) 
-  
-  # subset polygons to those that intersect tropics rectangle
-  pa_polys <- pa[unlist(st_intersects(tropics_rect, pa)),]
-  
-  # Load points
-  (shp_fp <- list.files(miao, pattern = "points\\.shp$", full.names=TRUE, recursive = TRUE))
-  pa <- st_read(shp_fp[[1]])
-  pa <- pa[unlist(st_intersects(tropics_rect, pa)),]
-  pa <- pa %>% filter(REP_AREA > 0, MARINE != 2)
-  pa_points <- pa %>% st_buffer(8.5*0.001)
-  
-  # Combine
-  pa_tropics <- bind_rows(pa_polys, pa_points)
-  
-  # Return
-  return(pa_tropics)
-}
-
-pa_tropics <- pa_zips %>% purrr::map_dfr(unzip_and_filter_pas)
-tm_shape(pa_tropics) + tm_polygons()
-pa_tropics %>% 
-  st_write(file.path(data_dir, 'protected_areas', 'WDOECM_Oct2021_tropics_simp001_buff0085.gpkg'))
 
 
 # Intact Forest Landscape ----
@@ -1099,6 +973,166 @@ lev12_shp <- list.files(here::here('/Volumes/STORAGE/work_Woodwell/raw_data',
 
 lev12 <- st_read(lev12_shp)
 
+
+
+# Create tropics extent ----
+e <- ext(c(xmin = -180, xmax = 180, ymin = -23.3, ymax = 23.3))
+bb <- c(e$xmin, e$ymin, e$xmax, e$ymax)
+tropics_rect <- st_as_sfc(st_bbox(bb, crs = st_crs(4326)))
+
+tropics_rect_shp <- file.path(data_dir, 'context', 'tropics_rect.shp')
+if(!file.exists(tropics_rect_shp)) {
+  tropics_rect %>% st_write(tropics_rect_shp)
+}
+
+# Create tropics extent ----
+e <- ext(c(xmin = -180, xmax = 180, ymin = -26, ymax = 26))
+bb <- c(e$xmin, e$ymin, e$xmax, e$ymax)
+tropics_26 <- st_as_sfc(st_bbox(bb, crs = st_crs(4326)))
+
+# Extract countries in tropics and add MSF flag ----
+standardize_text <- function(x){
+  x %>% as.character() %>% 
+    str_trim() %>% 
+    str_to_upper() %>% 
+    stringi::stri_trans_general(str=., id='Latin-ASCII') %>% 
+    str_replace_all(' +', ' ') %>% 
+    str_replace_all('(, )+', ', ') %>% 
+    str_replace_all('( ,)+', ',') %>% 
+    str_remove_all('^,') %>% 
+    str_trim()
+}
+
+# Load GADM country boundaries as singlepart
+gadm_shp <- file.path(data_dir, 'gadm', 'gadm36_0.shp')
+countries <- st_read(gadm_shp, promote_to_multi = TRUE) %>% 
+  st_cast("POLYGON")
+
+# Simplify and subset to those that intersect tropics
+countries <- countries %>% st_simplify(dTolerance = 0.01)
+countries <- countries[unlist(st_intersects(tropics_rect, countries)),]
+
+# Remove parts of countries < 2km2
+countries['area'] <- countries %>% st_area()
+countries <- countries %>% 
+  filter(area > units::set_units(9, 'km^2')) %>% 
+  group_by(NAME_0) %>% 
+  summarize()
+
+# Extract Protected Areas in the tropics ----
+# Protected area polygons ----
+pa_zips <- list.files(
+  file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_Public_shp'),
+  pattern = ".zip$", full.names=TRUE, recursive = TRUE)
+# 
+# # Unzip
+# unzip_and_filter_pa_polygons <- function(z) {
+#   # z <- pa_zips[[1]]
+#   
+#   # Unzip to temp dir
+#   miao <- tempfile()
+#   unzip(z, exdir = miao)
+#   
+#   # Load shapefile (polygons)
+#   (shp_fp <- list.files(miao, pattern = ".shp$", full.names=TRUE, recursive = TRUE))
+#   pa <- st_read(shp_fp[[2]])
+#   
+#   # Filter
+#   pa <- pa %>% 
+#     filter(MARINE != 2) %>% 
+#     st_simplify(dTolerance = 0.001) 
+#   
+#   # subset polygons to those that intersect tropics rectangle
+#   pa_tropics <- pa[unlist(st_intersects(tropics_rect, pa)),]
+#   
+#   return(pa_tropics)
+# }
+# 
+# pa_tropics <- pa_zips %>% purrr::map_dfr(unzip_and_filter_pa_polygons)
+# pa_tropics %>% 
+#   st_write(file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_polygons_tropics_simp001.gpkg'))
+# 
+# # Protected area points ----
+# # pa_zip <- file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_Public_shp', 'WDPA_Oct2021_Public_shp.zip')
+# pa_zips <- list.files(
+#   file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_Public_shp'),
+#   pattern = ".zip$", full.names=TRUE, recursive = TRUE)
+# 
+# # Unzip
+# unzip_and_filter_pa_points <- function(z) {
+#   # z <- pa_zips[[1]]
+#   
+#   # Unzip to temp dir
+#   miao <- tempfile()
+#   unzip(z, exdir = miao)
+#   
+#   # Load shapefile (polygons)
+#   (shp_fp <- list.files(miao, pattern = "points\\.shp$", full.names=TRUE, recursive = TRUE))
+#   pa <- st_read(shp_fp[[1]])
+#   
+#   pa <- pa[unlist(st_intersects(tropics_rect, pa)),]
+#   pa <- pa %>% filter(REP_AREA > 0, MARINE != 2)
+#   pa_buff <- pa %>% st_buffer(8.5*0.001)
+#   
+#   return(pa_buff)
+# }
+# 
+# pa_tropics <- pa_zips %>% purrr::map_dfr(unzip_and_filter_pa_points)
+# pa_tropics %>% 
+#   st_write(file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_points_tropics_buff0085.gpkg'))
+# 
+# # Merge
+# pa_polys <- st_read(file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_polygons_tropics_simp001.gpkg'))
+# pa_tropics2 <- bind_rows(pa_polys, pa_tropics)
+# 
+# pa_tropics2 %>% object.size() %>% print(units = "MB")
+# pa_tropics2 %>% 
+#   st_write(file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_tropics_simp001_buff0085.gpkg'))
+
+# OECM polygons ----
+# pa_zip <- file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_Public_shp', 'WDPA_Oct2021_Public_shp.zip')
+pa_zips <- list.files(
+  file.path(data_dir, 'protected_areas', 'WDOECM_Oct2021_Public_shp'),
+  pattern = ".zip$", full.names=TRUE, recursive = TRUE)
+
+# Unzip
+unzip_and_filter_pas <- function(z) {
+  # z <- pa_zips[[1]]
+  
+  # Unzip to temp dir
+  miao <- tempfile()
+  unzip(z, exdir = miao)
+  
+  # Load shapefile (polygons)
+  (shp_fp <- list.files(miao, pattern = "polygons\\.shp$", full.names=TRUE, recursive = TRUE))
+  pa <- st_read(shp_fp[[1]])
+  
+  # Filter
+  pa <- pa %>% 
+    filter(MARINE != 2) %>% 
+    st_simplify(dTolerance = 0.001) 
+  
+  # subset polygons to those that intersect tropics rectangle
+  pa_polys <- pa[unlist(st_intersects(tropics_rect, pa)),]
+  
+  # Load points
+  (shp_fp <- list.files(miao, pattern = "points\\.shp$", full.names=TRUE, recursive = TRUE))
+  pa <- st_read(shp_fp[[1]])
+  pa <- pa[unlist(st_intersects(tropics_rect, pa)),]
+  pa <- pa %>% filter(REP_AREA > 0, MARINE != 2)
+  pa_points <- pa %>% st_buffer(8.5*0.001)
+  
+  # Combine
+  pa_tropics <- bind_rows(pa_polys, pa_points)
+  
+  # Return
+  return(pa_tropics)
+}
+
+pa_tropics <- pa_zips %>% purrr::map_dfr(unzip_and_filter_pas)
+tm_shape(pa_tropics) + tm_polygons()
+pa_tropics %>% 
+  st_write(file.path(data_dir, 'protected_areas', 'WDOECM_Oct2021_tropics_simp001_buff0085.gpkg'))
 
 
 
