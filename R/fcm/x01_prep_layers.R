@@ -26,7 +26,9 @@ addm <- function(x) sprintf("%s/%s", user, x)
 
 # visualization 
 pal_idx <- sequential_hcl(n = 10, 'inferno')
-demoplot(pal_idx)
+# demoplot(pal_idx)
+
+Map$setCenter(-53, -5, zoom = 5) # Brazil
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Emerging Hotspots (GFW; Harris et al. 2017) ----
@@ -786,6 +788,50 @@ bbex <- terra::ext(bb[c(1, 3, 2, 4)])
 terra::crop(r_p, bbex, filename = fn_ac, overwrite = TRUE)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Population projections for SSPs ----
+# http://sedac.ciesin.columbia.edu/data/set/popdynamics-1-km-downscaled-pop-base-year-projection-ssp-2000-2100-rev01/data-download
+# Values: number of persons
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+pop_base_id <- addm('pop1km_baseYr_total_2000')
+pop_ssp2_id <- addm('pop1km_ssp2_total_2000')
+pop_ssp5_id <- addm('pop1km_ssp5_total_2000')
+
+pop_2000 <- ee$Image(pop_base_id)
+
+# Look
+Map$addLayer(pop_2000, list(min = 0, max = 250, palette = pal_idx))
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Dev: Urban growth probability ----
+# Kennedy et al. 2021: Masked out currently urban and non-urban built-up areas. 
+# "We then summed urban growth probability values across the 31-year time 
+# interval, resulting in values ranging from 1 (1% probability of expansion 
+# in 2050) to 3100 (100% probability of expansion for all 31 years). Given 
+# the right-skewed distribution of these data (skewness = 4.3619), values 
+# were log transformed and scaled using min-max normalization."
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Probabilities of urban expansion by year from 2020–2050 based on the SLEUTH model.
+
+ugp_id <- addm('Zhou_GUGPS_2020_2050')
+assets <- ee_manage_assetlist(addm(''))
+ugp_ids <- assets$ID %>% str_subset('global_final')
+
+ugps <- ee$ImageCollection(ugp_ids)
+
+# Mask out current urban areas (classified as 111 for urban in 2012)
+ugps <- ugps$map( function(img){ img$updateMask(img$neq(111)) })
+ugps_sum <- ugps$sum()
+
+# Look
+Map$addLayer(ugps_sum, list(min = 0, max = 500, palette = pal_idx))
+
+
+
+
+
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Development threat ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 dpi_dir <- here::here(data_dir, 'Dev_Threat_Index', 'dev_potential_indices_2016')
@@ -878,6 +924,25 @@ if(!dti_id %in% alist$ID) {
 sdpt_zip <- file.path(data_dir, 'raw_data/biodiversity/plantations_v1_3_dl.gdb.zip')
 sdpt <- download.file('http://gfw-files.s3.amazonaws.com/plantations/final/global/plantations_v1_3_dl.gdb.zip', 
                       destfile = sdpt_zip)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# IUCN Range size rarity ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+rsr_id <- addm('IUCN_Richness_5km_2018/RangeSizeRarity_all')
+rsr <- ee$Image(rsr_id)
+ee_print(rsr)
+
+rsr_crenvu_id <- addm('IUCN_Richness_5km_2018/RangeSizeRarity_CRENVU')
+rsr_crenvu <- ee$Image(rsr_crenvu_id)
+ee_print(rsr_crenvu)
+
+# Look
+viz <- list(min = 0, 
+            max = 0.0003, 
+            palette = pal_idx)
+Map$addLayer(rsr, viz, 'Range size rarity') +
+  Map$addLayer(rsr_crenvu, viz, 'Range size rarity SUB') +
+  Map$addLegend(visParams = viz)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Local biodiversity intactness index ----
