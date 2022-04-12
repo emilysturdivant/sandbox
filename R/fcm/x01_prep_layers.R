@@ -7,28 +7,47 @@
 #     * esturdivant@woodwellclimate.org, 2021-09-30
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-library(sf)
-library(terra)
-library(tmap)
-tmap_mode('view')
-library(tidyverse)
-library(colorspace)
-library(countrycode)
-library(rgee)
-ee_Initialize()
+source(here::here('R/fcm/0_initialize.R'))
 
+# library(sf)
+# library(terra)
+# library(tmap)
+# tmap_mode('view')
+# library(tidyverse)
+# library(colorspace)
+# library(countrycode)
+# library(rgee)
+# ee_Initialize()
+# 
 # Initialize ----
-data_dir <- '~/data'
-
-# Prep to get paths to assets
-user <- ee_get_assethome()
-addm <- function(x) sprintf("%s/%s", user, x)
-
-# visualization 
-pal_idx <- sequential_hcl(n = 10, 'inferno')
-# demoplot(pal_idx)
-
-Map$setCenter(-53, -5, zoom = 5) # Brazil
+# data_dir <- '~/data'
+# 
+# # Prep to get paths to assets
+# user <- ee_get_assethome()
+# addm <- function(x) sprintf("%s/%s", user, x)
+# 
+# # visualization 
+# pal_idx <- sequential_hcl(n = 10, 'inferno')
+# # demoplot(pal_idx)
+# 
+# Map$setCenter(-53, -5, zoom = 5) # Brazil
+# 
+# # Create tropics extent rectangle
+# tropics_bb <- ee$Geometry$Rectangle(
+#   coords = c(-180, -35, 180, 35),
+#   proj = "EPSG:4326",
+#   geodesic = FALSE
+# )
+# 
+# # Create world extent rectangle
+# world_bb <- ee$Geometry$Rectangle(
+#   coords = c(-180, -90, 180, 90),
+#   proj = "EPSG:4326",
+#   geodesic = FALSE
+# )
+# 
+# # Get AGB mask
+# c_mask <- ee$Image("users/sgorelik/WHRC_Global_Biomass_500m_V6/Current_AGB_Mgha")$gt(0)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Emerging Hotspots (GFW; Harris et al. 2017) ----
@@ -793,130 +812,16 @@ terra::crop(r_p, bbex, filename = fn_ac, overwrite = TRUE)
 # Values: number of persons
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 pop_base_id <- addm('pop1km_baseYr_total_2000')
-pop_ssp2_id <- addm('pop1km_ssp2_total_2000')
-pop_ssp5_id <- addm('pop1km_ssp5_total_2000')
-
 pop_2000 <- ee$Image(pop_base_id)
+
+
+assets <- ee_manage_assetlist(addm(''))
+pop_ssp2_ids <- assets$ID %>% str_subset('pop1km_ssp2_total')
+
+pop_ssp5_ids <- assets$ID %>% str_subset('pop1km_ssp5_total')
 
 # Look
 Map$addLayer(pop_2000, list(min = 0, max = 250, palette = pal_idx))
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Dev: Urban growth probability ----
-# Kennedy et al. 2021: Masked out currently urban and non-urban built-up areas. 
-# "We then summed urban growth probability values across the 31-year time 
-# interval, resulting in values ranging from 1 (1% probability of expansion 
-# in 2050) to 3100 (100% probability of expansion for all 31 years). Given 
-# the right-skewed distribution of these data (skewness = 4.3619), values 
-# were log transformed and scaled using min-max normalization."
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Probabilities of urban expansion by year from 2020–2050 based on the SLEUTH model.
-
-ugp_id <- addm('Zhou_GUGPS_2020_2050')
-assets <- ee_manage_assetlist(addm(''))
-ugp_ids <- assets$ID %>% str_subset('global_final')
-
-ugps <- ee$ImageCollection(ugp_ids)
-
-# Mask out current urban areas (classified as 111 for urban in 2012)
-ugps <- ugps$map( function(img){ img$updateMask(img$neq(111)) })
-ugps_sum <- ugps$sum()
-
-# Look
-Map$addLayer(ugps_sum, list(min = 0, max = 500, palette = pal_idx))
-
-
-
-
-
-
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Development threat ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-dpi_dir <- here::here(data_dir, 'Dev_Threat_Index', 'dev_potential_indices_2016')
-fps <- list.files(dpi_dir, 'lulc.*dpi_g.*\\.tif$', full.names = TRUE, recursive = TRUE)
-
-# Reduce file
-(fp <- fps[[1]])
-fp_out <- here::here(dpi_dir, 
-                     fp %>% 
-                       str_remove_all('.*lulc-development-potential-indices_') %>% 
-                       str_replace_all('_geographic', '_geo_int'))
-
-r <- terra::rast(fp)
-{r * 100} %>% terra::writeRaster(fp_out, datatype = 'INT1U', overwrite = TRUE)
-
-
-
-# fps <- list.files(dpi_dir, '*dpi_g.*\\.tif$', full.names = TRUE, recursive = TRUE)
-# (fp <- fps[[2]])
-# r <- terra::rast(fp)
-# r %>% terra::writeRaster(
-#   "/Users/emilysturdivant/data/Dev_Threat_Index/dev_potential_indices_2016/convgas_dpi_geo_int.tif",
-#   datatype = 'INT1U', overwrite = TRUE)
-# 
-# 
-# # Unzip to temp dir
-# miao <- tempfile()
-# unzip(z, exdir = miao)
-# 
-# # Load shapefile (polygons)
-# (shp_fp <- list.files(miao, pattern = "polygons\\.shp$", full.names=TRUE, recursive = TRUE))
-# pa <- st_read(shp_fp[[1]])
-
-# # Create ImageCollection
-# ee_manage_create(
-#   path_asset = addm("DPI"),
-#   asset_type = "ImageCollection"
-# )
-# 
-# dpi_eelist <- ee_manage_assetlist(path_asset = addm("DPI_v1"))
-# 
-# # Move images from DPI_v1 folder into ImageCollection
-# ee_manage_move(
-#   path_asset = addm("DPI_v1"),
-#   final_path = addm("DPI")
-# )
-
-dti_id <- addm('DTI/DTI_2016_pctls_maskDHF')
-
-alist <- ee_manage_assetlist(path_asset = addm("DTI"))
-if(!dti_id %in% alist$ID) {
-  
-  # Load ImageCollection 
-  dpi_eelist <- ee_manage_assetlist(path_asset = addm("DPI"))
-  
-  # Reclass each index to dense humid forest biome
-  dpi <- dpi_eelist$ID %>% 
-    purrr::map(function(x) {
-      img <- ee$Image(x)$unmask()
-      # rescale_to_pctl(img, c(0, 100))
-      classify_percentiles(img)
-    }) %>% 
-    ee$ImageCollection()
-  
-  # Additive / equal weights / simple average 
-  dti <- dpi$
-    sum()$
-    setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
-    updateMask(dhf_mask)
-  
-  # Normalize
-  dti_norm <- rescale_to_pctl(dti, c(0, 100))
-  
-  # Save image to EE asset
-  task_img2 <- ee_image_to_asset(dti_norm,
-                                 'DTI_2016', 
-                                 assetId = dti_id,
-                                 region = tropics_bb,
-                                 crs = 'EPSG:4326',
-                                 scale = 1000,
-                                 maxPixels = 312352344, 
-                                 overwrite = TRUE)
-  task_img2$start()
-  
-}
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Spatial database of planted trees ----
