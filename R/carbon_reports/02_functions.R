@@ -301,3 +301,15 @@ layout_plots <- function(plots, params, title = TRUE, y_lim = c(0, 0.25)) {
                                  bottom = x_lab
                                  )
 }
+
+# Theme ----
+theme_hih <- function() {
+  theme_minimal() +
+    theme(
+      plot.title.position = 'plot',
+      text = element_text(family = 'Helvetica'), # Times
+      axis.text = element_text(family = 'Helvetica', color = 'grey30'),
+      axis.title = element_text(family = 'Helvetica', color = 'grey30'),
+      axis.title.y = element_blank(),
+      panel.grid.minor = element_blank()) 
+}

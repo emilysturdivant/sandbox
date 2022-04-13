@@ -31,19 +31,21 @@ ee_Initialize()
 # site_div_var <- 'name' # Estonia: 'div1'
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Upload shapefile ----
+# Upload vector file ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-task_name <- tools::file_path_sans_ext(basename(polys_fp))
-out_fp <- file.path(export_path, str_c(task_name, '.geojson'))
-
+# Load polygon/s
 fc_sf <- st_read(polys_fp) %>% st_zm()
-# fc_sf <- fc_sf %>% 
-#   filter(type1 == 'RESEX' | type == 'PARNA' | type == 'ESEC' |
-#            str_detect(nombre, 'TI Kuru|Apyterewa|Trincheira')) %>% 
-#   group_by() %>% 
-#   summarize()
+
+library(tmap)
+tmap_mode('view')
+qtm(fc_sf)
+
+# Upload to GEE
 fc <- fc_sf %>% sf_as_ee()
-fc_dissolved <- fc$union()
+
+# Viewing parameters
+sz <- fc$size()$getInfo()
+fc_dissolved <- if(sz > 1) fc$union() else fc
 
 Map$centerObject(fc_dissolved, zoom = 10)
 agb_pal <- c('75322B','84512A','8E6232','da8c19','ef9e0b','ffc011','ffdb2d',
@@ -114,134 +116,6 @@ forest_2000 <- tc_2000$gt(25)$
   multiply(tc_2000$pixelArea()$divide(1e4))$
   rename(str_c('forest_2000_ha'))
 
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# QC: Look at carbon stock ca. 2000 for dissolved FC ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Unmasked
-total_carbon_mgc <- carbon_mgc$unmask()$ 
-  reduceRegions(
-    collection = fc_dissolved,
-    reducer = ee$Reducer$sum()$unweighted(),
-    scale = agb_res_m
-  )
-# total_carbon_mgc$first()$get('sum')$getInfo() %>% format(big.mark = ',')
-
-# Masked to forest area
-total_carbon_mgc <- carbon_mgc$updateMask(forest_mask)$
-  reduceRegions(
-    collection = fc_dissolved,
-    reducer = ee$Reducer$sum()$unweighted(),
-    scale = agb_res_m
-  )
-# total_carbon_mgc$first()$get('sum')$getInfo() %>% format(big.mark = ',')
-
-# Total forest area
-total_forest <- forest_2000$reduceRegions(
-  collection = fc_dissolved, # add to feature class
-  reducer = ee$Reducer$sum()$unweighted(),
-  scale = hansen_res_m
-)
-# total_forest$first()$get('sum')$getInfo() %>% format(big.mark = ',')
-
-# ~~~~~ QC 2000 vs. 2003 biomass ~~~~~~~ ----
-# Compare 2000 and 2003 carbon density ----
-# 2003 Biomass density and convert to AGC
-agb_mgha_2003 <- ee$Image("users/sgorelik/Woodwell/Global_AGB_500m_2003_2016_V6")$
-  select('mgha_2003')
-carbon_mgcha_2003 <- agb_mgha_2003$divide(2)
-carbon_mgc_2003 <- carbon_mgcha_2003$
-  multiply(agb_mgha_2003$pixelArea()$divide(1e4))$
-  rename('agb_2003_mgc')
-
-# View settings
-acd_viz <- list(min = 0, max = 60, palette = viridis)
-acd_viz <- list(min = 0, max = 200, palette = viridis)
-diff_viz <- list(min = -20, max = 20, palette = c('blue', 'white', 'red'))
-legend <- Map$addLegend(visParams = acd_viz, name = NA, opacity = 1)
-diff_lgnd <- Map$addLegend(visParams = diff_viz, name = NA, opacity = 1)
-
-Map$centerObject(fc_dissolved, zoom = 7) # Whole country
-# Map$setCenter(26.6, 57.8, zoom = 9) # SE area with high biomass in 2003
-# Map$setCenter(26.6, 57.73, zoom = 12) # Very zoomed in on SE area
-# Map$setCenter(24.3, 58.5, zoom = 10) # Parnu bogs
-
-# Slider
-Map$addLayer(carbon_mgcha$updateMask(carbon_mgcha$neq(0)), 
-             acd_viz, 'Carbon density, 2000, 500-m') + polys_lyr |
-  Map$addLayer(carbon_mgcha_2003$updateMask(carbon_mgcha_2003$neq(0)), 
-               acd_viz, 'Carbon density, 2003, 500-m') +
-  polys_lyr + legend
-
-# For screenshot
-Map$addLayer(carbon_mgcha$updateMask(carbon_mgcha$neq(0)), 
-             acd_viz, 'Carbon density, 2000, 500-m') + 
-  Map$addLayer(carbon_mgcha_2003$updateMask(carbon_mgcha_2003$neq(0)), 
-               acd_viz, 'Carbon density, 2003, 500-m') + polys_lyr + legend
-
-# Resample 2000 30m to 500m resolution ----
-c_500m_reproj <- carbon_mgcha$reproject(crs = agb_mgha_2003$projection())
-
-# Difference
-diff_500m <- carbon_mgcha_2003$updateMask(carbon_mgcha_2003$gt(0))$
-  subtract(c_500m_reproj)
-
-# Slider
-Map$addLayer(c_500m_reproj$updateMask(c_500m_reproj$neq(0)), 
-             acd_viz, 'Carbon density, 2000, 500-m') + polys_lyr + legend |
-  Map$addLayer(carbon_mgcha_2003$updateMask(carbon_mgcha_2003$gt(5)), 
-               acd_viz, 'Carbon density, 2003, 500-m') + polys_lyr + legend
-
-# For screenshot
-Map$addLayer(diff_500m, diff_viz, 'Difference') + diff_lgnd + 
-  Map$addLayer(c_500m_reproj$updateMask(c_500m_reproj$gt(0)), 
-               acd_viz, 'Carbon density, 2000, 500-m') +
-  Map$addLayer(carbon_mgcha_2003$updateMask(carbon_mgcha_2003$gt(0)), 
-               acd_viz, 'Carbon density, 2003, 500-m') + polys_lyr #+ legend 
-
-# Export sample for scatterplot -----
-# make an image for the two variables
-pairedImage =  ee$ImageCollection$fromImages(
-  c(c_500m_reproj$updateMask(c_500m_reproj$neq(0)), 
-    carbon_mgcha_2003$updateMask(carbon_mgcha_2003$gt(0))
-  ))$
-  toBands()$
-  rename(c("c_2000","c_2003"))
-
-# Take sample at random points within the region
-sample <-  pairedImage$sampleRegions(fc_dissolved, NULL, 2000)
-
-# Export
-task_vector <- sample %>% 
-  ee_table_to_drive(description = 'sample_500m_2000_2003_gt0',
-                    folder = basename(export_path),
-                    fileFormat = 'CSV', 
-                    timePrefix = FALSE)
-task_vector$start()
-
-# Import CSV for plot ----
-samp_df <- read_csv(here::here(export_path, 'sample_500m_2000_2003_gt0.csv'))
-
-samp_df %>% 
-  filter(c_2003>0 & c_2000>0) %>%
-  ggplot(aes(x = c_2000, y = c_2003)) +
-  # geom_point(alpha=0.1, size=0.5, fill="royalblue", color="royalblue") +
-  geom_bin2d(bins = 40) +
-  scale_fill_continuous(type = "viridis") +
-  labs(y = 'ACD in 2003 (tC/ha)', 
-       x = 'ACD in 2000, resampled to 500-m (tC/ha)') +
-  geom_abline(slope = 1, intercept = 0, linetype = 'solid', color = 'darkgray', size=.25) +
-  geom_smooth(method="lm", se = FALSE, fullrange=TRUE, col='black', 
-              size=.25, linetype = 'dashed') +
-  coord_fixed(ratio = 1, xlim=c(0, 65), ylim=c(0, 65)) +
-  theme_minimal()
-
-# Save
-ggsave(here::here('~/Desktop/Estonia/comparison_reprojected', 
-                  'est_scatter_2000v2003_dens.png'),
-       width = 4, height = 3.5)
-# ~~~~~ end QC ~~~~~ ----
-
 # summarize Forest area ca. 2000 by district
 fc_agg <- forest_2000$reduceRegions(
   collection = fc, # add to feature class
@@ -282,7 +156,7 @@ fc_2000 <- carbon_mgc$ #updateMask(forest_mask)$
 loss_area <- loss$
   multiply(loss$pixelArea()$divide(1e4))
 
-fc_2000 <- loss_area$reduceRegions(
+fc_2000_loss <- loss_area$reduceRegions(
   collection = fc_2000, # add to feature class containing all loss results
   reducer = ee$Reducer$sum()$unweighted(),
   scale = agb_res_m
@@ -302,8 +176,8 @@ c_loss <- carbon_mgc$
   updateMask(loss$neq(0))$
   updateMask(carbon_mgc$neq(0))
 
-fc_2000 <- c_loss$reduceRegions(
-  collection = fc_2000, # add to feature class containing all loss results
+fc_c_loss <- c_loss$reduceRegions(
+  collection = fc_2000_loss, # add to feature class containing all loss results
   reducer = ee$Reducer$sum()$unweighted(),
   scale = agb_res_m
 )$map(function(f){ # Rename sum column
@@ -318,7 +192,7 @@ fc_2000 <- c_loss$reduceRegions(
 })
 
 # Get polygon areas ----
-fc_2000 <- fc_2000$map(function(f) f$set(list(area_ha = f$area()$divide(1e4))))
+fc_c_loss_area <- fc_c_loss$map(function(f) f$set(list(area_ha = f$area(1)$divide(1e4))))
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Build raster stacks of loss ----
@@ -353,12 +227,12 @@ for (year in seq(1, 20)) { # 1-20 = 2001-2020
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # summarize annual forest area loss by district
 loss_fc <- loss_area_sqkm$reduceRegions(
-  collection = fc_2000, # adds columns forest_loss_[year]_ha
+  collection = fc_c_loss_area, # adds columns forest_loss_[year]_ha
   reducer = ee$Reducer$sum()$unweighted(),
   scale = hansen_res_m
 )
 
-# summarize annual forest carbon loss by district
+# summarize annual carbon loss by district
 loss_fc_carbon <- loss_carbon_mgc$reduceRegions(
   collection = loss_fc, # add columns carbon_loss_[year]_mgc to FC with area loss results
   reducer = ee$Reducer$sum()$unweighted(),
@@ -376,166 +250,12 @@ task_vector <- loss_fc_carbon %>%
                     fileFormat = 'GeoJSON', 
                     timePrefix = FALSE)
 task_vector$start()
-# ee_monitoring(task_vector, quiet = TRUE) # optional
-# local_fp <- ee_drive_to_local(task_vector, 
-#                   dsn = file.path('outputs', str_c(task_name, '.geojson')), 
-#                   overwrite = TRUE)
 
-# ~~~~~~ EXTRAS ~~~~~~~~ ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Uxe Hansens's 2000-2020 loss to mask ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Mask 2000 tree cover ----
-loss <- hansen_30m$select(c('loss'))
-fc2020_fromloss <- forest_mask$updateMask(loss$neq(1))
-
-# View
-Map$addLayer(eeObject = forest_mask, 
-             visParams = list(min = 0, max = 1, palette = viridis),
-             name = 'Forest 2000') +
-Map$addLayer(eeObject = fc2020_fromloss, 
-             visParams = list(min = 0, max = 1, palette = agb_pal),
-             name = 'Forest 2020')
-
-(site <- str_split(basename(polys_fp), '[_\\W]', simplify = TRUE)[,1])
-task_name <- str_c('FC_2020_', site)
-
-# Create extent rectangle ----
-library(tmap)
-tmap_mode('view')
-
-site_sf <- st_read(polys_fp)
-site_buff <- site_sf %>% st_buffer(0.4)
-bb <- site_buff %>% st_bbox()
-
-qtm(site_buff) + qtm(site_sf)
-
-site_bb <- ee$Geometry$Rectangle(
-  coords = c(bb$xmin, bb$ymin, bb$xmax, bb$ymax),
-  proj = "EPSG:4326",
-  geodesic = FALSE
-)
-
-# Export
-task_img_to_drive <- fc2020_fromloss %>% 
-  ee_image_to_drive(description = task_name,
-                    folder = basename(export_path),
-                    region = site_bb,
-                    scale = 30)
-
-task_img_to_drive$start()
-
-# 
-# # Mask AGC with loss band ----
-# loss <- hansen_30m$select(c('loss'))
-# loss <- loss$updateMask(loss$neq(1))
-# agb2020_fromloss <- carbon_mgc$
-#   updateMask(loss$mask())$
-#   updateMask(carbon_mgc$neq(0))
-# 
-# # View
-# Map$addLayer(eeObject = loss_year, 
-#              visParams = list(min = 0, max = 20, palette = viridis), 
-#              name = 'Hansen loss year') +
-#   Map$addLayer(eeObject = fc_2000, 
-#                visParams = list(min = 0, max = 1, palette = viridis), 
-#                name = 'Forest') +
-#   Map$addLayer(eeObject = carbon_mgc$updateMask(carbon_mgc$neq(0)), 
-#                visParams = list(min = 0, max = 20, palette = agb_pal), 
-#                name = '2000 AGC', 
-#                shown = FALSE) +
-#   Map$addLayer(eeObject = agb2020_fromloss, 
-#                visParams = list(min = 0, max = 20, palette = agb_pal), 
-#                name = '2020 AGC from loss') +
-#   Map$addLayer(eeObject = loss, 
-#                visParams = list(min = 0, max = 1, palette = viridis), 
-#                name = 'Hansen loss mask', 
-#                shown = FALSE) +
-#   polys_lyr
-
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Compare AGB>0 to TC>25% ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# # AGB ----
-# # Get forested pixels based on biomass
-# agb_2000 <- agb_mgha$gt(0)
-# agb_2000 <- agb_2000$unmask()$updateMask(agb_2000$eq(1))
-# 
-# # Count forested pixels by district
-# ct_agb <- agb_2000$reduceRegions(
-#   collection = estonia, # add to feature class
-#   reducer = ee$Reducer$count(),
-#   scale = agb_res_m
-# )
-# ct_agb_num <- ct_agb$first()$get('count')$getInfo()
-# 
-# # Tree cover ----
-# # Count forested pixels by district
-# ct_hansen <- forest_mask$reduceRegions(
-#   collection = estonia, # add to feature class
-#   reducer = ee$Reducer$count(),
-#   scale = hansen_res_m
-# )
-# ct_hansen_num <- ct_hansen$first()$get('count')$getInfo()
-# 
-# # Where is AGB > 0 but Hansen shows non-forest? ----
-# agb_nonforest <- agb_2000$unmask()$multiply(forest_mask$unmask()$eq(0))
-# agb_nonforest <- agb_nonforest$updateMask(agb_nonforest$neq(0))
-# 
-# # Map$addLayer(agb_2000$unmask(), list(palette = viridis)) +
-# #   Map$addLayer(forest_mask, list(palette = c('red', 'green'))) +
-# Map$addLayer(agb_nonforest, list(min = 0, max = 1, palette = c('blue', 'orange'))) +
-#   Map$addLayer(agb_forest, list(min = 0, max = 1, palette = c('blue', 'orange')))
-# 
-# # Count forested pixels by district
-# ct_nonforest <- agb_nonforest$reduceRegions(
-#   collection = estonia, # add to feature class
-#   reducer = ee$Reducer$count(),
-#   scale = hansen_res_m
-# )
-# ct_nonforest_num <- ct_nonforest$first()$get('count')$getInfo()
-# 
-# # Compare
-# ct_nonforest_num / ct_agb_num
-# 
-# # Where is AGB==0 but Hansen shows forest? ----
-# forest_nonagb <- forest_mask$unmask()$multiply(agb_2000$unmask()$eq(0))
-# forest_nonagb <- forest_nonagb$updateMask(forest_nonagb$neq(0))
-# 
-# # Count forested pixels by district
-# ct_nonagb <- forest_nonagb$reduceRegions(
-#   collection = estonia, # add to feature class
-#   reducer = ee$Reducer$count(),
-#   scale = hansen_res_m
-# )
-# (ct_nonagb_num <- ct_nonagb$first()$get('count')$getInfo())
-# 
-# # Get carbon stock ----
-# carbon_mgc <- carbon_mgc$updateMask(agb_nonforest)
-# 
-# # Map$addLayer(agb_nonforest, list(palette = c('blue', 'orange'))) |
-# #   Map$addLayer(carbon_mgc, list(palette = agb_pal))
-# 
-# # Count forested pixels by district
-# mgc_nonforest <- carbon_mgc$reduceRegions(
-#   collection = estonia, # add to feature class
-#   reducer = ee$Reducer$sum()$unweighted(),
-#   scale = agb_res_m
-# )
-# mgc_nonforest_num <- mgc_nonforest$first()$get('sum')$getInfo()
-# 
-# # Get carbon density ----
-# carbon_mgcha <- carbon_mgcha$updateMask(agb_nonforest)
-# 
-# # Map$addLayer(agb_nonforest, list(palette = c('blue', 'orange'))) |
-# #   Map$addLayer(carbon_mgc, list(palette = agb_pal))
-# 
-# # Count forested pixels by district
-# mgcha_nonforest <- carbon_mgcha$reduceRegions(
-#   collection = estonia, # add to feature class
-#   reducer = ee$Reducer$mean(),
-#   scale = agb_res_m
-# )
-# mgcha_nonforest_num <- mgcha_nonforest$first()$get('mean')$getInfo()
-
+# EXTRAS moved to x02_extras_calculate_loss_rgee.R: ----
+#   Use Hansens's 2000-2020 loss to mask 
+#   Mask 2000 tree cover
+#   Create extent rectangle
+#   Mask AGC with loss band
+#   Compare AGB>0 to TC>25% 
+#   Get carbon stock
+#   Get carbon density

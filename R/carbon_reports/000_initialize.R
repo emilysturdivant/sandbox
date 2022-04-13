@@ -27,6 +27,9 @@ export_path <- here::here('data/gee_exports')
 
 shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
 (polys_fp <- shps[[3]])
+polys_fp <- '/Users/emilysturdivant/data/hih_sites/Borneo_GunungNyiut/GnNyiut.geojson'
+polys_fp <- '/Users/emilysturdivant/data/hih_sites/Borneo_GunungNaning/GnNaning_v0.geojson'
+polys_fp <- '/Users/emilysturdivant/data/hih_sites/Borneo_KubuRaya/Hutan_Desa_Kubu_Raya_Intervensi_YPI.shp'
 (site <- str_split(basename(polys_fp), '[_\\W]', simplify = TRUE)[,1])
 
 task_name <- tools::file_path_sans_ext(basename(polys_fp))
