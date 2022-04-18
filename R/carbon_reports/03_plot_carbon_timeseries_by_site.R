@@ -43,7 +43,7 @@ out_csv <- here::here('data/cloudops_exports',
 df <- read_csv(out_csv)
 
 tot.agb.tc.fy <- 13064491
-tot.agb.tc.fy <- 13064491
+tot.agb.tc.fy <- 1169439
 
 df1 <- df %>% 
   arrange(end_year) %>% 
@@ -53,7 +53,7 @@ df1 <- df %>%
   mutate(stock_tc = tot.agb.tc.fy + cumsum)
 
 # convert units to million metric tons of carbon (MtC) if it makes sense to
-if (round(min(df1$stock_tc)/1e6) > 1) {
+if (round(max(df1$stock_tc)/1e6) >= 1) {
   df1 <- df1 %>% 
     mutate(stock_tc = stock_tc / 1e6,
            cumsum = cumsum / 1e6)
@@ -87,12 +87,13 @@ df_area <- df3 %>%
 
 
 # Set y-axis limits
-ymin <- 950000
+ymin <- .950000
 ymin <- 0
 ymin <- 12.5
 ymax <- max(df_lines$value, na.rm = TRUE)
 if(is.na(ymin)) ymin <- min(df_lines$value, na.rm = TRUE)
 ypad <- (ymax - ymin)*0.1
+ypad <- (ymax - ymin)*0.3
 
 # theme_hih <- function() {
 #   theme_minimal() +
@@ -143,7 +144,7 @@ p <- df_area %>%
                breaks = scales::pretty_breaks(n = 3)
   ) +
   scale_y_continuous(name = paste0('Aboveground carbon (', units.short, ')'),
-                     labels = scales::label_comma(accuracy = 0.1),
+                     labels = scales::label_comma(accuracy = 0.01),
                      breaks = scales::breaks_extended(n = 7),
                      # limits = c(min = ymin - ypad, max = ymax + ypad),
                      expand = c(0, 0)
@@ -164,7 +165,7 @@ p <- p +
                date_breaks = '15 years',
                labels = c("2003","2018")
   ) 
-
+p
 
 p_zoom <- p +
   scale_x_date(name = "Year",
@@ -177,10 +178,11 @@ p_zoom <- p +
   coord_cartesian(ylim = c(ymin, ymax + ypad)) +
   theme(axis.title.y = element_blank())
 
-p
 p_zoom
-plot_layout()
-p + p_zoom
+
+
+# plot_layout()
+# p + p_zoom
 
 # Save as PNG ----
 out_dir <- here::here('outputs', 'carbon', params2$location)
