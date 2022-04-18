@@ -1,3 +1,14 @@
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Script to:
+#     * Plot carbon stock time series from carbon change DF for site
+# Requires:
+#     * DF created in CloudOps with __.R from 500 m data
+#     * parameters for site
+#     * total carbon stock in 2003 from __.R
+# Author:
+#     * esturdivant@woodwellclimate.org, 2022-04-15
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 params2 <- list( 
   location = 'GPNP',
   shp = '/mnt/data3/esturdivant/data/shp/hih_sites/GPNP_dissolved.shp',
