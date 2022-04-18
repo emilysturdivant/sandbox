@@ -15,7 +15,9 @@ params2 <- list(
   years = c(2003, 2018),
   units = 'sqkm',
   rendered_by_shiny = FALSE,
-  session = NA
+  session = NA, 
+  carbon_y1 = 13064491, 
+  ymin = 12.5
 )
 
 params2 <- list( 
@@ -24,7 +26,9 @@ params2 <- list(
   years = c(2003, 2018),
   units = 'sqkm',
   rendered_by_shiny = FALSE,
-  session = NA
+  session = NA, 
+  carbon_y1 = NA, 
+  ymin = NA
 )
 
 params2 <- list(
@@ -33,7 +37,9 @@ params2 <- list(
   years = c(2003, 2018),
   units = 'sqkm',
   rendered_by_shiny = FALSE,
-  session = NA
+  session = NA, 
+  carbon_y1 = 1169439,
+  ymin = .95
 )
 
 library(raster)
@@ -53,8 +59,7 @@ out_csv <- here::here('data/cloudops_exports',
                       stringr::str_c('plot_carbon_timeseries_', params2$location, '.csv'))
 df <- read_csv(out_csv)
 
-tot.agb.tc.fy <- 13064491
-tot.agb.tc.fy <- 1169439
+tot.agb.tc.fy <- params2$carbon_y1
 
 df1 <- df %>% 
   arrange(end_year) %>% 
@@ -98,9 +103,8 @@ df_area <- df3 %>%
 
 
 # Set y-axis limits
-ymin <- .950000
 ymin <- 0
-ymin <- 12.5
+ymin <- params2$ymin
 ymax <- max(df_lines$value, na.rm = TRUE)
 if(is.na(ymin)) ymin <- min(df_lines$value, na.rm = TRUE)
 ypad <- (ymax - ymin)*0.1
