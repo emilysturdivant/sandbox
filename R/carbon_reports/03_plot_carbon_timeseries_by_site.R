@@ -2,6 +2,7 @@
 # Script to:
 #     * Plot carbon stock time series from carbon change DF for site
 # Requires:
+#     * R version >3
 #     * DF created in CloudOps with __.R from 500 m data
 #     * parameters for site
 #     * total carbon stock in 2003 from __.R
@@ -56,15 +57,16 @@ params2 <- list(
   ymin = .95
 )
 
+# Load and prep data ----
 out_csv <- here::here('data/cloudops_exports', 
-                      stringr::str_c('plot_carbon_timeseries_', params2$location, '.csv'))
+                      str_c('plot_carbon_timeseries_', params2$location, '.csv'))
 df <- read_csv(out_csv)
+tot.agb.tc.fy <- params2$carbon_y1
 
 out_dir <- here::here('outputs', 'carbon', params2$location)
 dir.create(out_dir, recursive = TRUE)
 
-# Prep data ----
-tot.agb.tc.fy <- params2$carbon_y1
+# prep: get cumulative sum
 df1 <- df %>% 
   arrange(end_year) %>% 
   group_by(category) %>% 
@@ -88,6 +90,7 @@ if (round(max(df1$stock_tc)/1e6) >= 1) {
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Original: stock with cumulative loss (red hatching) and gain (light green) ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# calculate values 
 df2 <- df1 %>% 
   select(category, end_year, cumsum) %>% 
   spread(key = 'category', value = 'cumsum', drop = TRUE) %>% 
@@ -98,9 +101,10 @@ df2 <- df1 %>%
          stock = nochange + Gain,  
          netC_from_gain = stock - nochange,
          netC_from_loss = baseline - nochange, 
-         year = end_year %>% stringr::str_c('0101') %>% lubridate::as_date()
+         year = end_year %>% str_c('0101') %>% lubridate::as_date()
   )
 
+# Prep for ggplot
 df3 <- df2 %>% 
   gather(key = 'key', value = 'value', baseline, nochange, stock, netC_from_gain)
 
@@ -116,6 +120,7 @@ ymin <- params2$ymin
 ymax <- max(df_lines$value, na.rm = TRUE)
 ypad <- (ymax - ymin)*0.1
 
+# Set group colors and labels
 cat_labels <- c(nochange='Persistent carbon',
                 baseline = 'Change in carbon due to loss',
                 netC_from_gain = 'Change in carbon due to growth',
@@ -125,6 +130,7 @@ cat_vals <- c(nochange='seagreen4',
               stock ='seagreen4', 
               baseline = 'red')
 
+# Plot (0 - max y-axis)
 p_full <- df3 %>% 
   ggplot(aes(x = year, y = value, fill = key, color = key)) +
   geom_area(data = df_area) +
@@ -169,7 +175,8 @@ p_full <- df3 %>%
     axis.title.x = element_blank(), 
     legend.position = 'none'
   )
-
+ 
+# Plot zoomed to top of plot
 p_zoom <- p_full +
   scale_x_date(name = "Year",
                expand = c(0, 0),
@@ -181,6 +188,7 @@ p_zoom <- p_full +
         axis.title.y = element_blank())
 p_zoom
 
+# Combine in patchwork
 (p_out <- p_full + plot_spacer() + p_zoom + 
     plot_layout(ncol = 3, widths = c(1, 0.2, 4)))
 
@@ -196,15 +204,9 @@ grid.draw(linesGrob(x = unit(c(0.244, 0.36), "npc"),
                     gp = gpar(lty = 2, lwd = 1)))
 dev.off()
 
-# Save as PNG
-ggsave(here::here(out_dir, str_c(params2$location, '_carbon_patchwork_line.png')), 
-       plot = p_out,
-       width = 7.2, # 4.5
-       height = 4, # 2.9
-       dpi = 150)
-
+# Save each one separately
 ggsave(here::here(out_dir, str_c(params2$location, '_carbon_cumulative_from0.png')), 
-       plot = p,
+       plot = p_full,
        width = 2, # 2
        height = 4, # 2.9
        dpi = 150)
@@ -216,7 +218,7 @@ ggsave(here::here(out_dir, str_c(params2$location, '_carbon_cumulative_zoom.png'
        dpi = 150)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Seth's idea ----
+# Seth's idea: stock with best and worst case scenario lines ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tot.agb.tc.fy <- params2$carbon_y1
 df1 <- df %>% 
@@ -266,7 +268,7 @@ ymax <- max(df3$value, na.rm = TRUE)
 if(is.na(ymin)) ymin <- min(df3$value, na.rm = TRUE)
 ypad <- (ymax - ymin)*0.1
 
-
+# Set colors and labels
 stock_line ='black'
 stock ='#99D594'
 stock ='seagreen4'
@@ -287,7 +289,7 @@ cat_lty <- c(stock_nogain = '11',
                    stock = 'solid', 
                    stock_noloss = '11')
 
-
+# Plot from 0 to max
 p_full <- df3 %>% 
   ggplot(aes(x = year, y = value, fill = key, color = key, linetype = key)) +
   geom_area(data = df_area) +
@@ -329,8 +331,7 @@ p_full <- df3 %>%
   ) + 
   guides(color=guide_legend(override.aes=list(fill=NA)))
 
-p_full
-
+# Plot zoomed
 p_zoom <- p_full +
   scale_x_date(name = "Year",
                expand = c(0, 0),
@@ -345,10 +346,11 @@ p_zoom <- p_full +
         )
 p_zoom
 
+# Combine in patchwork
 (p_out <- p_full + plot_spacer() + p_zoom + 
     plot_layout(ncol = 3, widths = c(1, 0.2, 4)))
 
-
+# Save with zoom lines
 out_dir <- here::here('outputs', 'carbon', params2$location)
 png(here::here(out_dir, str_c(params2$location, '_carbon_v3_patchwork_line.png')),
     width = 7.2, height = 4, units = 'in', res = 150)
@@ -361,14 +363,9 @@ grid.draw(linesGrob(x = unit(c(0.244, 0.36), "npc"),
                     gp = gpar(lty = 2, lwd = 1, col = 'gray50')))
 dev.off() 
 
-
-
-
-
-
-
-
-# Plot stock with annual changes ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Stock + annual change bars: overlap stock area with bar chart ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # convert units to million metric tons of carbon (MtC) if it makes sense to
 stock_y1 <- params2$carbon_y1
 if (round(stock_y1/1e6) >= 1) {
@@ -416,152 +413,7 @@ pct_ymin <- 0
 pct_ymax <- max(df_pcts$value,  na.rm = TRUE)
 pct_ypad <- (pct_ymax - pct_ymin)*0.1
 
-# Overlap 
-df_stock <- df_annual %>% 
-  bind_rows(list(year = lubridate::as_date('20030101'), Net = tot.agb.tc.fy)) 
-
-conv_val <- ((stock_ymax - stock_ymin) / (pct_ymax * 2.5))
-
-colr_stock <- '#C1F8D9'
-colr_stock_line <- 'seagreen4'
-colr_loss <- 'firebrick3'
-colr_loss_line <- 'white'
-colr_gain <- '#798897'
-colr_gain_line <- 'white'
-
-df_stock_long <- df_stock %>% 
-  select(Net, year) %>% 
-  pivot_longer(cols = Net)
-
-df_bind <- df_stock_long %>% 
-  bind_rows(df_pcts)
-
-colr_stock <- 'seagreen4'
-colr_stock_line <- 'seagreen4'
-
-p_stock_full <- df_bind %>% 
-  ggplot() +
-  geom_area(data = df_stock_long, aes(x = year, y = value, fill = name, color = name)) +
-  scale_fill_manual(
-    labels = c(Net = 'Aboveground carbon stock', 
-               Gain = "Annual growth in C", 
-               Loss = "Annual loss in C"),
-    values = c(Net = colr_stock, Gain = colr_gain, Loss = colr_loss),
-    name = '', guide=guide_legend(reverse=TRUE)) +
-  scale_color_manual(
-    labels = c(Net = 'Aboveground carbon stock', 
-               Gain = "Annual growth in C", 
-               Loss = "Annual loss in C"),
-    values = c(Net = colr_stock_line, Gain = colr_gain_line, Loss = colr_loss_line),
-    name = '', guide=guide_legend(reverse=TRUE)) +
-  scale_x_date(name = "Year",
-               expand = c(0, 0),
-               date_breaks = '5 years',
-               date_labels = '%Y'
-  ) +
-  scale_y_continuous(
-    name = paste0('Aboveground carbon stock (', units.long, ')'),
-    labels = scales::label_comma(accuracy = 0.1),
-    breaks = scales::breaks_extended(n = 7),
-    expand = c(0, 0)
-  ) +
-  coord_cartesian(ylim = c(0, stock_ymax + stock_ypad)) +
-  theme_bw() +
-  theme(
-    panel.grid = element_blank(),
-    text = element_text(family = 'Arial'),
-    axis.text.x = element_text(hjust = 1, angle = 35),
-    axis.title.x = element_blank(),
-    legend.position = 'none'
-  ) 
-
-p_stock <- p_stock_full +
-  scale_x_date(name = "Year",
-               expand = c(0, 0),
-               date_breaks = '3 years',
-               date_labels = '%Y'
-  ) +
-  scale_y_continuous(
-    name = paste0('Aboveground carbon stock (', units.long, ')'),
-    labels = scales::label_comma(accuracy = 0.01),
-    breaks = scales::breaks_extended(n = 7),
-    expand = c(0, 0)
-  ) +
-  coord_cartesian(ylim = c(stock_ymin, stock_ymax + stock_ypad)) +
-  theme(
-    axis.title.y.left = element_blank(),
-    legend.title = element_blank(),
-    legend.key.height = unit(0.7, 'line'),
-    legend.key.width = unit(0.45, 'line'),
-    legend.direction = 'vertical', 
-    legend.position = c(0.78, 0.92),
-    # legend.position = c(0.26, 0.92),
-    legend.box.margin = margin(0, 0, 0, 0, unit = 'pt'),
-    legend.margin = margin(0, 0, 0, 0, unit = 'pt'),
-    legend.background = element_rect(fill = NULL, color = NULL)
-  ) 
-
-(p_out <- p_stock_full + plot_spacer() + p_stock +
-    plot_layout(ncol = 3, widths = c(1, 0.2, 4)))
-
-# Save as PNG ----
-out_dir <- here::here('outputs', 'carbon', params2$location)
-dir.create(out_dir, recursive = TRUE)
-ggsave(here::here(out_dir, str_c(params2$location, '_carbon_stock_patchwork.png')), 
-       plot = p_out,
-       width = 7.2, # 4.5
-       height = 4, # 2.9
-       dpi = 150)
-
-# Plot stock with annual changes ----
-# convert units to million metric tons of carbon (MtC) if it makes sense to
-stock_y1 <- params2$carbon_y1
-if (round(stock_y1/1e6) >= 1) {
-  df1 <- df %>% mutate(agb_tc = agb_tc / 1e6)
-  tot.agb.tc.fy <- stock_y1 / 1e6
-  units.short <- 'MtC'
-  units.long <- 'million metric tons'
-} else {
-  df1 <- df 
-  tot.agb.tc.fy <- stock_y1
-  units.short <- 'tC'
-  units.long <- 'metric tons'
-}
-
-df_annual <- df1 %>% 
-  select(category, end_year, agb_tc) %>% 
-  spread(key = 'category', value = 'agb_tc', drop = TRUE) %>% 
-  arrange(end_year) %>% 
-  mutate(Net = tot.agb.tc.fy + cumsum(Net),
-         gain_line = Net + Gain, 
-         loss_line = Net + Loss, 
-         year = end_year %>% stringr::str_c('0101') %>% lubridate::as_date())
-
-# Percents
-df_pcts <- df_annual %>% 
-  mutate(Loss = Loss * -1,
-         Loss = Loss / tot.agb.tc.fy * 100,
-         Gain = Gain / tot.agb.tc.fy * 100) %>% 
-  select(year, Gain, Loss) %>% 
-  pivot_longer(cols = Gain:Loss)
-
-# Set y-axis limits
-stock_ymin <- 0
-stock_ymin <- params2$ymin
-stock_ymax <- max(df_annual$Net, na.rm = TRUE)
-stock_ypad <- (stock_ymax - stock_ymin)*0.1
-
-# Set y-axis limits
-bar_ymin <- 0
-bar_ymax <- max(df_annual$Gain, df_annual$Loss*-1,  na.rm = TRUE)
-bar_ypad <- (bar_ymax - bar_ymin)*0.1
-
-# Set y-axis limits
-pct_ymin <- 0
-pct_ymax <- max(df_pcts$value,  na.rm = TRUE)
-pct_ypad <- (pct_ymax - pct_ymin)*0.1
-
-# Overlap ----
+# Overlap
 df_stock <- df_annual %>% 
   bind_rows(list(year = lubridate::as_date('20030101'), Net = tot.agb.tc.fy)) 
 
@@ -677,25 +529,8 @@ p_stock <- df_bind %>%
   ) 
 p_stock
 
-# Save as PNG ----
-out_dir <- here::here('outputs', 'carbon', params2$location)
-dir.create(out_dir, recursive = TRUE)
-
-ggsave(here::here(out_dir, str_c(params2$location, '_carbon_stock_pct.png')), 
-       plot = p_stock,
-       width = 6.2, # 4.5
-       height = 4, # 2.9
-       dpi = 150)
-
-ggsave(here::here(out_dir, str_c(params2$location, '_carbon_stock_from0.png')), 
-       plot = p_stock_full,
-       width = 2, # 2
-       height = 4, # 2.9
-       dpi = 150)
-
-
 (p_out <- p_stock_full + plot_spacer() + p_stock +
-  plot_layout(ncol = 3, widths = c(1, 0.2, 4)))
+    plot_layout(ncol = 3, widths = c(1, 0.2, 4)))
 
 ggsave(here::here(out_dir, str_c(params2$location, '_carbon_patchwork.png')), 
        plot = p_out,
@@ -703,15 +538,88 @@ ggsave(here::here(out_dir, str_c(params2$location, '_carbon_patchwork.png')),
        height = 4, # 2.9
        dpi = 150)
 
+# Stock only (prep in previous section) ----
+colr_stock <- 'seagreen4'
+colr_stock_line <- 'seagreen4'
+
+p_stock_full <- df_bind %>% 
+  ggplot() +
+  geom_area(data = df_stock_long, aes(x = year, y = value, fill = name, color = name)) +
+  scale_fill_manual(
+    labels = c(Net = 'Aboveground carbon stock', 
+               Gain = "Annual growth in C", 
+               Loss = "Annual loss in C"),
+    values = c(Net = colr_stock, Gain = colr_gain, Loss = colr_loss),
+    name = '', guide=guide_legend(reverse=TRUE)) +
+  scale_color_manual(
+    labels = c(Net = 'Aboveground carbon stock', 
+               Gain = "Annual growth in C", 
+               Loss = "Annual loss in C"),
+    values = c(Net = colr_stock_line, Gain = colr_gain_line, Loss = colr_loss_line),
+    name = '', guide=guide_legend(reverse=TRUE)) +
+  scale_x_date(name = "Year",
+               expand = c(0, 0),
+               date_breaks = '5 years',
+               date_labels = '%Y'
+  ) +
+  scale_y_continuous(
+    name = paste0('Aboveground carbon stock (', units.long, ')'),
+    labels = scales::label_comma(accuracy = 0.1),
+    breaks = scales::breaks_extended(n = 7),
+    expand = c(0, 0)
+  ) +
+  coord_cartesian(ylim = c(0, stock_ymax + stock_ypad)) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    text = element_text(family = 'Arial'),
+    axis.text.x = element_text(hjust = 1, angle = 35),
+    axis.title.x = element_blank(),
+    legend.position = 'none'
+  ) 
+
+p_stock <- p_stock_full +
+  scale_x_date(name = "Year",
+               expand = c(0, 0),
+               date_breaks = '3 years',
+               date_labels = '%Y'
+  ) +
+  scale_y_continuous(
+    name = paste0('Aboveground carbon stock (', units.long, ')'),
+    labels = scales::label_comma(accuracy = 0.01),
+    breaks = scales::breaks_extended(n = 7),
+    expand = c(0, 0)
+  ) +
+  coord_cartesian(ylim = c(stock_ymin, stock_ymax + stock_ypad)) +
+  theme(
+    axis.title.y.left = element_blank(),
+    legend.title = element_blank(),
+    legend.key.height = unit(0.7, 'line'),
+    legend.key.width = unit(0.45, 'line'),
+    legend.direction = 'vertical', 
+    legend.position = c(0.78, 0.92),
+    # legend.position = c(0.26, 0.92),
+    legend.box.margin = margin(0, 0, 0, 0, unit = 'pt'),
+    legend.margin = margin(0, 0, 0, 0, unit = 'pt'),
+    legend.background = element_rect(fill = NULL, color = NULL)
+  ) 
+
+(p_out <- p_stock_full + plot_spacer() + p_stock +
+    plot_layout(ncol = 3, widths = c(1, 0.2, 4)))
+
+# Save as PNG 
+out_dir <- here::here('outputs', 'carbon', params2$location)
+dir.create(out_dir, recursive = TRUE)
+ggsave(here::here(out_dir, str_c(params2$location, '_carbon_stock_patchwork.png')), 
+       plot = p_out,
+       width = 7.2, # 4.5
+       height = 4, # 2.9
+       dpi = 150)
 
 
-
-
-
-
-
-
-# Plot cumulative loss and gain ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Cumulative loss and gain with loss on top ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tot.agb.tc.fy <- params2$carbon_y1
 df1 <- df %>% 
   arrange(end_year) %>% 
@@ -842,15 +750,7 @@ p_zoom <- df3 %>%
   )
 p_zoom
 
-
-
-
-
-
-
-
-
-# Plot cumulative loss and gain ----
+# Original with pattern for gain and loss ----
 df3 <- df1 %>% 
   select(category, end_year, cumsum) %>% 
   spread(key = 'category', value = 'cumsum', drop = TRUE) %>% 
@@ -987,13 +887,7 @@ p <- p_zoom +
   ) 
 p
 
-# plot_layout()
-# p + p_zoom
-
-# Save as PNG ----
-out_dir <- here::here('outputs', 'carbon', params2$location)
-dir.create(out_dir, recursive = TRUE)
-
+# Save as PNG
 ggsave(here::here(out_dir, str_c(params2$location, '_carbon_cumulative_from0.png')), 
        plot = p,
        width = 2, # 2
@@ -1008,24 +902,9 @@ ggsave(here::here(out_dir, str_c(params2$location, '_carbon_cumulative_zoom.png'
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-# Plot stock with annual changes ----
-# Get 
-#   - stock (cumulative net change)
-#   - Gain
-#   - Loss
-
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Lines: Stock with annual changes ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 df <- df %>% arrange(end_year) 
 
 # convert units to million metric tons of carbon (MtC) if it makes sense to
@@ -1070,62 +949,8 @@ ggplot() +
   coord_cartesian(ylim = c(ymin, ymax + ypad)) +
   theme_bw()
 
-df_area <- df3 %>% 
-  filter(end_year != 2003) %>% 
-  gather(key = 'key', value = 'value', nochange, stock_diff, gain_diff, loss_diff) %>% 
-  mutate(key = factor(key, levels = c("C_gain", "stock_diff", 'nochange', 'C_loss')))
 
-p <- ggplot() +
-  geom_area(data = df_area, mapping = aes(x = year, y = value, fill = key)) +
-  scale_fill_manual(name = '',
-                    values = c(nochange='seagreen4',
-                               C_gain ='seagreen2',
-                               stock_diff ='seagreen2',
-                               stock ='seagreen4',
-                               nochange = 'red'),
-                    guide=FALSE
-  ) +
-  geom_line(data = df_lines, aes(x = year, y = value, color = key)) +
-  scale_color_manual(name = '',
-                     values = c(nochange ='seagreen4', stock ='seagreen4', 
-                                C_loss = 'red'), 
-                     guide=FALSE) +
-  geom_ribbon_pattern(data = df3, 
-                      aes(x = year, ymin = nochange, ymax = baseline), 
-                      inherit.aes = FALSE, 
-                      pattern_color = NA,
-                      pattern = "stripe", pattern_fill = "red",
-                      pattern_spacing = 0.025,
-                      fill = NA, 
-                      color = NA, 
-                      alpha=0.5) + 
-  scale_pattern_discrete(guide = guide_legend(nrow = 1)) +
-  scale_x_date(name = "Year",
-               expand = c(0, 0),
-               breaks = scales::pretty_breaks(n = 3)
-  ) +
-  scale_y_continuous(name = paste0('Aboveground carbon (', units.short, ')'),
-                     labels = scales::label_comma(accuracy = 0.01),
-                     labels = scales::label_comma(accuracy = 0.01),
-                     breaks = scales::breaks_extended(n = 7),
-                     # limits = c(min = ymin - ypad, max = ymax + ypad),
-                     expand = c(0, 0)
-  ) +
-  coord_cartesian(ylim = c(0, ymax + ypad)) +
-  theme_bw() +
-  theme(
-    panel.grid = element_blank(),
-    axis.text = element_text(family = 'Arial'),
-    axis.text.x = element_text(hjust = 1, angle = 35)
-  )
-
-
-
-
-
-
-
-# Two panels ----
+# Two panels: stock and annual change bars ----
 # Plot standing stock 
 p_stock <- df_annual %>% 
   bind_rows(list(year = lubridate::as_date('20030101'), Net = tot.agb.tc.fy)) %>% 
@@ -1219,60 +1044,3 @@ p_bar
 
 p_stock / p_bar + plot_layout(nrow = 2, heights = c(2,1))
 
-
-
-
-
-
-
-
-# old ----
-# Set y-axis limits
-ymin <- 0
-ymin <- params2$ymin
-ymax <- max(df_annual$Net, na.rm = TRUE)
-if(is.na(ymin)) ymin <- min(df_lines$value, na.rm = TRUE)
-ypad <- (ymax - ymin)*0.1
-ypad <- (ymax - ymin)*0.3
-
-# 
-colr_nochange_area = '#9bdeac'
-colr_gain_pattern = "#3eb38f"
-colr_loss_pattern = '#aa2143'
-
-colr_nochange_line = colr_loss_pattern
-colr_netC_from_gain_area = colr_nochange_area
-colr_stock_area = colr_nochange_area
-colr_baseline_area = colr_nochange_line
-colr_stock_line = colr_nochange_area
-colr_baseline_line = colr_baseline_area
-
-pttrn_gain = "stripe"
-pttrn_loss = "circle"
-colr_loss_pattern = colr_baseline_area
-
-p_zoom <- df_annual %>% 
-  ggplot(aes(x = year)) +
-  geom_area(aes(y = Net), fill = colr_stock_area) +
-  geom_line(aes(y = gain_line), color = 'green') +
-  geom_line(aes(y = loss_line), color = 'red') +
-  scale_x_date(name = "Year",
-               expand = c(0, 0),
-               date_breaks = '2 years',
-               # labels = c("2004","2006","2008","2010","2012","2014","2016","2018")
-  ) +
-  scale_y_continuous(name = paste0('Aboveground carbon (', units.short, ')'),
-                     # labels = scales::label_comma(accuracy = 0.01),
-                     labels = scales::label_comma(accuracy = 0.1),
-                     breaks = scales::breaks_extended(n = 7),
-                     # limits = c(min = ymin - ypad, max = ymax + ypad),
-                     expand = c(0, 0)
-  ) +
-  coord_cartesian(ylim = c(ymin, ymax + ypad)) +
-  theme_bw() +
-  theme(
-    panel.grid = element_blank(),
-    axis.text = element_text(family = 'Arial'),
-    axis.text.x = element_text(hjust = 1, angle = 35)
-  )
-p_zoom
