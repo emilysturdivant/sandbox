@@ -368,3 +368,64 @@ df <- st_read(hih_sites_shp)
 
 hih_sites_json <- file.path(final_polys_dir, 'hih_sites_polys.geojson')
 df %>% st_write(hih_sites_json)
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Merge all, 8/2022 ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+library(raster)
+library(tmap)
+tmap_mode('view')
+library(sf)
+library(terra)
+library(tidyverse)
+
+sites_dir <- '~/data/hih_sites'
+polys_dir <- file.path(sites_dir, 'final_sites_202208')
+
+out_fp <- file.path(polys_dir, 'all_sites.shp')
+
+# List all shapefiles in final_sites dir except for all_sites
+fps <- list.files(polys_dir, '*\\.shp$') %>% 
+  .[str_detect(., 'all_sites', negate = TRUE)] %>% 
+  .[str_detect(., 'hih_sites', negate = TRUE)] %>% 
+  .[str_detect(., 'divisions_v3', negate = TRUE)] %>%
+  .[str_detect(., 'SRGpolys', negate = TRUE)] %>%
+  .[str_detect(., 'TdM_merged', negate = TRUE)] %>%
+  .[str_detect(., 'resex', negate = TRUE)] %>%
+  here::here(polys_dir, .)
+
+# Merge them into one
+df <- fps %>% purrr::map_dfr(function(x) {
+  df <- st_read(x)
+  df <- st_zm(df, drop = TRUE) %>% 
+    st_make_valid()
+  df %>% select(any_of(c('HIH_site', 'name', 'type'))) %>% 
+    mutate(shp = basename(x))
+}) %>% 
+  mutate(HIH_site = str_replace_all(HIH_site, 'Gunung Palung', 'Gunung Palung National Park'))
+
+df <- df %>% 
+  st_make_valid()
+
+# View
+tm_shape(df) + tm_polygons(alpha = 0.5)
+
+# Set types
+df <- df %>% 
+  mutate(type = case_when(
+    str_detect(name, regex('special reserve', ignore_case = TRUE)) ~ 'SR', 
+    str_detect(name, regex('classified forest', ignore_case = TRUE)) ~ 'CF', 
+    str_detect(name, regex('control', ignore_case = TRUE)) ~ 'NP',
+    str_detect(name, regex('experiment', ignore_case = TRUE)) ~ 'NP',
+    str_detect(name, regex('national park', ignore_case = TRUE)) ~ 'NP',
+    TRUE ~ type))
+
+# Save
+df %>% st_write(out_fp, append = FALSE)
+
+# Read from EE -----
+json_fp <- '/Users/esturdivant/data/forest_loss_to_2021_hih.geojson'
+forloss <- st_read(json_fp)
+
