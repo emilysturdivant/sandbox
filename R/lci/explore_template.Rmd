@@ -1,0 +1,989 @@
+---
+output: 
+  html_document:
+    toc: yes
+    theme: default
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+title: "`r paste0(params$var_name, ' (', params$var_code, ')')`"
+subtitle: Pre-processing report
+---
+
+```{r initialize, include = F, eval = T, echo = F}
+knitr::opts_knit$set(eval.after = 'fig.cap')
+
+# Initialize list of ggplot maps for patchwork at the end
+maps <- list()
+hists <- list()
+overwrite <- params$overwrite
+overwrite_maps <- params$overwrite_maps
+overwrite_hists <- params$overwrite_hists
+overwrite_comparison <- params$overwrite_comparison
+if(is.null(overwrite_comparison)) overwrite_comparison <- overwrite_maps
+```
+
+## Level 0: Raw data
+
+```{r, include = T, eval = T}
+fp_raw <- ifelse(is.null(params$fp_raw), 
+                 params$fp_l0, 
+                 params$fp_raw)
+r_raw <- terra::rast(fp_raw)
+
+# Get CRS name
+if( str_detect(crs(r_raw, proj = T), 'sinu.*6371007.181')) {
+  crs_name <- 'MODIS sinusoidal (SR-ORG:6842)'
+  # SR-ORG:6842: "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs"
+} else if( str_detect(crs(r_raw, proj = T), 'sinu.*WGS84')) {
+  crs_name <- 'MODIS sinusoidal, corrected (SR-ORG:6974)'
+  # SR-ORG:6974: "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+} else {
+  crs_name <- crs(r_raw, describe = T)$name
+}
+
+# Get resolution
+if( linearUnits(r_raw) == 0 ) {
+  latitude <- 0
+  lat_scalar <- 40075000 * cos( latitude ) / 360
+  lon_scalar <- 111320
+  # CRS in lon/lat (degrees)
+  x.res.m <- round(xres(r_raw) * lon_scalar)
+  y.res.m <- round(yres(r_raw) * lat_scalar)
+} else {
+  x.res.m <- round(xres(r_raw) * linearUnits(r_raw))
+  y.res.m <- round(yres(r_raw) * linearUnits(r_raw))
+}
+
+
+level <- 0
+var_lab <- ''
+var_title <- 'Raw'
+
+supp_dir <- str_remove_all(tools::file_path_sans_ext(params$fp_l0), '\\+|\\-')
+if(!dir.exists(supp_dir)) dir.create(supp_dir, recursive = TRUE)
+
+```
+
+Coordinate reference system: **`r crs_name`**
+
+Resolution of original dataset (approximate): **`r paste(x.res.m, 'x', y.res.m)` meters**
+
+```{r get-values, include = FALSE, eval = FALSE, message = F, warning=F}
+fp_valsrds <- here(supp_dir, 'values_sorted.rds')
+if(!file.exists(fp_valsrds) | overwrite) {
+  
+  v <- get_rast_values(rast(fp_tif))
+  
+  # Convert to tibble and sort values
+  sorted_df <- v %>%
+    tibble(value = .) %>% 
+    arrange(value) # Sort for later
+  
+  # Save
+  sorted_df %>% saveRDS(fp_valsrds)  
+  
+} else {
+  
+  # Load values
+  sorted_df <- readRDS(fp_valsrds)
+  
+}
+```
+
+```{r count-nas, include = FALSE, eval = FALSE, message = F, warning=F}
+# Count NAs and non-NAs in masked raster
+fp_countna <- here(supp_dir, 'count_na.csv')
+if(!file.exists(fp_countna) | overwrite) {
+  
+  # Load raster
+  rr <- terra::rast(fp_tif)
+  
+  # Count NAs and non-NAs
+  ctna_r <- rr %>% terra::global(fun = 'isNA')
+  ctvals_r <- rr %>% terra::global(fun = 'notNA')
+  
+  # Make tibble
+  ct_vals <- bind_rows(list(group = 'isNA', ct_vals = ctna_r$isNA[[1]]),
+                       list(group = 'notNA', ct_vals = ctvals_r$notNA[[1]]))
+  
+  # Save
+  ct_vals %>% write_csv(fp_countna)
+  
+} else {
+  
+  # Load
+  ct_vals <- read_csv(fp_countna, show_col_types = FALSE)
+}
+```
+
+```{r classify-desc-stats, include = FALSE, eval = FALSE, message = F, warning=F}
+# Binary grouping variables to determine where they will be displayed.
+df_desc <- df_desc %>% 
+  mutate(label = ifelse(!is.na(prob), prob, name),
+         label = ifelse(label == '0.5', 'Median', label),
+         view_hist = prob %in% c(0.25, 0.5, 0.75) | name %in% c('Mean'),
+         view_disttab = prob %in% c(0, 0.25, 0.5, 0.75, 0.95, 0.98, 1),
+         view_disttab = ifelse(name %in% c('Mean'), TRUE, view_disttab),
+         view_misctab = name %in% c('Kurtosis', 'Skewness'),
+         view_N_tab = name %in% c('Values', 'Missing values'))
+```
+
+```{r desc-stats-tables-scaled, include=F, eval=F, message = F, warning=F}
+# Determine whether labels should be in scientific notation
+xmin <- pull(filter(df_desc, prob == 0), value)
+xmax <- pull(filter(df_desc, prob == 1), value)
+max_pwr <- floor(log10(xmax))
+min_pwr <- ifelse(xmin != 0, ceiling(log10(xmin)), 0)
+scientific <- ifelse((max_pwr > 4 | min_pwr < -1), TRUE, FALSE)
+
+# Make summary tables (flextables)
+tbl_stats_1a <- df_desc %>% 
+  filter(view_disttab) %>% 
+  mutate(value = value * scalar,
+         value = format(value, #scientific = scientific, 
+                        digits = 2, big.mark = ',', zero.print = TRUE,
+                        format = 'g'
+                        )) %>% 
+  select(Statistic = name, Value = value) %>%
+	flextable() %>%
+  align(j = 'Value', align = 'right', part = 'all')
+
+tbl_stats_1b <- df_desc %>% 
+  filter(view_misctab) %>% 
+  mutate(value = format(value, scientific = FALSE, digits = 2, 
+                        big.mark = ',', zero.print = TRUE)) %>% 
+  select(Statistic = name, Value = value) %>%
+	flextable() %>%
+  align(j = 'Value', align = 'right', part = 'all')
+
+tbl_stats_1c <- df_desc %>% 
+  filter(view_N_tab) %>% 
+  select(`-` = name, Count = value) %>%
+  janitor::adorn_totals(name = "Total") %>% 
+  mutate(Count = format(Count, scientific = FALSE, digits = 2, 
+                        big.mark = ',', zero.print = TRUE)) %>% 
+	flextable() %>%
+  align(j = 'Count', align = 'right', part = 'all')
+```
+
+```{r map, eval=F, include=F}
+# Map
+fp_mapobj <- here(supp_dir, 'map.rds')
+fp_map <- here(supp_dir, 'map.png')
+
+if(file.exists(fp_mapobj) & !overwrite_maps) {
+  
+  # Load map
+  map <- readRDS(fp_mapobj)
+  # knitr::include_graphics(fp_map)
+  
+} else {
+  
+  # Create map
+  map <- map_global(stars::read_stars(fp_tif), 
+                    var_lab, 
+                    var_title,
+                    xmin = scalemin, 
+                    xmax = scalemax, 
+                    scale = map_val_scalar)
+  
+  # Save as RDS
+  map %>% saveRDS(fp_mapobj)
+  
+  # Save PNG
+  ggsave(fp_map, plot = map, width = 7, height = 3.15, units = 'in')
+  
+}
+
+# Add new map to list
+maps <- append(maps, setNames(list(map), paste0('l', level)))
+
+# Show
+if( isTRUE(getOption('knitr.in.progress')) ) print(map)
+invisible(gc())
+```
+
+### Descriptive statistics
+
+```{r, include=TRUE, eval=TRUE, message = F, warning=F, out.width = 1286, out.height = 580}
+# Get values 
+fp_tif <- params$fp_l0
+# fp_tif <- params$fp_raw
+<<get-values>>
+overwrite <- params$overwrite
+
+# Count missing values
+<<count-nas>>
+missing_ct <- pull(filter(ct_vals, group == 'isNA'), 'ct_vals')
+  
+# Descriptive statistics
+fp_stats <- here(supp_dir, 'desc_statistics.csv')
+df_desc <- get_stats(sorted_df, missing_ct, 
+                      filename = fp_stats, overwrite = overwrite)
+
+<<classify-desc-stats>>
+```
+
+```{r, include=TRUE, eval=TRUE, message = F, warning=F, out.width = 1286, out.height = 580}
+scalar <- 1/params$scalars$orig2stor
+# scalar <- 1
+<<desc-stats-tables-scaled>>
+```
+
+<!---BLOCK_MULTICOL_START--->
+
+::: row
+::: {.col-xs-12 .col-md-6}
+```{r echo=FALSE}
+tbl_stats_1a %>% autofit() 
+```
+
+`r officer::run_columnbreak()`
+:::
+
+::: {.col-xs-12 .col-md-6}
+```{r echo=FALSE}
+tbl_stats_1b %>% autofit()
+tbl_stats_1c %>% autofit()
+```
+:::
+:::
+
+<!---BLOCK_MULTICOL_STOP{widths: [4,2], space: 0.1, sep: false}--->
+
+### Boxplot of all values
+
+```{r boxplot, include = T, eval = T, message = F, warning=F, fig.width=8, fig.height=2}
+df <- tibble(xmin = df_desc %>% filter(prob == 0) %>% pull(value),
+             xlower = df_desc %>% filter(prob == 0.25) %>% pull(value),
+             xmiddle = df_desc %>% filter(prob == 0.5) %>% pull(value),
+             xupper = df_desc %>% filter(prob == 0.75) %>% pull(value),
+             xmax = df_desc %>% filter(prob == 1) %>% pull(value))
+ggplot(df) +
+  geom_boxplot(aes(min = xmin, lower = xlower, middle = xmiddle, 
+                   upper = xupper, max = xmax, x = 1), 
+               stat = 'identity',
+               fill = 'lightsteelblue') +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+```
+
+```{r, include = T, eval = T, message = F, warning=F, fig.width = 8, fig.height = 4}
+hist_dir <- here(supp_dir, 'hist')
+dir.create(hist_dir, showWarnings = FALSE)
+pctl_cap <- 1
+bins <- 50
+scalar <- params$scalars$stor2disp
+
+# Binary grouping variables to determine where they will be displayed.
+df_desc <- df_desc %>% 
+  mutate(view_hist = prob %in% c(0.25, 0.5, 0.75, 0.95) | name %in% c('Mean'))
+p_hist <- plot_hist(sorted_df, pctl_cap, bins, hist_dir, 
+                    df_stats = df_desc, 
+                     # scalar = scalar, 
+                     scalar = 1, 
+                    var_label = var_lab, 
+                    overwrite = overwrite_hists)
+
+# Add new histogram to list
+hists <- append(hists, setNames(list(p_hist), paste0('l', level)))
+```
+
+### Histogram of all original values
+
+Dashed red lines indicate percentiles (e.g. 0.25 = 25th percentile).
+
+```{r, include = T, eval = T, message = F, warning=F, fig.width = 8, fig.height = 4}
+if( isTRUE(getOption('knitr.in.progress')) ) print(p_hist)
+```
+
+### Map of raw data
+
+```{r map-l0, include=TRUE, eval=TRUE, message=T, fig.width = 10, fig.height = 4.5, fig.show='show'}
+scalemin = params$scalelims_raw[[1]]
+scalemax = params$scalelims_raw[[2]]
+var_lab <- ''
+map_val_scalar <- params$scalars$stor2disp
+<<map>>
+```
+
+## Level 1: Reproject and mask to biomass carbon density \> 0
+
+#### Reproject to MODIS resolution (ca. 500 m; MODIS sinusoidal).
+
+```{r, include=T, eval=T, message=F, warning=F}
+level <- 1
+var_lab <- ''
+var_title <- 'Pre-processed'
+
+if(!is.null(params$warp_method)) {
+  
+  # Set output filename for reprojection
+  fn <- if(is.null(params$fp_raw)) {
+    params$var_code 
+  } else {
+    tools::file_path_sans_ext(basename(params$fp_raw))
+  }
+  fp_warp <- here(dir_reproj, str_c(fn, '_', params$warp_method, '.tif'))
+  
+  # Reproject
+  warp.catch <- warp2sin(fp_raw, 
+                         outfile = fp_warp, 
+                         method = params$warp_method, 
+                         verbose = TRUE, 
+                         overwrite = overwrite)
+  
+  # Set suffix
+  suffix <- 'warp2sin_mask2c'
+  
+} else {
+  
+  suffix <- 'mask2c'
+  fp_warp <- fp_raw
+}
+```
+
+#### Mask to pixels with biomass carbon density \> 0.
+
+```{r, echo=FALSE, results='asis'}
+if( params$scalars$orig2stor != 1) {
+  cat("In addition to masking, the original values were scaled by a factor of", 
+      params$scalars$orig2stor, "for ease of storage and processing.")
+}
+```
+
+```{r, include=T, eval=T, message=F, warning=F}
+# Mask to analysis area
+fp_masked <- here(dir_processing, paste0('l', level, '_', suffix, '.tif'))
+if(!file.exists(fp_masked) | overwrite) {
+  
+  # Apply scalar
+  if( params$scalars$orig2stor != 1) {
+    r_masked <- rast(fp_warp) * params$scalars$orig2stor
+  } else {
+    r_masked <- rast(fp_warp)
+  }
+  
+  # Mask to analysis area (carbon > 0)
+  r_masked <- r_masked %>% 
+    mask(wcd_mask, 
+         filename = fp_masked, 
+         datatype = 'INT4U', # At this stage, the values could still be greater than 
+         overwrite = TRUE)
+  
+  overwrite_comparison <- TRUE
+} 
+
+supp_dir <- tools::file_path_sans_ext(fp_masked)
+if(!dir.exists(supp_dir)) dir.create(supp_dir, recursive = TRUE)
+```
+
+### Descriptive statistics
+
+All statistics pertain to the masked raster (biomass carbon density \> 0) after reprojecting to MODIS sinusoidal and resampling to ca. 500 m resolution.
+
+```{r, include = T, eval = T, message = F, fig.width = 10, fig.height = 4.5}
+# Get values
+fp_tif <- fp_masked
+<<get-values>>
+sorted_vals_l1 <- sorted_df
+
+# Count missing values in raster
+<<count-nas>>
+
+# Count NAs in carbon mask
+fp_mask_counts <- here(data_bucket, 'processed_data', 'masks_500m',
+                       'mask_woodycarbon_gt0_2016_ctNAs.csv')
+if(!file.exists(fp_mask_counts)) {
+  
+  # Count NAs and non-NAs
+  ctvals_mask <- wcd_mask %>% terra::global(fun = 'notNA')
+  ctna_mask <- wcd_mask %>% terra::global(fun = 'isNA')
+  
+  # Bind to tibble
+  ct_nas <- bind_rows(list(group = 'isNA', mask = ctna_mask$isNA[[1]]),
+                      list(group = 'notNA', mask = ctvals_mask$notNA[[1]]))
+  
+  # Save
+  ct_nas %>% write_csv(fp_mask_counts)
+  
+} else {
+  ct_nas <- read_csv(fp_mask_counts, show_col_types = FALSE)
+}
+
+# Combine to compare
+na_cts <- full_join(ct_nas, ct_vals, by = 'group') %>% 
+  mutate(diff = ct_vals - ct_mask)
+
+# QC
+nas_diff <- na_cts %>% filter(group == 'isNA') %>% pull(diff)
+if(nas_diff < 0) {
+  warning("Error likely: Raster isn't masked properly. There are fewer NAs in output than in the input mask. See table: ")
+  na_cts %>% flextable()
+}
+
+valct_diff <- na_cts %>% filter(group == 'notNA') %>% pull(diff)
+if(valct_diff > 0) {
+  diff_str <- num2string(valct_diff)
+  warning(str_c("Error likely: The masked raster has", diff_str, 
+                "more data values than the input mask. See table: "))
+  na_cts %>% flextable()
+}
+
+valct_mask <- na_cts %>% filter(group == 'notNA') %>% pull(ct_mask)
+valct_data <- na_cts %>% filter(group == 'notNA') %>% pull(ct_vals)
+if(valct_diff < 0) {
+  diff_str <- num2string(valct_diff*-1)
+  pct_diff <- valct_diff*-1 / valct_mask
+  warning(str_c(scales::percent(pct_diff, 0.001), " (", diff_str,
+                ") of pixels in the analysis extent (biomass carbon density > 0)",
+                " are missing data in ", params$var_code, "."))
+} 
+
+# Descriptive stats
+fp_stats <- here(supp_dir, 'desc_statistics.csv')
+df_desc <- get_stats(sorted_df, nas_diff, filename = fp_stats, overwrite = overwrite)
+
+<<classify-desc-stats>>
+stats_masked <- df_desc
+
+# (stats_list <- stats_masked %>% 
+#   filter(!is.na(name)) %>% 
+#   mutate(name = name %>% str_remove_all("\\.|\\s") %>% 
+#               str_to_lower()) %>% 
+#   pull(value, name) %>% 
+#   as.list())
+# 
+# pwr <- floor(log10(stats_list$mean))
+# 
+# if(stats_list$min <= 0) {offset <- 0 - stats_list$min + (stats_list$mean / (2*10^pwr))}
+```
+
+Pixels in analysis area (biomass carbon density \> 0): `r num2string(valct_mask)`
+
+Pixels with data in `r params$var_code`: `r num2string(valct_data)`
+
+```{r, include=TRUE, eval=TRUE, message = F, warning=F, out.width = 1286, out.height = 580}
+scalar <- 1/params$scalars$orig2stor
+<<desc-stats-tables-scaled>>
+```
+
+<!---BLOCK_MULTICOL_START--->
+
+::: row
+::: {.col-xs-12 .col-md-6}
+```{r echo=FALSE}
+tbl_stats_1a %>% autofit() 
+```
+
+`r officer::run_columnbreak()`
+:::
+
+::: {.col-xs-12 .col-md-6}
+```{r echo=FALSE}
+tbl_stats_1b %>% autofit()
+tbl_stats_1c %>% autofit()
+```
+:::
+:::
+
+<!---BLOCK_MULTICOL_STOP{widths: [4,2], space: 0.1, sep: false}--->
+
+### Histogram of all values
+
+```{r, include = T, eval = T, message = F, warning=F, fig.width = 8, fig.height = 4}
+stats_masked <- stats_masked %>% 
+  mutate(view_hist = prob %in% c(0.25, 0.5, 0.75, 0.95) | name %in% c('Mean'))
+p_hist <- plot_hist(sorted_df, 
+                    hist_dir = here(supp_dir, 'hist'), 
+                    df_stats = stats_masked, 
+                    params$scalars$stor2disp, 
+                    var_label = var_lab, 
+                    overwrite = overwrite_hists)
+
+# Add new histogram to list
+hists <- append(hists, setNames(list(p_hist), paste0('l', level)))
+
+if( isTRUE(getOption('knitr.in.progress')) ) print(p_hist)
+```
+
+#### Histogram of lower 95% of values
+
+On this histogram the upper 5% of values (above the 95th percentile) are considered outliers and are represented with the gray bar on the right. Dashed red lines indicate percentiles (e.g. 0.75 = 75th percentile = 3rd quartile).
+
+```{r, include = T, eval = T, message = F, warning=F, fig.width = 8, fig.height = 4}
+p_hist <- try(
+  plot_hist(sorted_df, 
+                    pctl_cap = 0.95, 
+                    bins, 
+                    hist_dir, 
+                    stats_masked, 
+                    params$scalars$stor2disp, 
+                    outliers = TRUE,
+                    var_label = var_lab, 
+                    overwrite = overwrite_hists)
+)
+
+if( class(p_hist)[1] != "try-error" & isTRUE(getOption('knitr.in.progress')) ) print(p_hist)
+```
+
+### Map of pre-processed data
+
+As indicated above, the raster was reprojected & resampled to MODIS sinusoidal at a nominal resolution of 500 m and then masked to areas with biomass carbon density \> 0.
+
+```{r map-l1, include=TRUE, eval=TRUE, fig.width = 10, fig.height = 4.5, fig.show='show'}
+scalemin = params$scalelims_stor[[1]]
+scalemax = params$scalelims_stor[[2]]
+fp_tif <- fp_masked
+map_val_scalar <- params$scalars$stor2disp
+<<map>>
+```
+
+## Level 2A: Normalized to 95th percentile
+
+```{r, include=T, eval=T, message=F, warning=F, fig.width = 8, fig.height = 4}
+level <- '2a'
+suffix <- 'norm95'
+var_lab <- ''
+var_title <- 'Normalized (lower 95%)'
+
+# Transform values - scaled to integer
+fp_norm <- here(dir_processing, paste0('l', level, '_', suffix, '.tif'))
+if(!file.exists(fp_norm) | overwrite) overwrite_comparison <- TRUE
+r_norm <- rescale_to_pctl(r = fp_masked,
+                          pctls = c(0, 0.95), 
+                          df_stats = stats_masked, 
+                          filename = fp_norm,
+                          overwrite = overwrite)
+
+supp_dir <- tools::file_path_sans_ext(fp_norm)
+if(!dir.exists(supp_dir)) dir.create(supp_dir, recursive = TRUE)
+
+p0 <- stats_masked %>% filter(prob == 0) %>% pull(value)
+p95 <- stats_masked %>% filter(prob == 0.95) %>% pull(value)
+```
+
+The pre-processed dataset was normalized to fall between the minimum (`r p0`) and the 95th percentile (`r p95`).
+
+### Descriptive statistics
+
+```{r, include = T, eval = T, message = F, warning=F}
+# Get values
+fp_tif <- fp_norm
+<<get-values>>
+
+# Calculate descriptive statistics
+fp_stats <- here(supp_dir, 'desc_statistics.csv')
+df_desc <- get_stats(sorted_df, filename = fp_stats, overwrite = overwrite)
+
+# Designate which stats will be included where
+<<classify-desc-stats>>
+stats_norm <- df_desc
+
+# Create tables to print (flextables)
+scalar <- 1
+<<desc-stats-tables-scaled>>
+```
+
+<!---BLOCK_MULTICOL_START--->
+
+::: row
+::: {.col-xs-12 .col-md-6}
+```{r echo=FALSE}
+tbl_stats_1a %>% autofit() 
+```
+
+`r officer::run_columnbreak()`
+:::
+
+::: {.col-xs-12 .col-md-6}
+```{r echo=FALSE}
+tbl_stats_1b %>% autofit()
+tbl_stats_1c %>% autofit()
+```
+:::
+:::
+
+<!---BLOCK_MULTICOL_STOP{widths: [4,2], space: 0.1, sep: false}--->
+
+### Histogram of values normalized to the 95th percentile
+
+```{r, include=T, eval=T, message=F, warning=F, fig.width = 8, fig.height = 4}
+p_hist <- try(
+  plot_hist(sorted_df, 
+                    pctl_cap = 1, 
+                    bins = 50, 
+                    hist_dir = here(supp_dir, 'hist'), 
+                    df_stats = stats_norm, 
+                    scalar = 1, 
+                    var_label = var_lab, 
+                    outliers = FALSE,
+                    overwrite = overwrite_hists)
+)
+
+if (class(p_hist)[1] != "try-error") {
+  # Add new histogram to list
+  hists <- append(hists, setNames(list(p_hist), paste0('l', level)))
+  
+  if( isTRUE(getOption('knitr.in.progress')) ) print(p_hist)
+} else {
+  hists <- append(hists, setNames(list(plot_spacer()), paste0('l', level)))
+}
+```
+
+### Map of values normalized to the 95th percentile
+
+```{r, include=T, eval=T, message=F, fig.width = 10, fig.height = 4.5}
+scalemin = 0
+scalemax = 1e4
+map_val_scalar <- 1
+fp_tif <- fp_norm
+<<map>>
+```
+
+## Level 2B: Log-transformed
+
+We performed a natural log transformation on the resampled values (level 1 product) and then normalized the result to the middle 95% of the transformed values (2.5th percentile - 97.5th percentile).
+
+Log-transformation leads to greater differentiation at low values and less at high values. This means that as the value of the variable increases, it would contribute increasingly less to the composite score.
+
+#### Log-transform
+
+```{r, include=T, eval=T, message=F, warning=F, fig.width = 8, fig.height = 4}
+level <- '2b'
+suffix <- 'log1p_1e3'
+
+# Transform values - scaled to integer
+fp_logtransform <- here(dir_processing, paste0('l', level, '_', suffix, '.tif'))
+if(!file.exists(fp_logtransform) | overwrite) {
+  
+  r_log <- rast(fp_masked) %>% 
+    app(fun = \(i) log1p(i) * 1e3, 
+        filename = fp_logtransform, 
+        wopt = list(datatype = 'INT2S'), 
+        overwrite = TRUE)
+  
+  overwrite_comparison <- TRUE
+  
+} 
+
+supp_dir <- tools::file_path_sans_ext(fp_logtransform)
+if(!dir.exists(supp_dir)) dir.create(supp_dir, recursive = TRUE) 
+
+# Get values
+fp_tif <- fp_logtransform
+<<get-values>>
+
+# Get stats
+# fp_stats <- here(supp_dir, 'desc_statistics.csv')
+df_desc <- get_stats(sorted_df, 
+                     filename = here(supp_dir, 'desc_statistics.csv'), 
+                     overwrite = overwrite)
+
+# Set where stats will be viewed (variables view_hist, etc.)
+<<classify-desc-stats>>
+stats_log <- df_desc
+```
+
+### Histogram of log-transformed values
+
+```{r, include=T, eval=T, message=F, warning=F, fig.width = 8, fig.height = 4}
+stats_log <- stats_log %>% 
+  mutate(view_hist = prob %in% c(0.025, 0.25, 0.5, 0.75, 0.975) | 
+           name %in% c('Mean'))
+p_hist <- plot_hist(sorted_df = sorted_df, 
+                    hist_dir = here(supp_dir, 'hist'), 
+                    df_stats = stats_log, 
+                    scalar = 1, 
+                    var_label = var_lab, 
+                    overwrite = overwrite_hists)
+if( isTRUE(getOption('knitr.in.progress')) ) print(p_hist)
+```
+
+#### Normalize to between 2.5-97.5th percentiles
+
+```{r, include=T, eval=T, message=F, warning=F}
+# Normalize to middle 95% of values
+suffix <- 'log1p_norm95'
+var_lab <- ''
+var_title <- 'Log-transformed (middle 95%)'
+
+# Normalize
+fp_log <- here(dir_processing, paste0('l', level, '_', suffix, '.tif'))
+r_log <- rescale_to_pctl(fp_logtransform, 
+                         pctls = c(0.025, 0.975), 
+                         df_stats = stats_log, 
+                         sorted_df = sorted_df,
+                         filename = fp_log, 
+                         overwrite = overwrite)
+
+supp_dir <- tools::file_path_sans_ext(fp_log)
+if(!dir.exists(supp_dir)) dir.create(supp_dir, recursive = TRUE) 
+
+# Get values
+fp_tif <- fp_log
+<<get-values>>
+
+# Get stats
+# Sort data just in case - percentile calculation currently requires sorted values
+# fp_stats <- here(supp_dir, 'desc_statistics.csv')
+df_desc <- get_stats(sorted_df, 
+                     filename = here(supp_dir, 'desc_statistics.csv'), 
+                     overwrite = overwrite)
+
+<<classify-desc-stats>>
+stats_log <- df_desc
+```
+
+### Descriptive statistics
+
+```{r, include=T, eval=T, message = F, warning=F, out.width = 1286, out.height = 580}
+scalar <- 1
+<<desc-stats-tables-scaled>>
+```
+
+<!---BLOCK_MULTICOL_START--->
+
+::: row
+::: {.col-xs-12 .col-md-6}
+```{r echo=FALSE}
+tbl_stats_1a %>% autofit() 
+```
+
+`r officer::run_columnbreak()`
+:::
+
+::: {.col-xs-12 .col-md-6}
+```{r echo=FALSE}
+tbl_stats_1b %>% autofit()
+tbl_stats_1c %>% autofit()
+```
+:::
+:::
+
+<!---BLOCK_MULTICOL_STOP{widths: [4,2], space: 0.1, sep: false}--->
+
+### Histogram of normalized log-transformed values
+
+```{r, include=T, eval=T, message=F, warning=F, fig.width = 8, fig.height = 4}
+p_hist <- try(
+  plot_hist(sorted_df, 
+                    hist_dir = here(supp_dir, 'hist'), 
+                    df_stats = stats_log, 
+                    var_label = var_lab, 
+                    overwrite = overwrite_hists)
+)
+
+if (class(p_hist)[1] != "try-error") {
+  # Add new histogram to list
+  hists <- append(hists, setNames(list(p_hist), paste0('l', level)))
+  
+  if( isTRUE(getOption('knitr.in.progress')) ) print(p_hist)
+} else {
+  hists <- append(hists, setNames(list(plot_spacer()), paste0('l', level)))
+}
+```
+
+### Map of normalized log-transformed values
+
+```{r, include=T, eval=T, message = F, fig.width = 10, fig.height = 4.5}
+scalemin = 0
+scalemax = 1e4
+map_val_scalar <- 1
+fp_tif <- fp_log
+<<map>>
+```
+
+## Level 2C: Percentile rank
+
+```{r, include=T, eval=T, message=F, warning=F, fig.width = 8, fig.height = 4}
+level <- '2c'
+suffix <- 'pctlrank'
+var_lab <- ''
+var_title <- 'Percentile rank'
+
+# Transform values - scaled to integer
+fp_rank <- here(dir_processing, paste0('l', level, '_', suffix, '.tif'))
+if(!file.exists(fp_rank) | overwrite) overwrite_comparison <- TRUE
+r_rank <- rast(fp_masked) %>% 
+    percentile_rank(sorted_vals_l1, 
+                    filename = fp_rank, 
+                    overwrite = overwrite)
+
+# Create a directory for files related to the new GeoTiff
+supp_dir <- tools::file_path_sans_ext(fp_rank)
+if(!dir.exists(supp_dir)) dir.create(supp_dir, recursive = TRUE)
+```
+
+### Descriptive statistics
+
+```{r, include = T, eval = T, message = F, warning=F, fig.width = 8, fig.height = 4}
+# Get values
+fp_tif <- fp_rank
+<<get-values>>
+
+# Sort data just in case - percentile calculation currently requires sorted values
+fp_stats <- here(supp_dir, 'desc_statistics.csv')
+df_desc <- get_stats(sorted_df, filename = fp_stats, overwrite = overwrite)
+
+<<classify-desc-stats>>
+stats_norm <- df_desc
+
+# Check that the output minimum is 0. If not, needs to be rescaled.
+minval <- stats_norm %>% filter(!is.na(prob)) %>% pull(value, name = prob)
+needs_rescale <- minval[[1]] != 0
+```
+
+```{r, eval=needs_rescale, message=F, warning=F, fig.width = 8, fig.height = 4}
+suffix <- paste0(suffix, '_norm0')
+var_lab <- ''
+var_title <- 'Percentile rank scaled to min-max rank'
+
+# Transform values - scaled to integer
+fp_pctl_scaled <- here(dir_processing, paste0('l', level, '_', suffix, '.tif'))
+if(!file.exists(fp_pctl_scaled) | overwrite) overwrite_comparison <- TRUE
+r_rank <- rescale_to_pctl(r = fp_rank,
+                          pctls = c(0, 1), 
+                          df_stats = stats_norm, 
+                          filename = fp_pctl_scaled,
+                          overwrite = overwrite)
+
+supp_dir <- tools::file_path_sans_ext(fp_pctl_scaled)
+if(!dir.exists(supp_dir)) dir.create(supp_dir, recursive = TRUE)
+
+# Get values
+fp_tif <- fp_pctl_scaled
+<<get-values>>
+
+# Sort data just in case - percentile calculation currently requires sorted values
+fp_stats <- here(supp_dir, 'desc_statistics.csv')
+df_desc <- get_stats(sorted_df, filename = fp_stats, overwrite = overwrite)
+
+<<classify-desc-stats>>
+stats_norm <- df_desc
+```
+
+```{r, include=T, eval=T, message=F, warning=F}
+scalar <- 1
+<<desc-stats-tables-scaled>>
+```
+
+<!---BLOCK_MULTICOL_START--->
+
+::: row
+::: {.col-xs-12 .col-md-6}
+```{r echo=FALSE}
+tbl_stats_1a %>% autofit() 
+```
+
+`r officer::run_columnbreak()`
+:::
+
+::: {.col-xs-12 .col-md-6}
+```{r echo=FALSE}
+tbl_stats_1b %>% autofit()
+tbl_stats_1c %>% autofit()
+```
+:::
+:::
+
+<!---BLOCK_MULTICOL_STOP{widths: [4,2], space: 0.1, sep: false}--->
+
+### Histogram of values transformed to percentile rank
+
+```{r, include=T, eval=T, message=F, warning=F, fig.width = 8, fig.height = 4}
+p_hist <- try(
+  plot_hist(sorted_df, 
+                    hist_dir = here(supp_dir, 'hist'), 
+                    df_stats = stats_norm, 
+                    var_label = var_lab, 
+                    overwrite = overwrite_hists)
+)
+
+if (class(p_hist)[1] != "try-error") {
+  # Add new histogram to list
+  hists <- append(hists, setNames(list(p_hist), paste0('l', level)))
+  
+  if( isTRUE(getOption('knitr.in.progress')) ) print(p_hist)
+} else {
+  hists <- append(hists, setNames(list(plot_spacer()), paste0('l', level)))
+}
+```
+
+### Map of values transformed to percentile rank
+
+```{r, include=T, eval=T, message=F, fig.width = 10, fig.height = 4.5}
+scalemin = 0
+scalemax = 1e4
+map_val_scalar <- 1
+<<map>>
+```
+
+# Comparison of variations
+
+## Original values
+
+```{r, include=T, eval=T, message=F, fig.width = 9.4, fig.height = 7.3}
+# Remove annotations from histograms
+hists_clean <- hists %>% purrr::map(\(g) { g$layers[[3]] <- NULL; return(g) })
+
+fp_map <- here(dir_processing, 'maps_hists_l0_l1.png')
+if(!file.exists(fp_map) | overwrite_comparison) {
+  
+  # Compose patchwork
+  p <- maps$l0 + hists_clean$l0 + 
+    maps$l1 + hists_clean$l1 +
+    guide_area() +
+    plot_layout(#guides = 'collect', 
+                ncol = 2, 
+                widths = c(4, 2), 
+                heights = c(5, 5, 1)) &
+    ggplot2::theme(plot.title = element_text(size = rel(1)),
+                   plot.caption = element_blank())
+  
+  # Save PNG
+  ggsave(fp_map, plot = p, width = 9.4, height = 7.3, units = 'in')
+
+  # View
+  if( isTRUE(getOption('knitr.in.progress')) ) print(p)
+  
+} else {
+  
+  if( isTRUE(getOption('knitr.in.progress')) ) knitr::include_graphics(fp_map)
+}
+```
+
+## Options for values transformations
+
+```{r, include=T, eval=T, message=F, fig.width = 9.5, fig.height = 10}
+fp_map <- here(dir_processing, 'maps_hists_l2_variations.png')
+if(!file.exists(fp_map) | overwrite_comparison) {
+  
+  # Compose patchwork
+  p <- maps$l2a + hists_clean$l2a + 
+    maps$l2b + hists_clean$l2b +
+    maps$l2c + hists_clean$l2c +
+    guide_area() +
+    plot_layout(guides = 'collect', ncol = 2, 
+                widths = c(4, 2), 
+                heights = c(5, 5, 5, 1)) &
+    ggplot2::theme(plot.title = element_text(size = rel(1)),
+                   plot.caption = element_blank())
+  
+  # Save PNG
+  ggsave(fp_map, plot = p, width = 9.5, height = 10, units = 'in')
+
+  # View
+  if( isTRUE(getOption('knitr.in.progress')) ) print(p)
+  
+} else {
+  
+  if( isTRUE(getOption('knitr.in.progress')) ) knitr::include_graphics(fp_map)
+}
+```
