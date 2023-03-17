@@ -21,7 +21,7 @@ library(segmented)
 library(tidyverse)
 library(tmap)
 
-# Run GEE process - calls initialize
+# Run GEE process
 source('R/carbon_reports/01_calculate_loss_with_rgee.R')
 
 # Load functions 
@@ -33,12 +33,14 @@ source('R/carbon_reports/02_functions.R')
 # Load data
 sf_in <- st_read(polys_fp)
 df_sf <- st_read(out_fp) %>% 
-  bind_cols(name = sf_in$name)
+  bind_cols(name = sf_in$name)  |> 
+  mutate(name = factor(name, levels = c("Leakage area 4", "Leakage area 3",
+                                        "Leakage area 2", "Leakage area 1", 
+                                        "Project area", "Feijó", "Acre")), 
+         name = forcats::fct_rev(name))
 
 # Get site and division names 
-# (site <- unique(df_sf[[site_name_var]]))
 (site <- str_split(basename(out_fp), '[_\\W]', simplify = TRUE)[,1])
-# (site_code <- abbreviate(site, minlength = 3))
 site_code <- site
 
 # Get values by county ----
@@ -61,8 +63,7 @@ df_sf_sums <- df_sf %>%
          c_loss_pct,
          c_dens_2000_tCha, 
          c_dens_loss_tCha, 
-         c_dens_loss_pct) %>% 
-  arrange(desc(c_loss_MtC))
+         c_dens_loss_pct)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create output table of 20-year loss ----
@@ -72,11 +73,11 @@ if( nrow(df_sf_sums) > 1 ) {
   df_total <- df_sf_sums %>% 
     st_drop_geometry() %>% 
     summarize(
-      across(any_of(ends_with('_ha')), ~ sum(.x, na.rm = TRUE)),
-      across(any_of(ends_with('_MtC')), ~ sum(.x, na.rm = TRUE)),
+      across(any_of(ends_with('_ha')), ~ mean(.x, na.rm = TRUE)),
+      across(any_of(ends_with('_MtC')), ~ mean(.x, na.rm = TRUE)),
       across(any_of(ends_with('_pct')), ~ mean(.x, na.rm = TRUE)),
       across(any_of(ends_with('_tCha')), ~ mean(.x, na.rm = TRUE))) %>% 
-    mutate({{site_div_var}} := 'Total')
+    mutate({{site_div_var}} := 'Mean')
   
   # Combine and change column names
   df_out <- df_sf_sums %>% 
@@ -117,12 +118,6 @@ ft <- df_out %>%
           value = as_paragraph('Carbon density in 2000 (tC/ha)')) %>% 
   mk_par(j = 'c_dens_loss_tCha', part = 'header', 
           value = as_paragraph('Carbon density loss (tC/ha)')) %>% 
-  # mk_par(j = 'area_ha', part = 'header', 
-  #         value = as_paragraph('Land area (ha)')) %>% 
-  # mk_par(j = 'c_loss_pct', part = 'header', 
-  #         value = as_paragraph('Carbon stock\nloss\n(%)')) %>% 
-  # mk_par(j = 'c_dens_loss_pct', part = 'header', 
-  #         value = as_paragraph('Carbon density loss\n(%)')) %>% 
   align(j = 'forest_loss_ha', align = 'right', part = 'body') %>% 
   align(j = 'c_dens_loss_tCha', align = 'right', part = 'body') %>% 
   align(j = 'c_loss_MtC', align = 'right', part = 'body') %>% 
@@ -151,7 +146,7 @@ dir.create(dirname(sums_doc), showWarnings = FALSE)
 save_as_docx(ft, path = sums_doc)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Create plots ----
+# Create piecewise regression plots ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Tidy 
 df <- df_sf %>% st_drop_geometry()
@@ -175,23 +170,23 @@ if (round(max(df_site$carbon_loss_MgC)/1e6) > 1) {
 df_p <- df_site_t |> 
   mutate(carbon_loss_pct = carbon_loss_MgC / carbon_2000_mgc)
 brks <- seq(2001, 2021, 2)
-labs <- brks %>% str_sub(3,4) %>% str_c("'", .)
+labels <- brks %>% str_sub(3,4) %>% str_c("'", .)
 
-## Plot annual carbon loss ----
 df_p |> 
+  filter(name != 'Feijó' & name != 'Acre') %>% 
   ggplot(aes(x = year, y = c_loss_flex)) +
   geom_point(size = .3, color = 'grey30') +
   geom_line(color = 'grey30', size = .5) + 
   scale_x_continuous(name = "Year",
                      breaks = brks,
                      expand = c(0.01, 0.01),
-                     labels = labs) +
+                     labels = labels) +
   scale_y_continuous(name = str_c('Loss in aboveground carbon (', c_units, ')'),
                      labels = scales::comma
   ) +
   theme_minimal() +
   theme(
-    text = element_text(family = 'Times'),
+    # text = element_text(family = 'Times'),
     strip.text = element_text(face = 'bold'),
     axis.text = element_text(family = 'Helvetica'),
     axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
@@ -203,8 +198,8 @@ df_p |>
 ggsave(file.path('outputs', site, str_c('carbon_loss_2001_2021_fixed.png')), 
        width = 4, height = 6.3, units='in')
 
-# Plot annual carbon loss as percent of 2000 stock
 df_p |> 
+  filter(name != 'Feijó' & name != 'Acre') %>% 
   ggplot(aes(x = year, y = carbon_loss_pct)) +
   geom_point(size = .3, color = 'grey30') +
   geom_line(color = 'grey30', size = .5) + 
@@ -229,7 +224,38 @@ df_p |>
 ggsave(file.path('outputs', site, str_c('carbon_loss_pct_2001_2021_fixed.png')), 
        width = 4, height = 6.3, units='in')
 
-# Plot piecewise ----
+df_p |> 
+  filter(name == 'Feijó' | name == 'Acre') %>% 
+  # ggplot(aes(x = year, y = c_loss_flex)) +
+  ggplot(aes(x = year, y = carbon_loss_pct)) +
+  geom_point(size = .3, color = 'grey30') +
+  geom_line(color = 'grey30', size = .5) + 
+  scale_x_continuous(name = "Year",
+                     breaks = brks,
+                     expand = c(0.01, 0.01),
+                     labels = labels) +
+  # scale_y_continuous(name = str_c('Loss in aboveground carbon (', c_units, ')'),
+  #                    labels = scales::comma
+  scale_y_continuous(name = str_c('Percent loss in aboveground carbon (%)'),
+                     labels = scales::percent
+  ) +
+  theme_minimal() +
+  theme(
+    # text = element_text(family = 'Times'),
+    strip.text = element_text(face = 'bold'),
+    axis.text = element_text(family = 'Helvetica'),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+    panel.grid.minor = element_blank())  +
+  facet_wrap('name', 
+             # scales='free_y', 
+             ncol=1)
+
+# ggsave(file.path('outputs', site, str_c('carbon_loss_2001_2021_muni_state_fixed.png')), 
+#        width = 4, height = 4, units='in')
+ggsave(file.path('outputs', site, str_c('carbon_loss_pct_01_21_muni_state_fixed.png')), 
+       width = 4, height = 4, units='in')
+
+# Plot piecewise
 plots <- list()
 for (i in 1:length(div_names)) {
   div_name <-  div_names[[i]]

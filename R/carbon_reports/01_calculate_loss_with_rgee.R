@@ -75,7 +75,7 @@ polys_lyr <- Map$addLayer(outline, name = 'Site boundary')
 # Load data and mask to forest (TC>25%) ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Hansen forest cover and loss
-hansen_30m <- ee$Image("UMD/hansen/global_forest_change_2020_v1_8")
+hansen_30m <- ee$Image("UMD/hansen/global_forest_change_2021_v1_9")
 tc_2000 <- hansen_30m$select(c('treecover2000'))
 loss_year <- hansen_30m$select(c('lossyear'))
 loss <- hansen_30m$select(c('loss'))
@@ -202,7 +202,7 @@ loss_area_sqkm <-ee$Image()$select(c())
 loss_carbon_mgc <-ee$Image()$select(c())
 
 # Each band represents either forest area or carbon loss in a given year
-for (year in seq(1, 20)) { # 1-20 = 2001-2020
+for (year in seq(1, 21)) { # 1-20 = 2001-2020
   # year_str <-'20' + ee$Number(year)$format('%02d')$getInfo()
   year_str <- as.character(2000+year)
   

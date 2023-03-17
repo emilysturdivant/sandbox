@@ -46,7 +46,8 @@ tidy_forest_loss_df <- function(df) {
   
   # Join forest carbon and area loss values
   df_tidy <- df_carbon %>% 
-    left_join(df_area)
+    left_join(df_area) |> 
+    mutate(carbon_loss_pct = carbon_loss_MgC / carbon_2000_mgc)
   
   # Return
   return(df_tidy)
@@ -153,25 +154,33 @@ get_piecewise_line_scorebased <- function(df_zone) {
   return(dat2)
 }
 
-plot_pw_fit <- function(df_zone, div_name, pw_fit) {
+plot_pw_fit <- function(df_zone, div_name, pw_fit, brks, labs, c_units = '%') {
   
   yrvec <- min(df_zone$year):max(df_zone$year)
   labels <- str_c(str_sub(yrvec-1, 3,4), str_sub(yrvec, 3,4), sep = '-')
   # rm_labs <- labels[seq(2, length(labels), 2)] %>% str_c(collapse = '|')
   # labels <- labels %>% str_replace_all(rm_labs, '')
-    
+
+  if( c_units == '%'){
+    y_var = 'carbon_loss_pct'
+    ylabs = scales::percent
+  } else {
+    y_var = 'c_loss_flex'
+    ylabs = scales::comma
+  }
+  
   # Plot
   p <- df_zone %>% 
-    ggplot(aes(x = year, y = c_loss_flex)) +
+    ggplot(aes(x = year, y = .data[[y_var]])) +
     geom_point(size = .3, color = 'grey30') +
     geom_line(color = 'grey30', size = .5) + 
     geom_line(data = pw_fit, aes(x = x, y = y), color = 'firebrick3', size = .6) +
     scale_x_continuous(name = "Year",
-                       breaks = 2001:2020,
+                       breaks = brks,
                        expand = c(0.01, 0.01),
-                       labels = labels) +
+                       labels = labs) +
     scale_y_continuous(name = str_c('AGC loss (', c_units, ')'),
-                       labels = scales::comma
+                       labels = ylabs
                        ) +
     labs(title = div_name) +
     theme_bw() +
@@ -242,7 +251,7 @@ get_params <- function(n) {
   return(list(n = n, ncol=ncol, png_width=png_width, png_height=png_height))
 }
 
-layout_plots <- function(plots, params, title = TRUE, y_lim = c(0, 0.25)) {
+layout_plots <- function(plots, params, title = TRUE, y_lim = c(0, 0.25), yrvec = 2001:2021) {
   
   # Create patchwork
   ps <- plots %>% 
@@ -262,7 +271,6 @@ layout_plots <- function(plots, params, title = TRUE, y_lim = c(0, 0.25)) {
 
   # Conditionally remove every-other x-axis label
   if(params$ncol > 1){
-    yrvec <- 2001:2020
     labels <- str_c(str_sub(yrvec-1, 3,4), str_sub(yrvec, 3,4), sep = '-')
     rm_labs <- labels[seq(2, length(labels), 2)] %>% str_c(collapse = '|')
     labels <- labels %>% str_replace_all(rm_labs, '')
