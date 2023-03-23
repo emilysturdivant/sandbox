@@ -18,44 +18,56 @@ library(sf)
 library(stars)
 library(ggridges)
 
-poly_dir <- '~/data/misc/CreeNation/Eeyou_Istchee'
-fp_polys <- here::here(poly_dir, 'Eeyou_Istchee.shp')
-
-# Prep parameters ----
-df <- sf::st_read(fp_polys)
-df <- df |> 
-  mutate(name = 'Eeyou Istchee')
-
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Get parameters ----
+# Get parameters for each site ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+poly_dir <- '~/data/misc/Kepos_examplecarbonoffsetproject'
+fp_polys <- here::here(poly_dir, 'envira_polys.geojson')
+
+# Pre-process Envira polygons from Kepos ----
+polys <- list.files(poly_dir, '.geojson') |> 
+  purrr::map_dfr(function(x) {
+    df <- sf::st_read(here::here(poly_dir, x)) |> 
+      sf::st_make_valid()
+    cols <- c(name = NA_character_, ADM2_PT = NA_character_, ADM1_PT = NA_character_)
+    df <- add_column(df, !!!cols[setdiff(names(cols), names(df))])
+    df |> mutate(filename = x, 
+             name = coalesce(name, ADM2_PT, ADM1_PT))
+    })
+polys |> sf::st_write(fp_polys)
+
+
 params <- list(
   polys = fp_polys,
   site_var = 'name'
 )
 
-tifs_params <- list(
+lci_tifs <- list(
   list(
-    rast_fp = '~/data/misc/CreeNation/agb_03_18/agb_03_18_EeyouIstchee.vrt',
-    level = 'AGB_mgha'
+    rast_fp = '~/repos/carbon-quality-index/data/aggregated/allranked/final.tif',
+    level = 'Composite Index'
   ),
   list(
-    rast_fp = '~/data/Walker_etal_2022/Base_Cur_AGB_MgCha_500m.tif',
-    level = 'AGB_mgCha'
+    rast_fp = '~/repos/carbon-quality-index/data/aggregated/allranked/comp_bq.tif',
+    level = 'Biophysical Quality'
   ),
   list(
-    rast_fp = '~/data/Walker_etal_2022/Base_Cur_AGB_BGB_MgCha_500m.tif',
-    level = 'AGB_BGB_mgCha'
+    rast_fp = '~/repos/carbon-quality-index/data/aggregated/allranked/comp_bp.tif',
+    level = 'Biophysical Potential'
   ),
   list(
-    rast_fp = '~/data/Walker_etal_2022/Base_Cur_SOC_MgCha_500m.tif',
-    level = 'SOC_mgCha'
+    rast_fp = '~/repos/carbon-quality-index/data/aggregated/allranked/comp_add.tif',
+    level = 'Additionality Potential'
   ),
   list(
-    rast_fp = '~/data/Walker_etal_2022/Base_Cur_AGB_BGB_SOC_MgCha_500m.tif',
-    level = 'AGB_BGB_SOC_mgCha'
+    rast_fp = '~/repos/carbon-quality-index/data/aggregated/allranked/comp_perm.tif',
+    level = 'Risk to Permanence'
   )
 )
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# All sites in one DF ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Get values for one raster layer ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -65,10 +77,6 @@ site_var <- params$site_var
 extract_values <- function(params) {
   # Read stars (proxy)
   rr <- stars::read_stars(params$rast_fp)
-  
-  # Pixel area in hectares to convert density to stock
-  dims <- st_dimensions(rr)
-  pix_ha <- dims$x$delta * dims$y$delta * 1e-4
   
   # Load and reproject polygons
   pols <- st_read(fp_poly) |> st_transform(st_crs(rr))
@@ -86,8 +94,7 @@ extract_values <- function(params) {
           as.vector() |> 
           na.omit() |> 
           as_tibble() |> 
-          mutate(name = pol[[site_var]],
-                 value = value * pix_ha)
+          mutate(name = pol[[site_var]])
       }
     )
   
@@ -95,29 +102,6 @@ extract_values <- function(params) {
   df |> mutate(level = params$level)
 }
 
-# Extract values ----
-df_p <- tifs_params |> purrr::map_dfr(extract_values) |> 
-  mutate(comp_name = factor(level, levels = purrr::map_chr(tifs_params, ~.x$level))) 
-
-# Summary stats ----
-pix.ha <- 463.3127 * 463.3127 * 1e-4
-stats <- df_p |> 
-  # mutate(name = forcats::fct_rev(name)) |> 
-  group_by(comp_name) |> 
-  summarize(Min = min(value, na.rm=TRUE),
-            Q1 = quantile(value, 0.25, na.rm=TRUE),
-            Median = median(value, na.rm=TRUE),
-            Mean = mean(value, na.rm=TRUE),
-            Q3 = quantile(value, 0.75, na.rm=TRUE),
-            Max = max(value, na.rm=TRUE),
-            N = n(),
-            Stock_tC = sum(value, na.rm=TRUE), 
-            Area_ha = N * pix.ha, 
-            Dens_tCha = Stock_tC / Area_ha, 
-            Stock_MtC = Stock_tC * 1e-6, 
-            Area_Mha = Area_ha * 1e-6)
-
-# Plot density ridges ----
 # Density ridge plot
 plot_densridg <- function(df) {
   df |> 
@@ -139,8 +123,50 @@ plot_densridg <- function(df) {
     facet_wrap('comp_name', ncol=2)
 }
 
+df <- lci_tifs |> purrr::map_dfr(extract_values)
+    
+# Prep output DF for plotting
+df_p <- df |> 
+  mutate(value = value * 0.01, 
+         name = str_replace_all(name, 'Leakage area', 'LA'),
+         name = factor(name, levels = c("LA 4", "LA 3",
+                                        "LA 2", "LA 1", 
+                                        "Project area", "Feijó", "Acre")), 
+         comp_name = factor(level, levels = purrr::map_chr(lci_tifs, ~.x$level)),
+         level = case_when(comp_name == 'Composite Index' ~ 'final', 
+                           TRUE ~ 'component'),
+         ) 
+
+# Summary stats ----
+stats <- df_p |> 
+  mutate(name = forcats::fct_rev(name)) |> 
+  group_by(name, comp_name) |> 
+  summarize(Min = min(value),
+            Q1 = quantile(value, 0.25),
+            Median = median(value),
+            Mean = mean(value),
+            Q3 = quantile(value, 0.75),
+            Max = max(value))
+
+stats |> filter(str_detect(comp_name, 'Composite')) |> 
+  readr::write_csv(here::here('outputs', 'LCI_EnviraAmazonia', 'stats', 'lci_final.csv'))
+stats |> filter(str_detect(comp_name, 'Quality')) |> 
+  select(!comp_name) |> 
+  readr::write_csv(here::here('outputs', 'LCI_EnviraAmazonia', 'stats', 'lci_comp_bq.csv'))
+stats |> filter(str_detect(comp_name, 'Biophysical Potential')) |> 
+  select(!comp_name) |> 
+  readr::write_csv(here::here('outputs', 'LCI_EnviraAmazonia', 'stats', 'lci_comp_bp.csv'))
+stats |> filter(str_detect(comp_name, 'Additionality')) |> 
+  select(!comp_name) |> 
+  readr::write_csv(here::here('outputs', 'LCI_EnviraAmazonia', 'stats', 'lci_comp_add.csv'))
+stats |> filter(str_detect(comp_name, 'Permanence')) |> 
+  select(!comp_name) |> 
+  readr::write_csv(here::here('outputs', 'LCI_EnviraAmazonia', 'stats', 'lci_comp_perm.csv'))
+
+# Plot density ridges ----
 ## Plot composite index ----
 df_p |> 
+  filter(level == 'final') |> 
   plot_densridg()
 ggsave(here::here('outputs', 'LCI_EnviraAmazonia', 'lci_final_densridg.png'),
        width = 3, height = 2.25)

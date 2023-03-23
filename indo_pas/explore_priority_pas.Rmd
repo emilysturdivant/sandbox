@@ -1,0 +1,85 @@
+---
+title: "Indonesian Conservation Areas"
+output: 
+  html_document:
+    df_print: kable
+---
+
+```{r setup, include=FALSE, echo = FALSE}
+knitr::opts_chunk$set(echo=FALSE, eval = TRUE, message = FALSE, warning = FALSE)
+
+library(stars)
+library(dplyr)
+library(ggplot2)
+library(units)
+```
+
+### Histograms of Keystone Forests statistics for all conservation areas
+
+```{r}
+polys_out <- here::here('~/data/hih_sites/Indonesia_PAs/WDPA_Oct2021_simpbuff_IDN_Wiratno_KFPH.geojson')
+df <- readr::read_csv(paste0(tools::file_path_sans_ext(polys_out), '.csv'))
+
+df %>% 
+  rename(Mean = 'KFPH_mean', Median = 'KF_q50', Lower_25thP = 'KF_q25') %>% 
+  tidyr::pivot_longer(cols = any_of(c('Mean', 'Median', 'Lower_25thP'))) %>% 
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 2) +
+  xlab('') +
+  ylab('Number of PAs') +
+  theme_minimal() +
+  facet_wrap(vars(name), ncol = 1)
+```
+```{r}
+df %>% 
+  ggplot(aes(KFPH_mean)) +
+  geom_histogram(binwidth = 2) +
+  xlab('') +
+  ylab('Number of PAs') +
+  theme_minimal()
+```
+
+```{r}
+thresh <- 97
+mean_gtX <- df %>% 
+  filter(KF_mean > thresh)
+```
+
+Number of PAs with mean Keystone Forests value >`r thresh`:  **`r nrow(mean_gtX)`**
+
+### Top 20 PAs with greatest mean Keystone Forests values
+
+```{r}
+df <- df %>% 
+  select(PA_Name, Area_ha, )
+  select(Name='NAME', Type='DESIG_ENG', 
+         priority,
+         KFPH_mean='KF_mean', 
+         Carbon_dens_tCha='AGB_mean_mgcha', 
+         Area_ha='area_ha', 
+         Carbon_stock_MtC='carbon_stock_Mmgc') %>% 
+  mutate(
+    priority = ifelse(priority > 14, NA, priority),
+    Wiratno_rank = as.character(priority) %>% 
+      stringr::str_replace_all('10', 'other') %>% 
+      tidyr::replace_na(''))
+
+top20_by_kf <- df %>% 
+  arrange(desc(KFPH_mean)) %>% 
+  slice_max(KFPH_mean, n = 20) %>% 
+  select(!priority)
+
+top20_by_kf
+```
+
+### Keystone Forests values for sites recommended by Mr. Wiratno
+
+```{r}
+priorities <- df %>% 
+  filter(priority < 14) %>% 
+  arrange(desc(KFPH_mean))  %>% 
+  select(!priority)
+
+priorities
+
+```
