@@ -12,47 +12,21 @@ library(dplyr)
 library(ggplot2)
 library(units)
 
-fp_polys <- here::here('~/data/hih_sites/Indonesia_PAs/WDPA_Oct2021_simpbuff_IDN_Wiratno.geojson')
+poly_dir <- '~/data/misc/CreeNation/Eeyou_Istchee'
+fp_polys <- here::here(poly_dir, 'EI_Community_extent_2015.shp')
+
 kfph_tif <- here::here(
   '/Volumes/ejs_storage/data/hih_scaling_ee_exports', 
   'HIH_PlanetaryHealthIndex_v4b_1km_percentiles_2021_11_02_19_05_31-0000000000-0000023296.tif')
-agb_tif <- here::here('~/data/Walker_etal_2022/Base_Cur_AGB_MgCha_500m.tif')
+agbbgb_tif <- here::here('~/data/Walker_etal_2022/Base_Cur_AGB_BGB_MgCha_500m.tif')
+soc_tif <- here::here('~/data/Walker_etal_2022/Base_Cur_SOC_MgCha_500m.tif')
+agbbgbsoc_tif <- here::here('~/data/Walker_etal_2022/Base_Cur_AGB_BGB_SOC_MgCha_500m.tif')
 
-polys_out <- here::here('~/data/hih_sites/Indonesia_PAs/WDPA_Oct2021_simpbuff_IDN_Wiratno_KFPH.geojson')
-
-
-# AGB for all Indonesia ----
-indo_poly <- here::here('/Volumes/ejs_storage/data/context/Indonesia/indonesia.geojson')
-
-# Read stars (proxy)
-agb <- stars::read_stars(agb_tif)
-
-dims <- st_dimensions(agb)
-pix_ha <- units::set_units(dims$x$delta**2, 'm^2') %>% units::set_units('ha')
-
-# Load and reproject polygons
-pols <- st_read(indo_poly) %>%
-  filter(!st_is_empty(.)) %>%
-  st_make_valid() %>%
-  mutate(Area_ha = st_area(geometry) %>% units::set_units('ha'))
-
-# Load and reproject polygons
-pols_geom <- pols %>% 
-  st_transform(st_crs(agb)) %>% 
-  st_geometry()
-
-# Get mean
-agb_mean <- aggregate(agb, by = pols_geom, FUN = mean, na.rm=TRUE) %>% 
-  pull() %>% 
-  tibble::as_tibble_col(column_name = 'Carbon_dens_tCha')
-Area_ha = 189624056
-agb_mean %>% 
-  mutate(Carbon_stock_MtC = Carbon_dens_tCha * Area_ha * 1e-6)
+polys_out <- here::here(poly_dir, 'Eeyou_Istchee_KFPH.shp')
 
 # Calculate zonal statistics ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Read stars (proxy)
-kfph <- stars::read_stars(kfph_tif)
 agb <- stars::read_stars(agb_tif)
 
 dims <- st_dimensions(agb)
@@ -62,27 +36,8 @@ pix_ha <- units::set_units(dims$x$delta**2, 'm^2') %>% units::set_units('ha')
 pols <- st_read(fp_polys) %>%
   filter(!st_is_empty(.)) %>%
   st_make_valid() %>% #tbl_vars()
-  select(WDPAID, ORIG_NAME, DESIG_ENG, priority) %>% 
+  select(COMUNITY, Area_Km) %>% 
   mutate(Area_ha = st_area(geometry) %>% units::set_units('ha'))
-
-## Keystone Forests ----
-pols_geom <- pols %>%
-  st_transform(st_crs(kfph)) %>% 
-  st_geometry()
-
-# Get mean
-FUN = 'mean'
-kf_mean <- aggregate(kfph, by = pols_geom, FUN = FUN, na.rm=TRUE) %>% 
-  pull() %>% 
-  tibble::as_tibble_col(column_name = paste0('KF_', FUN))
-
-# Get quantiles
-kf_qs <- c(0, 0.25, 0.5, 0.75, 1) %>% 
-  purrr::map_dfc(function(prob) {
-    aggregate(kfph, by = pols_geom, FUN = quantile, probs = prob, na.rm=TRUE) %>% 
-      pull() %>% 
-      tibble::as_tibble_col(column_name = stringr::str_c('KF_q', prob*100))
-  })
 
 ## AGB ----
 # Load and reproject polygons
@@ -91,7 +46,7 @@ pols_geom <- pols %>%
   st_geometry()
 
 # Get mean
-agb_mean <- aggregate(agb, by = pols_geom, FUN = mean, na.rm=TRUE) %>% 
+agb_mean <- aggregate(agb, by = pols_geom, FUN = sum, na.rm=TRUE) %>% 
   pull() %>% 
   tibble::as_tibble_col(column_name = 'Carbon_dens_tCha')
 
