@@ -54,7 +54,7 @@ priorities_4 <- c(pal_tropics[c(1, 4, 6)], '#0ecd5d')
 Map$setCenter(30, 0, zoom = 3)
 
 # Local paths
-data_dir <- '/Users/emilysturdivant/data'
+data_dir <- '/Volumes/ejs_storage/data'
 final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
 
 viz_idx_norm <- list(min = 0, max = 1, palette = priorities_11, 
@@ -1104,62 +1104,62 @@ pas_lyr <- Map$addLayer(pas_fill, name = 'Protected areas',
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # MSF interventions ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-countries_msf_shp <- file.path(data_dir, 'gadm', 'gadm0_tropics_simp01big9.shp')
-countries <- st_read(countries_msf_shp) %>% 
-  mutate(MSF = ifelse(is.na(MSF), 0, 1))
-
-# Upload countries
-countries_ee <- countries %>% sf_as_ee()
-
-# Filter to MSF countries
-msf_ee <- countries_ee$filter(ee$Filter$eq('MSF', 1))
-
-# Simplify
-msf_simp <- msf_ee$map(
-  function(f) f$simplify(maxError = ee$ErrorMargin(50000, 'meters'))
-)
-
-# Create outline
-msf_outline <- ee$Image()$byte()$paint(featureCollection = msf_simp, width = 2)
-msf_lyr <- Map$addLayer(msf_outline, list(palette = c('#bdbdbd')),
-                        name = 'MSF operations', shown = FALSE)
-msf_lyr <- Map$addLayer(msf_outline, list(palette = c('black')),
-                        name = 'MSF operations', shown = FALSE)
-
-# Get non-MSF countries
-no_msf_id <- addm('non_MSF_countries_masked')
-alist <- ee_manage_assetlist(path_asset = addm(""))
-if(!no_msf_id %in% alist$ID) {
-  
-  no_msf_ee <- countries_ee$filter(ee$Filter$neq('MSF', 1))
-  
-  # Convert to raster
-  no_msf_r <- no_msf_ee$
-    reduceToImage(
-      properties = list('MSF'), 
-      reducer = ee$Reducer$first()
-    )$
-    setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
-    updateMask(dhf_mask)
-  
-  # Save image as EE asset
-  task_img <- ee_image_to_asset(no_msf_r,
-                                'non_MSF_countries_masked',
-                                assetId = ,
-                                region = tropics_bb,
-                                crs = 'EPSG:4326',
-                                scale = 1000,
-                                maxPixels = 191434770)
-  task_img$start()
-}
-
-no_msf_r <- ee$Image(no_msf_id)
-
-# Create layer
-no_msf_lyr <- Map$addLayer(no_msf_r, list(palette = c('#bdbdbd')),
-                           name = 'non-MSF', 
-                           opacity = 0.8, shown = FALSE)
-
-no_msf_lyr <- Map$addLayer(no_msf_r, list(palette = c('black')),
-                           name = 'non-MSF', 
-                           opacity = 0.8, shown = FALSE)
+# countries_msf_shp <- file.path(data_dir, 'gadm', 'gadm0_tropics_simp01big9.shp')
+# countries <- st_read(countries_msf_shp) %>% 
+#   mutate(MSF = ifelse(is.na(MSF), 0, 1))
+# 
+# # Upload countries
+# countries_ee <- countries %>% sf_as_ee()
+# 
+# # Filter to MSF countries
+# msf_ee <- countries_ee$filter(ee$Filter$eq('MSF', 1))
+# 
+# # Simplify
+# msf_simp <- msf_ee$map(
+#   function(f) f$simplify(maxError = ee$ErrorMargin(50000, 'meters'))
+# )
+# 
+# # Create outline
+# msf_outline <- ee$Image()$byte()$paint(featureCollection = msf_simp, width = 2)
+# msf_lyr <- Map$addLayer(msf_outline, list(palette = c('#bdbdbd')),
+#                         name = 'MSF operations', shown = FALSE)
+# msf_lyr <- Map$addLayer(msf_outline, list(palette = c('black')),
+#                         name = 'MSF operations', shown = FALSE)
+# 
+# # Get non-MSF countries
+# no_msf_id <- addm('non_MSF_countries_masked')
+# alist <- ee_manage_assetlist(path_asset = addm(""))
+# if(!no_msf_id %in% alist$ID) {
+#   
+#   no_msf_ee <- countries_ee$filter(ee$Filter$neq('MSF', 1))
+#   
+#   # Convert to raster
+#   no_msf_r <- no_msf_ee$
+#     reduceToImage(
+#       properties = list('MSF'), 
+#       reducer = ee$Reducer$first()
+#     )$
+#     setDefaultProjection(crs = 'EPSG:4326', scale = 1000)$
+#     updateMask(dhf_mask)
+#   
+#   # Save image as EE asset
+#   task_img <- ee_image_to_asset(no_msf_r,
+#                                 'non_MSF_countries_masked',
+#                                 assetId = ,
+#                                 region = tropics_bb,
+#                                 crs = 'EPSG:4326',
+#                                 scale = 1000,
+#                                 maxPixels = 191434770)
+#   task_img$start()
+# }
+# 
+# no_msf_r <- ee$Image(no_msf_id)
+# 
+# # Create layer
+# no_msf_lyr <- Map$addLayer(no_msf_r, list(palette = c('#bdbdbd')),
+#                            name = 'non-MSF', 
+#                            opacity = 0.8, shown = FALSE)
+# 
+# no_msf_lyr <- Map$addLayer(no_msf_r, list(palette = c('black')),
+#                            name = 'non-MSF', 
+#                            opacity = 0.8, shown = FALSE)

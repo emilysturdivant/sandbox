@@ -15,6 +15,9 @@ library(tidyverse)
 
 # Initialize ----
 data_dir <- '/Users/emilysturdivant/data'
+raw_dir <- data_dir
+# raw_dir <- '/Volumes/ejs_storage/data/raw_data'
+# data_dir <- '/Volumes/ejs_storage/data'
 
 # Create tropics extent ----
 e <- ext(c(xmin = -180, xmax = 180, ymin = -23.3, ymax = 23.3))
@@ -94,33 +97,34 @@ tm_shape(st_geometry(ocg_pts)) + tm_dots()
 pa_zips <- list.files(
   file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_Public_shp'),
   pattern = ".zip$", full.names=TRUE, recursive = TRUE)
-# 
-# # Unzip
-# unzip_and_filter_pa_polygons <- function(z) {
-#   # z <- pa_zips[[1]]
-#   
-#   # Unzip to temp dir
-#   miao <- tempfile()
-#   unzip(z, exdir = miao)
-#   
-#   # Load shapefile (polygons)
-#   (shp_fp <- list.files(miao, pattern = ".shp$", full.names=TRUE, recursive = TRUE))
-#   pa <- st_read(shp_fp[[2]])
-#   
-#   # Filter
-#   pa <- pa %>% 
-#     filter(MARINE != 2) %>% 
-#     st_simplify(dTolerance = 0.001) 
-#   
-#   # subset polygons to those that intersect tropics rectangle
-#   pa_tropics <- pa[unlist(st_intersects(tropics_rect, pa)),]
-#   
-#   return(pa_tropics)
-# }
-# 
-# pa_tropics <- pa_zips %>% purrr::map_dfr(unzip_and_filter_pa_polygons)
-# pa_tropics %>% 
-#   st_write(file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_polygons_tropics_simp001.gpkg'))
+
+# Unzip
+unzip_and_filter_pa_polygons <- function(z) {
+  # z <- pa_zips[[1]]
+
+  # Unzip to temp dir
+  miao <- tempfile()
+  unzip(z, exdir = miao)
+
+  # Load shapefile (polygons)
+  (shp_fp <- list.files(miao, pattern = ".shp$", full.names=TRUE, recursive = TRUE))
+  pa <- st_read(shp_fp[[2]]) |> st_make_valid()
+
+  # Filter
+  pa <- pa %>%
+    filter(MARINE != 2) %>%
+    st_simplify(dTolerance = 0.001)
+
+  # subset polygons to those that intersect tropics rectangle
+  pa_tropics <- pa[unlist(st_intersects(tropics_rect, pa)),]
+
+  return(pa_tropics)
+}
+
+pa_tropics <- pa_zips %>% purrr::map_dfr(unzip_and_filter_pa_polygons)
+out_fp <- here::here(data_dir, 'protected_areas', 
+                     paste0(basename(tools::file_path_sans_ext()), '_simp001.gpkg'))s
+pa_tropics %>% st_write(out_fp)
 # 
 # # Protected area points ----
 # # pa_zip <- file.path(data_dir, 'protected_areas', 'WDPA_Oct2021_Public_shp', 'WDPA_Oct2021_Public_shp.zip')

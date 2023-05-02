@@ -13,7 +13,7 @@
 #     * add different health metric...
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-source('R/where_next/01_use_rgee.R')
+source(here::here('R/where_next/01_use_rgee.R'))
 
 # Set center
 Map$setCenter(30, 0, zoom = 3)

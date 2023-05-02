@@ -21,9 +21,9 @@ tidy_forest_loss <- function(df) {
     dplyr::select(!starts_with('carbon')) %>%
     # dplyr::select(starts_with('forest'), name) %>% 
     pivot_longer(starts_with('forest_loss'), 
-                 names_to = 'year',
+                 names_to = 'stock_year',
                  values_to = 'forest_loss_ha') %>% 
-    mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
+    mutate(stock_year = str_c(str_extract(stock_year, '\\d{4}'), '-01-01') %>% 
              lubridate::year())
   
   # Return
@@ -36,10 +36,11 @@ tidy_forest_loss_df <- function(df) {
     dplyr::select(!starts_with('forest')) %>%
     # dplyr::select(starts_with('carbon_loss'), HIH_site, type, name) %>% 
     pivot_longer(starts_with('carbon_loss'), 
-                 names_to = 'year',
-                 values_to = 'carbon_loss_MgC') %>% 
-    mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
-             lubridate::year(), )
+                 names_to = 'stock_year',
+                 values_to = 'annual_loss_tC') %>% 
+    mutate(stock_year = str_c(str_extract(stock_year, '\\d{4}'), '-01-01') %>% 
+             lubridate::year(), 
+           change_year = paste0(as.numeric(paste0(20, substr(stock_year, 2, 3))), '-', stock_year))
   
   # Get DF with annual forest area loss
   df_area <- df %>% tidy_forest_loss()
@@ -47,7 +48,7 @@ tidy_forest_loss_df <- function(df) {
   # Join forest carbon and area loss values
   df_tidy <- df_carbon %>% 
     left_join(df_area) |> 
-    mutate(carbon_loss_pct = carbon_loss_MgC / carbon_2000_mgc)
+    mutate(annual_loss_pct = annual_loss_tC / carbon_2000_mgc)
   
   # Return
   return(df_tidy)
@@ -60,9 +61,9 @@ tidy_forest_loss_df_sf <- function(df) {
     dplyr::select(!starts_with('forest')) %>%
     # dplyr::select(starts_with('carbon_loss'), HIH_site, type, name) %>% 
     pivot_longer(starts_with('carbon_loss'), 
-                 names_to = 'year',
-                 values_to = 'carbon_loss_MgC') %>% 
-    mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
+                 names_to = 'stock_year',
+                 values_to = 'annual_loss_tC') %>% 
+    mutate(stock_year = str_c(str_extract(stock_year, '\\d{4}'), '-01-01') %>% 
              lubridate::year(), )
   
   # Get DF with annual forest area loss
@@ -71,9 +72,9 @@ tidy_forest_loss_df_sf <- function(df) {
     dplyr::select(!starts_with('carbon')) %>%
     # dplyr::select(starts_with('forest'), name) %>% 
     pivot_longer(starts_with('forest_loss'), 
-                 names_to = 'year',
+                 names_to = 'stock_year',
                  values_to = 'forest_loss_ha') %>% 
-    mutate(year = str_c(str_extract(year, '\\d{4}'), '-01-01') %>% 
+    mutate(stock_year = str_c(str_extract(stock_year, '\\d{4}'), '-01-01') %>% 
              lubridate::year())
   
   # Join forest carbon and area loss values
@@ -100,8 +101,8 @@ tidy_forest_loss_df_sf <- function(df) {
 get_piecewise_line <- function(df_zone) {
   
   # Get linear regression
-  out.lm <- lm(c_loss_flex ~ year, data = df_zone)
-  dat2 = data.frame(x = df_zone$year, y = out.lm$fitted.values)
+  out.lm <- lm(c_loss_flex ~ stock_year, data = df_zone)
+  dat2 = data.frame(x = df_zone$stock_year, y = out.lm$fitted.values)
   
   # BIC-based selection - throws error when 0 breakpoints are found
   try(dev.off)
@@ -120,15 +121,15 @@ get_piecewise_line <- function(df_zone) {
     # Use selgmented fit if there are breakpoints
     if( os$selection.psi$npsi > 0 ) {
       print('**** Getting line from score-based breakpoints. ****')
-      dat2 = data.frame(x = df_zone$year, y = os$fitted.values)
+      dat2 = data.frame(x = df_zone$stock_year, y = os$fitted.values)
     } 
     
   } else {
     print('**** Getting line from BIC-based breakpoints. ****')
     # Get piecewise trend from os_bic BIC results
     # npsi <- nrow(os_bic$psi)
-    # dat2 = data.frame(x = df_zone$year, y = broken.line(os_bic)$fit)
-    dat2 = data.frame(x = df_zone$year, y = os_bic$fitted.values)
+    # dat2 = data.frame(x = df_zone$stock_year, y = broken.line(os_bic)$fit)
+    dat2 = data.frame(x = df_zone$stock_year, y = os_bic$fitted.values)
   }
 
   return(dat2)
@@ -137,8 +138,8 @@ get_piecewise_line <- function(df_zone) {
 get_piecewise_line_scorebased <- function(df_zone) {
   
   # Get linear regression
-  out.lm <- lm(carbon_loss_MgC ~ year, data = df_zone)
-  dat2 = data.frame(x = df_zone$year, y = out.lm$fitted.values)
+  out.lm <- lm(annual_loss_tC ~ stock_year, data = df_zone)
+  dat2 = data.frame(x = df_zone$stock_year, y = out.lm$fitted.values)
   
   # Score-based breakpoint selection - returns 0 breakpoints without error
   set.seed(12)
@@ -148,7 +149,7 @@ get_piecewise_line_scorebased <- function(df_zone) {
   # Use selgmented fit if there are breakpoints
   if( npsi > 0 ) {
     print('**** Getting line from score-based breakpoints. ****')
-    dat2 = data.frame(x = df_zone$year, y = os$fitted.values)
+    dat2 = data.frame(x = df_zone$stock_year, y = os$fitted.values)
   } 
 
   return(dat2)
@@ -156,7 +157,7 @@ get_piecewise_line_scorebased <- function(df_zone) {
 
 plot_pw_fit <- function(df_zone, div_name, pw_fit, brks, labs, c_units = '%') {
   
-  yrvec <- min(df_zone$year):max(df_zone$year)
+  yrvec <- min(df_zone$stock_year):max(df_zone$stock_year)
   labels <- str_c(str_sub(yrvec-1, 3,4), str_sub(yrvec, 3,4), sep = '-')
   # rm_labs <- labels[seq(2, length(labels), 2)] %>% str_c(collapse = '|')
   # labels <- labels %>% str_replace_all(rm_labs, '')
@@ -171,7 +172,7 @@ plot_pw_fit <- function(df_zone, div_name, pw_fit, brks, labs, c_units = '%') {
   
   # Plot
   p <- df_zone %>% 
-    ggplot(aes(x = year, y = .data[[y_var]])) +
+    ggplot(aes(x = stock_year, y = .data[[y_var]])) +
     geom_point(size = .3, color = 'grey30') +
     geom_line(color = 'grey30', size = .5) + 
     geom_line(data = pw_fit, aes(x = x, y = y), color = 'firebrick3', size = .6) +
