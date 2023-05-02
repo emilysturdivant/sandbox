@@ -43,22 +43,44 @@ params <- list(
   site_var = 'NAME_1'
 )
 
-tifs_params <- list(
-  # list(
-  #   rast_fp = '~/data/Walker_etal_2022/Base_Cur_AGB_MgCha_500m.tif',
-  #   level = 'AGB_mgCha'
-  # ),
+agb_tifs <- list(
   list(
     rast_fp = '~/data/Walker_etal_2022/Base_Cur_AGB_BGB_MgCha_500m.tif',
-    level = 'AGB_BGB_mgCha'
+    level = 'AGB_BGB_mgCha',
+    value_lims = c(0, 250)
   ),
   list(
     rast_fp = '~/data/Walker_etal_2022/Base_Cur_SOC_MgCha_500m.tif',
-    level = 'SOC_mgCha'
+    level = 'SOC_mgCha',
+    value_lims = c(0, 400)
   ),
   list(
     rast_fp = '~/data/Walker_etal_2022/Base_Cur_AGB_BGB_SOC_MgCha_500m.tif',
-    level = 'AGB_BGB_SOC_mgCha'
+    level = 'AGB_BGB_SOC_mgCha',
+    value_lims = c(0, 550)
+  )
+)
+
+lci_tifs <- list(
+  list(
+    rast_fp = '~/repos/carbon-quality-index/data/aggregated/allranked/comp_bq.tif',
+    level = 'BQ'
+  ),
+  list(
+    rast_fp = '~/repos/carbon-quality-index/data/aggregated/allranked/comp_bp.tif',
+    level = 'BP'
+  ),
+  list(
+    rast_fp = '~/repos/carbon-quality-index/data/aggregated/allranked/comp_add.tif',
+    level = 'Add'
+  ),
+  list(
+    rast_fp = '~/repos/carbon-quality-index/data/aggregated/allranked/comp_perm.tif',
+    level = 'Perm'
+  ),
+  list(
+    rast_fp = '~/repos/carbon-quality-index/data/aggregated/allranked/final.tif',
+    level = 'Final'
   )
 )
 
@@ -140,9 +162,9 @@ print_table_by_pool <- function(df, pool_name) {
 }
 
 # Extract values ----
-df_p <- tifs_params %>% 
+df_p <- agb_tifs %>% 
   purrr::map_dfr(extract_values) %>% 
-  mutate(comp_name = factor(level, levels = purrr::map_chr(tifs_params, ~.x$level))) 
+  mutate(comp_name = factor(level, levels = purrr::map_chr(agb_tifs, ~.x$level))) 
 
 df_p %>% saveRDS(here::here(working_dir, 'extracted_vals.rds'))
 df_p <- readRDS(here::here(working_dir, 'extracted_vals.rds'))
@@ -176,19 +198,22 @@ totals <- stats %>%
          across(where(is.character), ~ 
                   str_replace_all(.x, 'M', 'million') %>% 
                   str_replace_all('G', 'billion')))
-totals <- totals %>% 
-  mutate(text = str_glue("The region stores {stock_str} metric tons (tC) of \\
-  woody biomass carbon aboveground (leaves, branches, stems) and \\
-  belowground (roots) with an average density of {dens_str} tons \\
-  of carbon per hectare (tC/ha)*."), 
-         footer = str_glue("*Based on a non-water land area of {area_str} hectares."))
 
 pool_name <- 'AGB_BGB_mgCha'
 png_fp <- here::here('drc_202305', 'outputs', paste0('table_', pool_name, '.png'))
 ft <- stats %>% print_table_by_pool(pool_name)
 save_as_image(ft, png_fp)
-totals %>% filter(comp_name == pool_name) %>% pull(text)
-totals %>% filter(comp_name == pool_name) %>% pull(footer)
+
+total_woody <- totals %>% 
+  filter(comp_name == pool_name) %>% 
+  mutate(text = str_glue("The region stores {stock_str} metric tons (tC) of \\
+              woody biomass carbon aboveground (leaves, branches, stems) and \\
+              belowground (roots) with an average density of {dens_str} tons \\
+              of carbon per hectare (tC/ha)*."), 
+         footer = str_glue("*Based on a non-water land area of {area_str} hectares.")
+         )
+total_woody %>% pull(text)
+totals %>% pull(footer)
 
 
 # data_long <- stats %>%
@@ -246,7 +271,6 @@ totals %>% filter(comp_name == pool_name) %>% pull(footer)
 #     part = "body"
 #   )
 
-
 pool_name <- 'SOC_mgCha'
 png_fp <- here::here('drc_202305', 'outputs', paste0('table_', pool_name, '.png'))
 ft <- stats %>% print_table_by_pool(pool_name)
@@ -262,82 +286,126 @@ totals %>% filter(comp_name == pool_name) %>% pull(text)
 totals %>% filter(comp_name == pool_name) %>% pull(footer)
 
 # Map ----
-
-## Prep polygons ----
-adm1 <- st_read(fp_poly, layer='ADM_ADM_1') %>% 
-  st_transform(st_crs(rr))
-
-# Get bounding box as st_bbox, sfc, and wkt
-bb <- adm1 %>% st_buffer(5000) %>% st_bbox()
-bb_sf <- bb %>% st_as_sfc()
-bb_wkt = bb_sf %>% 
-  st_geometry() %>% 
-  st_transform(st_crs('epsg:4326')) %>% 
-  st_as_text()
-
-adm0_shp <- here::here(poly_dir, 'gadm36_0.shp')
-adm0 <- st_read(adm0_shp, wkt_filter=bb_wkt) %>% 
-  st_transform(st_crs(rr)) %>% 
-  st_simplify(dTolerance=1000)
-
-## Raster ----
-params <- tifs_params[[1]]
-value_lims <- c(0, 250)
-
-params <- tifs_params[[2]]
-value_lims <- c(0,400)
-
-params <- tifs_params[[3]]
-value_lims <- c(0,550)
-
-# Read stars (proxy)
-rr <- stars::read_stars(params$rast_fp)
-
-# Extract values
-ar <- rr[bb_sf] |> 
-  stars::st_as_stars(downsample = 8) %>%
-  as_tibble() %>% 
-  rename(mgcha = 3) %>% 
-  filter(!is.na(mgcha))
-
-## Map ----
-p <-
-  ar %>%
-  ggplot() +
-  geom_raster(aes(x,y, fill = mgcha)) +
+## Functions----
+prep_polys <- function(adm1_fp, crs=st_crs('epsg:4326')) {
+  adm1 <- st_read(adm1_fp, layer='ADM_ADM_1') %>% 
+    st_transform(crs)
   
-  geom_sf(data = adm1 %>% select(1), fill = NA, color = "grey40", size = 0.5) +
-  geom_sf(data = adm1 %>% select(1), fill = NA, color = "white", size = 0.2) +
-  geom_sf(data = adm0 %>% filter(GID_0 != 'COD'), fill = "white", alpha = 0.4, color = NA) +
-  # geom_sf(data = adm0, fill = NA, color = "grey40", size = 0.4) +
-  geom_sf(data = adm0, fill = NA, color = "white") +
-  geom_sf(data = adm0 %>% filter(GID_0 == 'COD'), fill = NA, color = "grey40", size = 0.7) +
-  geom_sf(data = adm0 %>% filter(GID_0 == 'COD'), fill = NA, color = "white") +
+  # Get bounding box as st_bbox, sfc, and wkt
+  bb <- adm1 %>% st_buffer(5000) %>% st_bbox()
+  bb_sf <- bb %>% st_as_sfc()
+  bb_wkt = bb_sf %>% 
+    st_geometry() %>% 
+    st_transform(st_crs('epsg:4326')) %>% 
+    st_as_text()
   
-  colorspace::scale_fill_continuous_sequential("viridis",
-                                               na.value = "transparent",
-                                               name = "Carbon\n(tC/ha)",
-                                               rev = F,
-                                               limits = value_lims,
-                                               oob = scales::squish
-  ) +
-  coord_sf(xlim = c(bb$xmin, bb$xmax),
-           ylim = c(bb$ymin, bb$ymax),
-           expand = F) +
-  ggthemes::theme_map() +
-  theme(
-    axis.title = element_blank(),
-        legend.position = "bottom",
-        legend.direction = "horizontal",
-    legend.margin = margin(0,0,0,0),
-        panel.background = element_rect(fill='#6A90C3', color=NA)
-        ) +
+  adm0_shp <- here::here(poly_dir, 'gadm36_0.shp')
+  adm0 <- st_read(adm0_shp, wkt_filter=bb_wkt) %>% 
+    st_transform(st_crs(rr)) %>% 
+    st_simplify(dTolerance=1000)
   
-  guides(fill = guide_colorbar(barheight = 0.8, barwidth = 10))
-p
+  return(list(adm1=adm1, adm0=adm0, bb_sf=bb_sf))
+}
 
-ggsave(here::here(home_dir, 'outputs', paste0('map_', params$level, '.png')), 
-       plot=p, width=8, height=8.2)
+get_df <- function(rr, bb_sf, downsample=8) {
+  # Extract values
+  ar <- rr[bb_sf] |> 
+    stars::st_as_stars(downsample = downsample) %>%
+    as_tibble() %>% 
+    rename(mgcha = 3) %>% 
+    filter(!is.na(mgcha))
+}
+
+plot_map <- function(ar, adm1, adm0, subject='carbon', value_lims=c(0,250)){
+  p <- ar %>%
+    ggplot() +
+    geom_raster(aes(x,y, fill = mgcha)) +
+    
+    geom_sf(data = adm1 %>% select(1), fill = NA, color = "grey40", size = 0.5) +
+    geom_sf(data = adm1 %>% select(1), fill = NA, color = "white", size = 0.2) +
+    geom_sf(data = adm0 %>% filter(GID_0 != 'COD'), fill = "white", alpha = 0.4, color = NA) +
+    # geom_sf(data = adm0, fill = NA, color = "grey40", size = 0.4) +
+    geom_sf(data = adm0, fill = NA, color = "white") +
+    geom_sf(data = adm0 %>% filter(GID_0 == 'COD'), fill = NA, color = "grey40", size = 0.7) +
+    geom_sf(data = adm0 %>% filter(GID_0 == 'COD'), fill = NA, color = "white")+
+    coord_sf(xlim = c(bb$xmin, bb$xmax),
+             ylim = c(bb$ymin, bb$ymax),
+             expand = F) +
+    ggthemes::theme_map() +
+    theme(
+      axis.title = element_blank(),
+      legend.position = "bottom",
+      legend.direction = "horizontal",
+      legend.margin = margin(0,0,0,0),
+      panel.background = element_rect(fill='#6A90C3', color=NA)
+    ) +
+    guides(fill = guide_colorbar(barheight = 0.8, barwidth = 10))
+  
+  if(subject == 'carbon'){
+    p +
+      colorspace::scale_fill_continuous_sequential("viridis",
+                                                   na.value = "transparent",
+                                                   name = "Carbon\n(tC/ha)",
+                                                   rev = F,
+                                                   limits = value_lims,
+                                                   oob = scales::squish
+      ) 
+  } else if(subject == 'lci') {
+    p +
+      colorspace::scale_fill_continuous_sequential("Inferno",
+                                                   na.value = "transparent",
+                                                   name = "Index\nvalue",
+                                                   rev = F,
+                                                   limits = c(0, 100),
+                                                   oob = scales::squish
+      )
+  }
+
+}
+
+create_map <- function(params, subject='carbon'){
+  
+  # Load raster
+  rr <- stars::read_stars(params$rast_fp)
+  
+  # Conditionally set limits for color scale
+  if(subject=='carbon'){
+    value_lims <- params$value_lims
+  } else if(subject=='lci'){
+    rr <- rr / 100
+    value_lims <- c(0,100)
+  } else {
+    cat('subject argument "', subject, '" not recognized. Accepts values of "carbon" or "lci".')
+    }
+  
+  # Load polygons if not already in environment
+  if(!exists('polys')) polys <- prep_polys(fp_polys, st_crs(rr))
+  
+  # Convert raster to tibble for plotting
+  ar <- get_df(rr, polys$bb_sf, downsample=8)
+  
+  # Plot
+  p <- plot_map(ar, polys$adm1, polys$adm0, subject=subject, value_lims)
+  
+  # Save
+  ggsave(here::here(out_dir, paste0('map_', params$level, '.png')), 
+         plot=p, width=8, height=8.2)
+}
+
+## Carbon maps ----
+rr <- stars::read_stars(agb_tifs[[1]]$rast_fp)
+polys <- prep_polys(fp_polys, st_crs(rr))
+
+# Run for all carbon tifs
+agb_tifs %>% purrr::walk(create_map, subject='carbon')
+
+## LCI maps ----
+rr <- stars::read_stars(lci_tifs[[1]]$rast_fp)
+polys <- prep_polys(fp_polys, st_crs(rr))
+
+# Run for all carbon tifs
+lci_tifs %>% purrr::walk(create_map, subject='lci')
+
 
 # Plot density ridges ----
 # Density ridge plot
