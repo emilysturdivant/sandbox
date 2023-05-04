@@ -24,6 +24,7 @@ library(officer)
 library(janitor)
 
 home_dir <- here::here('drc_202305')
+out_dir <- here::here('drc_202305', 'outputs')
 
 poly_dir <- '/Volumes/ejs_storage/data/raw_data/world_context/gadm'
 fp_polys <- here::here(poly_dir, 'gadm41_COD.gpkg')
@@ -200,7 +201,7 @@ totals <- stats %>%
                   str_replace_all('G', 'billion')))
 
 pool_name <- 'AGB_BGB_mgCha'
-png_fp <- here::here('drc_202305', 'outputs', paste0('table_', pool_name, '.png'))
+png_fp <- here::here(out_dir, paste0('table_', pool_name, '.png'))
 ft <- stats %>% print_table_by_pool(pool_name)
 save_as_image(ft, png_fp)
 
@@ -272,14 +273,14 @@ totals %>% pull(footer)
 #   )
 
 pool_name <- 'SOC_mgCha'
-png_fp <- here::here('drc_202305', 'outputs', paste0('table_', pool_name, '.png'))
+png_fp <- here::here(out_dir, paste0('table_', pool_name, '.png'))
 ft <- stats %>% print_table_by_pool(pool_name)
 save_as_image(ft, png_fp)
 totals %>% filter(comp_name == pool_name) %>% pull(text)
 totals %>% filter(comp_name == pool_name) %>% pull(footer)
 
 pool_name <- 'AGB_BGB_SOC_mgCha'
-png_fp <- here::here('drc_202305', 'outputs', paste0('table_', pool_name, '.png'))
+png_fp <- here::here(out_dir, paste0('table_', pool_name, '.png'))
 ft <- stats %>% print_table_by_pool(pool_name)
 save_as_image(ft, png_fp)
 totals %>% filter(comp_name == pool_name) %>% pull(text)
@@ -292,9 +293,9 @@ prep_polys <- function(adm1_fp, crs=st_crs('epsg:4326')) {
     st_transform(crs)
   
   # Get bounding box as st_bbox, sfc, and wkt
-  bb <- adm1 %>% st_buffer(5000) %>% st_bbox()
-  bb_sf <- bb %>% st_as_sfc()
-  bb_wkt = bb_sf %>% 
+  bb <- adm1 %>% st_buffer(20000) %>% st_bbox()
+  bb_wkt <- bb %>% 
+    st_as_sfc() %>% 
     st_geometry() %>% 
     st_transform(st_crs('epsg:4326')) %>% 
     st_as_text()
@@ -304,30 +305,37 @@ prep_polys <- function(adm1_fp, crs=st_crs('epsg:4326')) {
     st_transform(st_crs(rr)) %>% 
     st_simplify(dTolerance=1000)
   
-  return(list(adm1=adm1, adm0=adm0, bb_sf=bb_sf))
+  return(list(adm1=adm1, adm0=adm0, bb=bb))
 }
 
-get_df <- function(rr, bb_sf, downsample=8) {
+get_df <- function(rr, clip_poly, downsample=8) {
   # Extract values
-  ar <- rr[bb_sf] |> 
+  ar <- rr[clip_poly] |> 
     stars::st_as_stars(downsample = downsample) %>%
     as_tibble() %>% 
     rename(mgcha = 3) %>% 
     filter(!is.na(mgcha))
 }
 
-plot_map <- function(ar, adm1, adm0, subject='carbon', value_lims=c(0,250)){
+plot_map <- function(ar, adm1, adm0, bb, subject='carbon', 
+                     value_lims=c(0,250), legend_title=NULL, palette='viridis'){
+  
+  roi <- adm0 %>% filter(GID_0 == 'COD')
+  
+  invmask <- st_as_sfc(bb) %>% 
+    st_difference(roi)
+  
   p <- ar %>%
     ggplot() +
     geom_raster(aes(x,y, fill = mgcha)) +
     
-    geom_sf(data = adm1 %>% select(1), fill = NA, color = "grey40", size = 0.5) +
+    geom_sf(data = adm1 %>% select(1), fill = NA, color = "grey40", size = 0.7) +
     geom_sf(data = adm1 %>% select(1), fill = NA, color = "white", size = 0.2) +
-    geom_sf(data = adm0 %>% filter(GID_0 != 'COD'), fill = "white", alpha = 0.4, color = NA) +
-    # geom_sf(data = adm0, fill = NA, color = "grey40", size = 0.4) +
     geom_sf(data = adm0, fill = NA, color = "white") +
-    geom_sf(data = adm0 %>% filter(GID_0 == 'COD'), fill = NA, color = "grey40", size = 0.7) +
-    geom_sf(data = adm0 %>% filter(GID_0 == 'COD'), fill = NA, color = "white")+
+    # geom_sf(data = adm0 %>% filter(GID_0 != 'COD'), fill = "white", alpha = 0.6, color = NA) +
+    geom_sf(data = invmask, fill = "grey40", alpha = 0.6, color = NA) +
+    geom_sf(data = roi, fill = NA, color = "grey40", size = 0.7) +
+    geom_sf(data = roi, fill = NA, color = "white")+
     coord_sf(xlim = c(bb$xmin, bb$xmax),
              ylim = c(bb$ymin, bb$ymax),
              expand = F) +
@@ -336,34 +344,30 @@ plot_map <- function(ar, adm1, adm0, subject='carbon', value_lims=c(0,250)){
       axis.title = element_blank(),
       legend.position = "bottom",
       legend.direction = "horizontal",
-      legend.margin = margin(0,0,0,0),
+      legend.margin = margin(0,0,0,10),
+      legend.text = element_text(size=rel(1.2)),
+      legend.title = element_text(size=rel(1.2), margin=margin(0,10,0,0)),
       panel.background = element_rect(fill='#6A90C3', color=NA)
     ) +
-    guides(fill = guide_colorbar(barheight = 0.8, barwidth = 10))
+    guides(fill = guide_colorbar(barheight = 0.8, barwidth = 5)) +
+    
+    scale_fill_viridis_c(option=palette,
+                         direction=1,
+                         name = legend_title,
+                         limits = value_lims,
+                         n.breaks = 2,
+                         oob = scales::squish) 
+    # colorspace::scale_fill_continuous_sequential(palette,
+    #                                              na.value = "transparent",
+    #                                              name = legend_title,
+    #                                              rev = F,
+    #                                              limits = value_lims,
+    #                                              n.breaks = 2,
+    #                                              oob = scales::squish) 
   
-  if(subject == 'carbon'){
-    p +
-      colorspace::scale_fill_continuous_sequential("viridis",
-                                                   na.value = "transparent",
-                                                   name = "Carbon\n(tC/ha)",
-                                                   rev = F,
-                                                   limits = value_lims,
-                                                   oob = scales::squish
-      ) 
-  } else if(subject == 'lci') {
-    p +
-      colorspace::scale_fill_continuous_sequential("Inferno",
-                                                   na.value = "transparent",
-                                                   name = "Index\nvalue",
-                                                   rev = F,
-                                                   limits = c(0, 100),
-                                                   oob = scales::squish
-      )
-  }
-
 }
 
-create_map <- function(params, subject='carbon'){
+create_map <- function(params, polys=NULL, subject='carbon', downsample=5, palette='viridis'){
   
   # Load raster
   rr <- stars::read_stars(params$rast_fp)
@@ -371,21 +375,27 @@ create_map <- function(params, subject='carbon'){
   # Conditionally set limits for color scale
   if(subject=='carbon'){
     value_lims <- params$value_lims
+    legend_title = "Carbon\n(tC/ha)"
   } else if(subject=='lci'){
     rr <- rr / 100
     value_lims <- c(0,100)
+    legend_title = "Index\nvalue"
   } else {
     cat('subject argument "', subject, '" not recognized. Accepts values of "carbon" or "lci".')
     }
   
   # Load polygons if not already in environment
-  if(!exists('polys')) polys <- prep_polys(fp_polys, st_crs(rr))
+  if(is.null(polys)) polys <- prep_polys(fp_polys, st_crs(rr))
   
   # Convert raster to tibble for plotting
-  ar <- get_df(rr, polys$bb_sf, downsample=8)
+  clip_poly <- st_as_sfc(polys$bb)
+  # clip_poly <- polys$adm0 %>% filter(GID_0 == 'COD')
+  ar <- get_df(rr, clip_poly, downsample=downsample)
   
   # Plot
-  p <- plot_map(ar, polys$adm1, polys$adm0, subject=subject, value_lims)
+  p <- plot_map(ar, polys$adm1, polys$adm0, bb=polys$bb, subject=subject, 
+                value_lims, legend_title=legend_title,
+                palette=palette)
   
   # Save
   ggsave(here::here(out_dir, paste0('map_', params$level, '.png')), 
@@ -397,15 +407,19 @@ rr <- stars::read_stars(agb_tifs[[1]]$rast_fp)
 polys <- prep_polys(fp_polys, st_crs(rr))
 
 # Run for all carbon tifs
-agb_tifs %>% purrr::walk(create_map, subject='carbon')
+agb_tifs %>% purrr::walk(create_map, 
+                            polys=polys, 
+                            subject='carbon', 
+                            downsample=1, 
+                            palette='viridis')
 
 ## LCI maps ----
-rr <- stars::read_stars(lci_tifs[[1]]$rast_fp)
-polys <- prep_polys(fp_polys, st_crs(rr))
-
 # Run for all carbon tifs
-lci_tifs %>% purrr::walk(create_map, subject='lci')
-
+lci_tifs[1] %>% purrr::walk(create_map, 
+                            polys=polys, 
+                            subject='lci', 
+                            downsample=1, 
+                            palette='viridis')
 
 # Plot density ridges ----
 # Density ridge plot
