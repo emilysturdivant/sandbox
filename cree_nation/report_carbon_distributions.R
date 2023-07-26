@@ -30,6 +30,9 @@ df <- sf::st_read(fp_polys)
 df <- df |> 
   mutate(name = 'Eeyou Istchee')
 
+# Check total area
+df %>% st_transform(st_crs('EPSG:26918')) %>% st_area() %>% units::set_units('ha')
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Get parameters ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

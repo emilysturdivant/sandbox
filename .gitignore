@@ -37,3 +37,27 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# 
+*/*.tif
+drc_*/**/*.tif
+
+drc_*/**/*.png
+hih_*/*.png
+hih_*/**/*.png
+cree_*/**/*.png
+cree_*/*.png
+otpp_*/**/*.png
+otpp_*/*.png
+indo_*/**/*.png
+indo_*/*.png
+
+drc_*/**/*.rds
+otpp_*/**/*.rds
+
+cree_*/*/*.docx
+otpp_*/*/*.csv
+hih_*/*/*.csv
+hih_*/*.pdf
+
+hih_*/working_data/

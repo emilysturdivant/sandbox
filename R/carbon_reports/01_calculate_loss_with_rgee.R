@@ -12,7 +12,7 @@
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Initialize ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# source(here::here('R/carbon_reports', '000_initialize.R'))
+source(here::here('R/carbon_reports', '000_initialize.R'))
 
 # Load libraries 
 library(rgee)
@@ -22,10 +22,11 @@ ee_Initialize()
 # final_polys_dir <- '/Volumes/GoogleDrive/My Drive/3_Biomass_projects/HIH/data/hih_sites'
 # export_path <- '/Volumes/GoogleDrive/My Drive/Earth Engine Exports'
 # final_polys_dir <- '~/Downloads/hih_sites'
-# export_path <- here::here('data/gee_exports')
-# 
-# shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
-# (polys_fp <- shps[[9]])
+final_polys_dir <- '~/data/hih/requests/GPNP'
+export_path <- here::here('data/gee_exports')
+
+shps <- list.files(final_polys_dir, 'shp$', full.names = TRUE)
+(polys_fp <- shps[[1]])
 # 
 # site_name_var <- 'HIH_site' # Estonia: 'name'
 # site_div_var <- 'name' # Estonia: 'div1'
