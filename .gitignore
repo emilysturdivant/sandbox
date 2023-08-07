@@ -41,6 +41,15 @@ vignettes/*.pdf
 # 
 */*.tif
 drc_*/**/*.tif
+*/**/*.tif
+*/**/*.xml
+*/**/*.qmd
+*/**/*.geojson
+*/**/*.cpg
+*/**/*.dbf
+*/**/*.shp
+*/**/*.shx
+*/**/*.prj
 
 drc_*/**/*.png
 hih_*/*.png

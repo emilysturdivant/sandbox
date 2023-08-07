@@ -79,7 +79,7 @@ loss_df %>%
   scale_y_continuous(labels=percent, name='Loss') +
   scale_x_continuous(labels=label_yearintervals, 
                      n.breaks=6, name='') + 
-  facet_wrap(vars(site), scales='free') +
+  facet_wrap(vars(site), scales='fixed') +
   theme_bw() 
 
 fp <- here::here(out_dir, paste0('plots_30m_loss_pct.png'))
@@ -144,8 +144,8 @@ df_pw <- div_names %>% purrr::map_dfr(
 
 # Save as CSV 
 df_pw %>% 
-  dplyr::select(Year, loss_mgc, pw_fit) %>% 
-  mutate(Year = Year %>% str_sub(1,4)) %>% 
+  # dplyr::select(Year, loss_mgc, pw_fit) %>% 
+  # mutate(Year = Year %>% str_sub(1,4)) %>% 
   readr::write_csv(here::here(out_dir, 'piecewise_loss_mgc.csv'))
 
 ## Plot ----
@@ -200,10 +200,10 @@ df <- site_df %>%
   full_join(df_pw, by=c(stock_year='Year', div_name='div_name', site='site'))
 
 # labels
-cat_labels <- c(loss_tC='500 m loss', 
-  net_change_tC='500 m net change', 
-  loss_mgc='30 m loss', 
-  pw_fit='Piecewise trend (30 m)')
+cat_labels <- c(net_change_tC='Net change from\n500-m carbon', 
+                loss_tC='Loss from\n500-m carbon', 
+                loss_mgc='Loss from\n30-m tree cover', 
+                pw_fit='Piecewise trend\n(30-m)')
 
 # Plot lines 
 df %>% 
@@ -226,9 +226,11 @@ df %>%
                         labels=cat_labels,
                         name='') + 
   scale_x_continuous(labels=label_yearintervals, name='') + 
-  scale_y_continuous(labels=scales::label_number(scale_cut=scales::cut_short_scale()), name='Carbon stock lost (tC)') + 
-  facet_wrap('site', scales='free_y') +
-  theme_bw()
+  scale_y_continuous(labels=label_number(scale_cut=cut_short_scale()), 
+                     name='Carbon stock lost (tC)') + 
+  facet_wrap('site', scales='fixed') +
+  theme_bw() +
+  theme(legend.key.size = unit(2, 'lines'))
 
 fp <- here::here(out_dir, paste0('plots_carbon_lost_30m_v_500m_pw.png'))
-ggsave(fp, width=7, height=3)
+ggsave(fp, width=7, height=4)

@@ -33,6 +33,10 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL){
   
   # Load, clip, and mask raster to AOI polygons
   r_lossyr <- terra::rast(hansen_vrt, win=pols) %>% mask(pols)
+  # r_lossyr <- terra::rast(hansen_vrt)
+  # r_lossyr1 <- r_lossyr %>% crop(pols)
+  # r_lossyr %>% st_bbox()
+  # pols %>% st_bbox()
   r_tc2000 <- terra::rast(tc2000_vrt, win=pols) %>% mask(pols)
   r_mgha <- terra::rast(agb_vrt, win=pols) %>% mask(pols)
   
@@ -137,7 +141,7 @@ get_pw_line_fc <- function(df_zone, y_var='forest_area_ha', x_var='year') {
   try(dev.off)
   try(rm(os_bic))
   set.seed(1)
-  os_bic <- try(selgmented(out.lm, #Kmax=4, type="bic", 
+  os_bic <- try(selgmented(out.lm, Kmax=4, type="bic", 
                            return.fit = TRUE, msg = FALSE))
   
   if(any(class(os_bic) == 'try-error')) {
@@ -162,3 +166,163 @@ get_pw_line_fc <- function(df_zone, y_var='forest_area_ha', x_var='year') {
   pw_fit <- dat2
   return(pw_fit)
 }
+
+abbreviate_year <- function(x){
+  str_glue("'{x}") %>% str_remove_all('(?<!\\d)20')
+}
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Plot -----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+plot_gross_changes <- function(df, facet_scales='free', fp=NULL, facet_ncol=NULL, facets_on=TRUE, ...) { 
+  
+  df1 <- df %>% 
+    filter( !(is.na(annual_gain_tC) & is.na(annual_loss_tC))) %>% 
+    rename(Gain='annual_gain_tC', `Net change`='annual_net_change_tC', Loss='annual_loss_tC') %>% 
+    select(site, div_name, stock_year, change_year, Loss, Gain) %>% 
+    gather(key = 'key', value = 'value', Loss, Gain, 
+           factor_key = T)
+  
+  get_labs <- function(x){
+    str_glue("'{x-1}-'{x}") %>% str_remove_all('(?<!\\d)20')
+  }
+  
+  p <- df1 %>% 
+    ggplot(aes(x = stock_year, y = value, color=key, fill=key)) +
+    geom_line(show.legend = FALSE) +
+    geom_area(alpha = 0.7, show.legend=FALSE) + 
+    scale_y_continuous(label = label_number(scale_cut=cut_short_scale())) +
+    scale_x_continuous(labels = get_labs, name=NULL) +
+    scale_color_manual(name = '', values = c('Gain'='#30C9A0', 'Loss'='#F5A011')) +
+    scale_fill_manual(name = '', values = c('Gain'='#30C9A0', 'Loss'='#F5A011')) +
+    theme_bw() +
+    ylab('Annual change (tC)')
+  
+  if(facets_on){
+    p <- p +
+      facet_wrap(vars(div_name),
+                 scales = facet_scales,
+                 ncol=facet_ncol)
+  }
+  
+  if(!is.null(fp)){
+    ggsave(fp, plot=p, ...)
+  }
+  
+  return(p)
+  
+}
+
+plot_gross_changes_pct <- function(df, facet_scales='free', fp=NULL, facet_ncol=NULL, facets_on=TRUE, ...) { 
+  
+  df1 <- df %>% 
+    mutate(pct_gain = annual_gain_tC / lag(carbon_stock_tC),
+           pct_loss = annual_loss_tC / lag(carbon_stock_tC)) %>% 
+    filter( !(is.na(annual_gain_tC) & is.na(annual_loss_tC))) %>% 
+    rename(Gain='pct_gain', Loss='pct_loss') %>% 
+    select(site, div_name, stock_year, change_year, Loss, Gain) %>% 
+    gather(key = 'key', value = 'value', Loss, Gain, 
+           factor_key = T)
+  
+  get_labs <- function(x){
+    str_glue("'{x-1}-'{x}") %>% str_remove_all('(?<!\\d)20')
+  }
+  
+  p <- df1 %>% 
+    ggplot(aes(x = stock_year, y = value, color=key, fill=key)) +
+    geom_line(show.legend = FALSE) +
+    geom_area(alpha = 0.7, show.legend=FALSE) + 
+    scale_y_continuous(labels = scales::label_percent()) +
+    scale_x_continuous(labels = get_labs, name=NULL) +
+    scale_color_manual(name = '', values = c('Gain'='#30C9A0', 'Loss'='#F5A011')) +
+    scale_fill_manual(name = '', values = c('Gain'='#30C9A0', 'Loss'='#F5A011')) +
+    theme_bw() +
+    # ylab('Annual change (tC)') +
+    ylab('Annual change relative to stock in previous year (%)')
+  
+  if(facets_on){
+    p <- p +
+      facet_wrap(vars(div_name),
+                 scales = facet_scales,
+                 ncol=facet_ncol)
+  }
+  
+  if(!is.null(fp)){
+    ggsave(fp, plot=p, ...)
+  }
+  
+  return(p)
+  
+}
+
+plot_net_changes <- function(df, facet_scales='free', fp=NULL, facet_ncol=NULL, facets_on=TRUE, ...) { 
+  
+  df1 <- df %>% 
+    filter( !(is.na(annual_gain_tC) & is.na(annual_loss_tC))) %>% 
+    rename(Gain='annual_gain_tC', `Net change`='annual_net_change_tC', Loss='annual_loss_tC') %>% 
+    select(site, div_name, stock_year, change_year, `Net change`) %>% 
+    gather(key = 'key', value = 'value', `Net change`, 
+           factor_key = T)
+  
+  get_labs <- function(x){
+    str_glue("'{x-1}-'{x}") %>% str_remove_all('(?<!\\d)20')
+  }
+  
+  p <- df1 %>% 
+    ggplot(aes(x = stock_year, y = value)) +
+    geom_bar(stat = 'identity', fill='grey50') + 
+    scale_y_continuous(label = label_number(scale_cut=cut_short_scale())) +
+    scale_x_continuous(labels = get_labs, name=NULL) +
+    theme_bw() +
+    ylab('Annual change (tC)')
+  
+  if(facets_on){
+    p <- p +
+      facet_wrap(vars(div_name), scales = facet_scales, ncol=facet_ncol)
+  }
+  
+  if(!is.null(fp)){
+    ggsave(fp, plot=p, ...)
+  }
+  
+  return(p)
+}
+
+plot_ann_stock <- function(df, facet_scales='free', fp=NULL, facet_ncol=NULL, facets_on=TRUE, ...) { 
+  
+  df1 <- df %>% 
+    mutate(pct_change = annual_net_change_tC / lag(carbon_stock_tC) ) %>% 
+    select(site, div_name, stock_year, carbon_stock_tC, pct_change) %>% 
+    gather(key = 'key', value = 'value', carbon_stock_tC, 
+           factor_key = T)
+  
+  p <- df1 %>% 
+    ggplot(aes(x = stock_year, y = value, fill = pct_change)) +
+    geom_bar(stat = 'identity') + 
+    scale_y_continuous(label = label_number(scale_cut=cut_short_scale()), 
+                       expand = expansion(mult=c(0, 0.05))) +
+    scale_x_continuous(label = abbreviate_year, name=NULL) +
+    scale_fill_gradient2(name = str_wrap('% change relative to previous year', 11),
+                         low = '#F5A011', 
+                         mid = 'grey90', 
+                         high = '#30C9A0', 
+                         na.value = 'grey80',
+                         labels = label_percent(),
+                         limits = c(-0.005, 0.005), 
+                         oob = squish) +
+    ylab('Standing stock (tC)') +
+    theme_bw()
+  
+  if(facets_on){
+    p <- p +
+      facet_wrap(vars(div_name), scales = facet_scales, ncol=facet_ncol) +
+      theme(strip.text = element_text(size=8))
+  }
+  
+  if(!is.null(fp)){
+    ggsave(fp, plot=p, ...)
+  }
+  
+  return(p)
+}
+
