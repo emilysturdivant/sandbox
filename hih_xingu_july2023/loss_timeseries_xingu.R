@@ -135,27 +135,46 @@ ggsave(fp, plot=p, width=figwidth, height=figheight)
 # Create piecewise regression plots ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+# Get piecewise regression for total loss
 y_var='loss_mgc'
-x_var='Year'
-
 div_names <- loss_df %>% distinct(site) %>% pull(site)
 loss_df_inv <- loss_df %>% 
   mutate(!!y_var := .data[[y_var]] * -1)
-df_pw <- div_names %>% purrr::map_dfr(
+df_pw_mgc <- div_names %>% purrr::map_dfr(
   function(x){
     df_zone <- loss_df_inv %>% filter(site == x)
-    pw_fit <- get_pw_line_fc(df_zone, y_var=y_var, x_var=x_var)
+    pw_fit <- get_pw_line_fc(df_zone, y_var=y_var, x_var='Year')
+    pw_fit[['div_name']] <- x
     df_zone2 <- pw_fit %>% 
-      right_join(df_zone, by=c(x = x_var)) %>% 
+      # right_join(df_zone, by=c(x = x_var)) %>%
       rename(all_of(c(Year = 'x', pw_fit = 'y')))
   }
 )
 
+# Get piecewise regression for percents
+y_var='loss_pct_carbon'
+div_names <- loss_df %>% distinct(div_name) %>% pull(div_name)
+loss_df_inv <- loss_df %>% 
+  mutate(!!y_var := .data[[y_var]] * -1)
+df_pw_pct <- div_names %>% purrr::map_dfr(
+  function(x){
+    df_zone <- loss_df_inv %>% filter(div_name == x)
+    pw_fit <- get_pw_line_fc(df_zone, y_var=y_var, x_var='Year')
+    pw_fit[['div_name']] <- x
+    df_zone2 <- pw_fit %>% 
+      # right_join(df_zone, by=c(x = x_var)) %>%
+      rename(all_of(c(Year = 'x', pw_fit = 'y')))
+  }
+)
+
+df_pw <- df_pw_pct %>% 
+  full_join(df_pw_mgc, by=c('Year', 'div_name'), suffix=c('_pct', '_mgc')) %>% 
+  full_join(loss_df, by=c('Year', 'div_name'))
+
 # Save as CSV 
 df_pw %>% 
-  # dplyr::select(Year, loss_mgc, pw_fit) %>% 
-  # mutate(Year = Year %>% str_sub(1,4)) %>% 
-  readr::write_csv(here::here(out_dir, 'piecewise_loss_mgc.csv'))
+  readr::write_csv(here::here(out_dir, 'piecewise_loss.csv'))
+df_pw <- readr::read_csv(here::here(out_dir, 'piecewise_loss.csv'))
 
 ## Plot ----
 val_var <- y_var
@@ -208,68 +227,223 @@ div_order <- site_df %>%
   distinct(div_name) %>% 
   pull(div_name)
 
+site_df <- site_df %>% 
+  mutate(div_name = factor(div_name, levels=div_order)) 
+
+# Plot 500m data ----
+## Stock ----
+# Stock from 500m colored by percent net change
+facet_ncol = 7
+fp <- here::here(out_dir, 'annual_stock_fixed_rel03.png')
+site_df %>% 
+  plot_ann_stock(fp = fp, width=figwidth+4, height=figheight+1, 
+                           facet_scales='fixed', 
+                           facet_ncol = facet_ncol)
+
+# Stock from 500m colored by percent net change
+facet_ncol = 3
+fp <- here::here(out_dir, 'annual_stock_free.png')
+site_df %>% 
+  plot_ann_stock(fp = fp, width=figwidth+4, height=figheight+1, 
+                 facet_scales='free_y', 
+                 facet_ncol = facet_ncol)
+
+## Gains and losses ----
+facet_ncol = 3
+fp <- here::here(out_dir, 'annual_gain_loss_fixed_pct.png')
+site_df %>% 
+  plot_gross_changes(fp = fp, width=figwidth+4, height=figheight+1, 
+                 facet_scales='fixed', 
+                 facet_ncol = facet_ncol,
+                 use_percents=T)
+
+p_small <- site_df %>% 
+  filter(str_detect(div_name, 'RESEX|Xipaya|Trincheira')) %>% 
+  plot_gross_changes(width=figwidth+4, height=figheight+1, 
+                     facet_scales='fixed', 
+                     facet_ncol = facet_ncol,
+                     use_percents=T)
+
+p_big <- site_df %>% 
+  filter(str_detect(div_name, 'RESEX|Xipaya|Trincheira', negate=T)) %>% 
+  plot_gross_changes(width=figwidth+4, height=figheight+1, 
+                     facet_scales='fixed', 
+                     facet_ncol = 4,
+                     use_percents=T)
+# Layout and save
+design <- '1111
+2223'
+p <- p_big + p_small + guide_area() + 
+  plot_layout(guides='collect', design=design)
+p
+fp <- here::here(out_dir, paste0('annual_gain_loss_pct_2fixed.png'))
+ggsave(fp, plot=p, width=figwidth+2, 
+       height=figheight)
+
+# Subset with larger changes
+df_subset <- site_df %>% filter(str_detect(div_name, 'RESEX|Xipaya|Paquiçamba', negate=T))
+p_large <- plot_gross_changes(df_subset, 
+                                facet_scales='fixed', 
+                                width=figwidth+2, 
+                                height=figheight,
+                                facet_ncol = 4)
+
+# Subset with smaller changes
+df_subset <- site_df %>% filter(str_detect(div_name, 'RESEX|Xipaya|Paquiçamba'))
+p_small <- plot_gross_changes(df_subset, 
+                                facet_scales='fixed', 
+                                width=figwidth+2, 
+                                height=figheight,
+                                facet_ncol = 3,
+                                use_percents = T)
+
+# Layout and save
+design <- '1111
+2223'
+p <- p_large + p_small + guide_area() + 
+  plot_layout(guides='collect', design=design)
+p
+fp <- here::here(out_dir, paste0('annual_gain_loss_2fixed.png'))
+ggsave(fp, plot=p, width=figwidth+2, 
+       height=figheight)
+
+## Net change ----
+facet_ncol = 3
+fp <- here::here(out_dir, 'annual_netchange_fixed_pct.png')
+site_df %>% 
+  plot_net_changes(fp = fp, width=figwidth+4, height=figheight+1, 
+                     facet_scales='fixed', 
+                     facet_ncol = facet_ncol,
+                     use_percents=T)
+
+p_small <- site_df %>% 
+  filter(str_detect(div_name, 'RESEX|Xipaya|Trincheira')) %>% 
+  plot_net_changes(width=figwidth+4, height=figheight+1, 
+                     facet_scales='fixed', 
+                     facet_ncol = facet_ncol,
+                     use_percents=T)
+
+p_big <- site_df %>% 
+  filter(str_detect(div_name, 'RESEX|Xipaya|Trincheira', negate=T)) %>% 
+  plot_net_changes(width=figwidth+4, height=figheight+1, 
+                     facet_scales='fixed', 
+                     facet_ncol = 4,
+                     use_percents=T)
+# Layout and save
+design <- '1111
+2223'
+p <- p_big + p_small + guide_area() + 
+  plot_layout(guides='collect', design=design)
+p
+fp <- here::here(out_dir, paste0('annual_netchange_pct_2fixed.png'))
+ggsave(fp, plot=p, width=figwidth+2, 
+       height=figheight)
+
 ## Join 30m piecewise ----
+# Calculate percents and rename columns prior to joining
+site_df <- site_df %>% 
+  group_by(div_name) %>% 
+  mutate(pct_gain_500 = annual_gain_tC / first(carbon_stock_tC),
+         pct_loss_500 = annual_loss_tC / first(carbon_stock_tC),
+         pct_netchange_500 = annual_net_change_tC / first(carbon_stock_tC)
+  ) %>% 
+  rename(mgc_gain_500 = annual_gain_tC, 
+         mgc_loss_500 = annual_loss_tC, 
+         mgc_netchange_500 = annual_net_change_tC
+  ) %>% 
+  ungroup()
+
+# Rename 30m columns prior to joining
+df_pw <- df_pw %>% 
+  rename(
+    mgc_loss_30 = loss_mgc,
+         pct_loss_30 = loss_pct_carbon,
+         # mgc_loss_30 = loss_30_tC,
+         # pct_loss_30 = loss_30_pct,
+         pct_pw_fit = pw_fit_pct,
+         mgc_pw_fit = pw_fit_mgc) %>%
+  mutate(mgc_loss_30 = mgc_loss_30 * -1,
+         pct_loss_30 = pct_loss_30 * -1)
+
+# Join
 df <- site_df %>% 
   full_join(df_pw, by=c(stock_year='Year', div_name='div_name', site='site')) %>% 
   mutate(div_name = factor(div_name, levels=div_order))
 
 ## Plot ----
-# Stock from 500m colored by percent net change
-facet_ncol = 7
-fp <- here::here(out_dir, 'annual_stock_fixed.png')
-site_df %>% plot_ann_stock(fp = fp, width=figwidth+2, height=figheight+2, 
-                           facet_scales='fixed', 
-                           facet_ncol = facet_ncol)
+# Change in metric tons
+fp <- here::here(out_dir, paste0('plot_carbon_30m_v_500m_pw_mgc.png'))
+plot_comp_30mpw_500m(df, fp=fp, facet_scales='free_y', 
+                     width=figwidth+2, 
+                     height=figheight,
+                     use_percents = F)
 
-plot_comp_30mpw_500m <- function(df, facet_scales='free', fp=NULL, facet_ncol=NULL, facets_on=TRUE, ...) {
-  
-  # labels
-  cat_labels <- c(net_change_tC='Net change from\n500-m carbon', 
-                  loss_tC='Loss from\n500-m carbon', 
-                  loss_mgc='Loss from\n30-m tree cover', 
-                  pw_fit='Piecewise trend\n(30-m)')
-  
-  # Plot lines 
-  p <- df %>% 
-    # mutate(loss_mgc = loss_mgc * -1) %>% 
-    pivot_longer(any_of(c('annual_loss_tC', 'annual_net_change_tC', 'loss_mgc', 'pw_fit')), 
-                 names_to='var', values_to='tC', names_prefix='annual_') %>% 
-    ggplot(aes(x=stock_year, y=tC, color=var, lty=var)) +
-    geom_hline(aes(yintercept=0), color='darkgray') +
-    geom_line() +
-    scale_color_manual(values=c(loss_tC='darkblue', 
-                                net_change_tC='darkblue', 
-                                loss_mgc='grey80', 
-                                pw_fit='#F5A011'),
-                       labels=cat_labels,
-                       name='') + 
-    scale_linetype_manual(values=c(loss_tC=1, 
-                                   net_change_tC=2, 
-                                   loss_mgc=1, 
-                                   pw_fit=1),
-                          labels=cat_labels,
-                          name='') + 
-    scale_x_continuous(labels=label_yearintervals, name='') + 
-    scale_y_continuous(labels=label_number(scale_cut=cut_short_scale()), 
-                       name='Carbon stock lost (tC)') +
-    theme_bw() +
-    theme(legend.key.size = unit(2, 'lines'))
-  
-  if(facets_on) {
-    p <- p + 
-      facet_wrap('div_name', scales=facet_scales, ncol=facet_ncol)
-  }
-  
-  if(!is.null(fp)){
-    ggsave(fp, plot=p, ...)
-  }
-  
-  return(p)
-  
-}
+# Change in percents
+# Change in percents: subset with larger changes
+df_subset <- df %>% filter(str_detect(div_name, 'Xingu|Cachoeira|Apyterewa|Paquiçamba'))
+p_large <- plot_comp_30mpw_500m(df_subset, 
+                     facet_scales='fixed', 
+                     width=figwidth+2, 
+                     height=figheight,
+                     facet_ncol = 4,
+                     use_percents = T)
 
-fp <- here::here(out_dir, paste0('plots_carbon_lost_30m_v_500m_pw.png'))
-plot_comp_30mpw_500m(df, fp=fp, facet_scales='free_y', width=figwidth+2, height=figheight)
+# Change in percents: subset with smaller changes
+df_subset <- df %>% filter(str_detect(div_name, 'Xingu|Cachoeira|Apyterewa|Paquiçamba', negate=T))
+p_small <- plot_comp_30mpw_500m(df_subset, 
+                     facet_scales='fixed', 
+                     width=figwidth+2, 
+                     height=figheight,
+                     facet_ncol = 3,
+                     use_percents = T)
+
+# Layout and save
+design <- '1111
+2223'
+p <- p_large + p_small + guide_area() + 
+  plot_layout(guides='collect', design=design)
+p
+fp <- here::here(out_dir, paste0('plot_carbon_30m_v_500m_pw_pcts.png'))
+ggsave(fp, plot=p, width=figwidth+2, 
+       height=figheight)
+
+# 
+# df_subset <- df %>% filter(str_detect(div_name, 'TI Xingu'))
+# p1 <- plot_comp_30mpw_500m(df_subset, facet_scales='fixed')
+# p1
+# 
+# df_subset <- df %>% filter(str_detect(div_name, 'TI Apyterewa|TI Cachoeira|TI Trincheira'))
+# p2 <- plot_comp_30mpw_500m(df_subset, facet_scales='fixed')
+# p2
+# 
+# df_subset <- df %>% filter(str_detect(div_name, 'RESEX|TI Trincheira'))
+# p3 <- plot_comp_30mpw_500m(df_subset, facet_scales='fixed')
+# p3
+# 
+# df_subset <- df %>% filter(str_detect(div_name, 'TI Xipaya|TI Paquiçamba'))
+# p4 <- plot_comp_30mpw_500m(df_subset, facet_scales='fixed')
+# p4
+# 
+# (p1 / p2 / p3 / p4) + plot_layout(guides = 'collect')
+# 
+# #
+# df_subset <- df %>% filter(str_detect(div_name, 'TI Xingu'))
+# p1 <- plot_comp_30mpw_500m(df_subset, facet_scales='fixed')
+# p1
+# 
+# df_subset <- df %>% filter(str_detect(div_name, 'TI Apyterewa|TI Cachoeira|TI Trincheira'))
+# p2 <- plot_comp_30mpw_500m(df_subset, facet_scales='fixed')
+# p2
+# 
+# df_subset <- df %>% filter(str_detect(div_name, 'RESEX|TI Xipaya|TI Paquiçamba'))
+# p3 <- plot_comp_30mpw_500m(df_subset, facet_scales='fixed')
+# p3
+# # 
+# # df_subset <- df %>% filter(str_detect(div_name, 'TI Xipaya|TI Paquiçamba'))
+# # p4 <- plot_comp_30mpw_500m(df_subset, facet_scales='fixed')
+# # p4
+# 
+# (p1 / p2 / p3 / p4) + plot_layout(guides = 'collect')
 
 # One site only ----
 plot_site <- function(div) {
@@ -283,12 +457,15 @@ plot_site <- function(div) {
   # Layout and save
   p <- ((p_comp30 / p_nc ) | p_as) + plot_layout(guides='collect')
   
-  site_code <- df_sub %>% distinct(site_code) %>% pull(site_code)
+  site_code <- df_sub %>% distinct(site_code) %>% filter(!is.na(site_code)) %>% pull(site_code)
   fp <- here::here(out_dir, paste0('plots_', site_code, '.png'))
   ggsave(fp, plot=p, width=7, height=5)
   
   return(p)
 }
+
+site_df %>% 
+  rename(site=params$site_var)
 
 div_names <- site_df %>% distinct(div_name) %>% pull() %>% as.vector()
 for( div in div_names ){
