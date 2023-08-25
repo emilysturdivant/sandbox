@@ -40,7 +40,6 @@ vignettes/*.pdf
 
 # 
 */*.tif
-drc_*/**/*.tif
 */**/*.tif
 */**/*.xml
 */**/*.qmd
