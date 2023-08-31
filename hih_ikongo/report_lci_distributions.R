@@ -28,7 +28,7 @@ out_dir <- here::here(home_dir, 'outputs')
 dir.create(out_dir, recursive=TRUE)
 
 site_poly_dir <- '~/data/hih_sites/Madagascar_Ikongo'
-fp_polys <- here::here(site_poly_dir, 'Ikongo_communes_BNRGC_2018.shp')
+fp_polys <- here::here(site_poly_dir, 'Ikongo_communes_BNRGC2018_MSF17.geojson')
 
 # poly_dir <- '/Volumes/ejs_storage/data/raw_data/world_context/gadm'
 
@@ -195,7 +195,7 @@ print_flextable <- function(df_out) {
 
 # Extract values ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-out_rds <- here::here(working_dir, 'extracted_vals_LCI_v20230824.rds')
+out_rds <- here::here(working_dir, 'extracted_vals_LCI_v20230830.rds')
 
 df_p <- lci_tifs %>% 
   purrr::map_dfr(extract_values_lci) %>% 
@@ -216,49 +216,149 @@ lu <- tibble(comp_name = comp_codes, component = comp_levels) %>%
 stats <- create_summary_table(df_p) %>% 
   ungroup() %>% 
   left_join(lu)
+# 
+# # Calculate percentile ----
+# df_p <- readRDS(out_rds)
+# df_sortedLCI <- df_p %>% 
+#   filter(comp_name == 'Final') %>% 
+#   arrange(value)
+# percentile <- ecdf(df_sortedLCI$value)
+# df_pctl <- df_sortedLCI %>% 
+#   mutate(value = percentile(value) * 100)
+# 
+# # Calculate percentiles for each component
+# df_filt <- df_p %>% 
+#   filter(str_detect(comp_name, 'BQ$|BP|Add$|Perm')) %>% 
+#   arrange(value)
+# 
+# df1 <- filter(df_filt, comp_name=='BQ')
+# fn1 <- ecdf(df1$value)
+# df_bq <- mutate(df1, value = fn1(value) * 100)
+# 
+# df1 <- filter(df_filt, comp_name=='BP')
+# fn1 <- ecdf(df1$value)
+# df_bp <- mutate(df1, value = fn1(value) * 100)
+# 
+# df1 <- filter(df_filt, comp_name=='Add')
+# fn1 <- ecdf(df1$value)
+# df_add <- mutate(df1, value = fn1(value) * 100)
+# 
+# df1 <- filter(df_filt, comp_name=='Perm')
+# fn1 <- ecdf(df1$value)
+# df_perm <- mutate(df1, value = fn1(value) * 100)
+# 
+# df_pctls <- bind_rows(df_bq, df_bp, df_add, df_perm)
+# 
+# # Calculate overall LCI - DOESN'T WORK BECAUSE NO PIX IDs
+# df_pctls <- df_pctls %>% 
+#   rowwise() %>% 
+#   mutate(LCI = mean(c(BQ, BP, Add, Perm)))
+# 
+# df_pctl20 <- df_pctl %>% 
+#   group_by(comp_name) %>% 
+#   mutate(value = (value - min(value)) / 
+#            (max(value) - min(value)) * 19 + 1, 
+#          value = 21 - value)
+# 
+# stats <- df_pctl20 %>% 
+#   create_summary_table() %>% 
+#   ungroup() %>% 
+#   left_join(lu)
+# 
+# # Normalize scores...
+# df_norm20 <- df_p %>% 
+#   group_by(comp_name) %>% 
+#   mutate(value = (value - min(value)) / 
+#            (max(value) - min(value)) * 19 + 1, 
+#          value = 21 - value)
+# 
+# stats <- df_norm20 %>% 
+#   create_summary_table() %>% 
+#   ungroup() %>% 
+#   left_join(lu)
 
+plot_as_dots <- function(df, xlim=c(25, 100), val_var='Mean', invert_palette=FALSE){
+  p <- df %>% 
+  ggplot(aes(y=name, x=.data[[val_var]], color=.data[[val_var]])) +
+    geom_point(stat='identity', show.legend = FALSE) +
+    scale_y_discrete(limits=rev) +
+    scale_x_continuous(limits=xlim, expand = c(0,1.5)) +
+    xlab(NULL) +
+    ylab(NULL) +
+    facet_grid(cols=vars(component)) +
+    theme_bw()
+  
+  if(invert_palette) {
+    p <- p +
+      scale_color_continuous(high = "#132B43", low = "#56B1F7")
+  }
+  
+  return(p)
+}
+
+# Normalize scores 1-20 and invert so low value is good ---- 
+stats <- stats %>% 
+  group_by(comp_name) %>% 
+  mutate(Mean_norm20 = (Mean - min(Mean)) / 
+           (max(Mean) - min(Mean)) * 19 + 1, 
+         Mean_inv20 = 21 - Mean_norm20)
+
+means_inv20_4csv <- stats %>%
+  pivot_wider(id_cols='name', values_from='Mean_inv20', names_from='comp_name') %>% 
+  select(Commune=name, LCI_Overall=Final, Biophysical_Quality=BQ, 
+         Biophysical_Potential=BP, Additionality_Potential=Add, 
+         Risk_to_Permanence=Perm, BQ_CurCarbon, Add_HistLoss) %>% 
+  mutate(across(where(is.numeric), ~ round(.x, 1))) %>% 
+  readr::write_csv(here::here(out_dir, 'Ikongo_LCI_scores_20to1.csv'))
+
+# LCI and Component scores
 stats %>% 
   filter(str_detect(comp_name, 'Add_|BQ_', negate=TRUE)) %>% 
-  ggplot(aes(y=name, x=Mean, color=Mean)) +
-  geom_point(stat='identity', show.legend = FALSE) +
-  scale_y_discrete(limits=rev) +
-  scale_x_continuous(limits=c(25, 100), expand = c(0,0)) +
-  # scale_color_viridis_c() +
-  xlab(NULL) +
-  ylab(NULL) +
-  facet_grid(cols=vars(component)) +
-  theme_bw()
+  plot_as_dots(xlim=c(0, 20), val_var='Mean_inv20', 
+               invert_palette = TRUE)
 
-ggsave(here::here(out_dir, paste0('component_scores_facets.png')), 
+ggsave(here::here(out_dir, paste0('LCI_comps_20to1_byCommune.png')), 
        width=8, height=3)
 
+# Selected subcomponent scores
 stats %>% 
   filter(str_detect(comp_name, 'Add_|BQ_')) %>% 
-  ggplot(aes(y=name, x=Mean, color=Mean)) +
-  geom_point(stat='identity', show.legend = FALSE) +
-  scale_y_discrete(limits=rev) +
-  scale_x_continuous(limits=c(25, 100), expand = c(0,1.5)) +
-  # scale_color_viridis_c() +
-  xlab(NULL) +
-  ylab(NULL) +
-  facet_grid(cols=vars(component)) +
-  theme_bw() +
-  theme(axis.text.x = )
-
-ggsave(here::here(out_dir, paste0('subcomp_scores_2facets.png')), 
+  plot_as_dots(xlim=c(0, 20), val_var='Mean_inv20', 
+               invert_palette = TRUE)
+ggsave(here::here(out_dir, paste0('LCI_subcomps_2facets_20to1.png')), 
        width=4, height=3)
 
-
 # Print table ----
+
+format_ft <- function(ft){
+  ft %>% 
+    font(fontname = 'Helvetica Neue', part = 'all') %>%
+    fontsize(size = 9, part = 'all') %>%
+    bold(part = 'header') %>% 
+    align(part = 'header', align = 'center') %>% 
+    valign(part = 'header', valign = 'bottom') %>% 
+    align(j = 'name', align = 'left', part = 'header') %>% 
+    set_formatter_type(fmt_double = "%.02f") %>% 
+    colformat_double(digits = 1) %>% 
+    bold(j = 'name') %>% 
+    bg(part = 'body', i = seq(1, nrow(df_out), 2), bg = "#EFEFEF") %>% 
+    hline_top(border = fp_border(width = 1), part = 'all') %>% 
+    hline_bottom(border = fp_border(width = 1), part = 'all') %>% 
+    width(width = 1, unit = 'in') %>% 
+    width(j = 'name', width = 1.5, unit = 'in')
+}
+
 df_out <- stats %>% 
   filter(str_detect(comp_name, 'Add_|BQ_', negate=TRUE)) %>% 
-  pivot_wider(id_cols='name', values_from='Mean', names_from='comp_name')
+  pivot_wider(id_cols='name', values_from='Mean_inv20', names_from='comp_name')
 
 ft <- df_out %>% 
-  # arrange(desc(Final)) %>% 
+  select(name, Final, BQ, BP, Add, Perm) %>% 
   flextable() %>% 
   mk_par(j = 'name', part = 'header', 
          value = as_paragraph('')) %>% 
+  mk_par(j = 'Final', part = 'header',
+         value = as_paragraph('LCI Overall')) %>%
   mk_par(j = 'BQ', part = 'header',
          value = as_paragraph('Biophysical Quality')) %>%
   mk_par(j = 'BP', part = 'header',
@@ -267,35 +367,20 @@ ft <- df_out %>%
          value = as_paragraph('Additionality Potential')) %>%
   mk_par(j = 'Perm', part = 'header',
          value = as_paragraph('Risk to Permanence')) %>%
-  mk_par(j = 'Final', part = 'header',
-         value = as_paragraph('LCI')) %>%
-  font(fontname = 'Helvetica Neue', part = 'all') %>%
-  fontsize(size = 9, part = 'all') %>%
-  bold(part = 'header') %>% 
-  align(part = 'header', align = 'center') %>% 
-  valign(part = 'header', valign = 'bottom') %>% 
-  align(j = 'name', align = 'left', part = 'header') %>% 
-  set_formatter_type(fmt_double = "%.0f") %>% 
-  colformat_double(digits = 0) %>% 
-  bold(j = 'name') %>% 
-  bg(part = 'body', i = seq(1, nrow(df_out), 2), bg = "#EFEFEF") %>% 
-  hline_top(border = fp_border(width = 1), part = 'all') %>% 
-  hline_bottom(border = fp_border(width = 1), part = 'all') %>% 
-  width(width = 1.1, unit = 'in') %>% 
-  width(j = 'name', width = 2, unit = 'in')
+  format_ft()
 
 ft
-png_fp <- here::here(out_dir, paste0('table_component_scores.png'))
+png_fp <- here::here(out_dir, paste0('LCI_comps_20to1_table.png'))
 save_as_image(ft, png_fp)
-
 
 # Print table ----
 df_out <- stats %>% 
   filter(str_detect(comp_name, 'Add_|BQ_')) %>% 
-  pivot_wider(id_cols='name', values_from='Mean', names_from='comp_name')
+  pivot_wider(id_cols='name', values_from='Mean_inv20', names_from='comp_name')
 
 ft <- df_out %>% 
-  # arrange(desc(Final)) %>% 
+  rowwise() %>%
+  mutate(Average = mean(c(BQ_CurCarbon, Add_HistLoss), na.rm=T)) %>% 
   flextable() %>% 
   mk_par(j = 'name', part = 'header', 
          value = as_paragraph('')) %>% 
@@ -303,31 +388,11 @@ ft <- df_out %>%
          value = as_paragraph('Historical Forest Loss')) %>%
   mk_par(j = 'BQ_CurCarbon', part = 'header',
          value = as_paragraph('Carbon Storage')) %>%
-  font(fontname = 'Helvetica Neue', part = 'all') %>%
-  fontsize(size = 9, part = 'all') %>%
-  bold(part = 'header') %>% 
-  align(part = 'header', align = 'center') %>% 
-  valign(part = 'header', valign = 'bottom') %>% 
-  align(j = 'name', align = 'left', part = 'header') %>% 
-  set_formatter_type(fmt_double = "%.0f") %>% 
-  colformat_double(digits = 0) %>% 
-  bold(j = 'name') %>% 
-  bg(part = 'body', i = seq(1, nrow(df_out), 2), bg = "#EFEFEF") %>% 
-  hline_top(border = fp_border(width = 1), part = 'all') %>% 
-  hline_bottom(border = fp_border(width = 1), part = 'all') %>% 
-  width(width = 1, unit = 'in') %>% 
-  width(j = 'name', width = 2, unit = 'in')
+  format_ft()
 
 ft
-png_fp <- here::here(out_dir, paste0('table_subcomponent_scores.png'))
+png_fp <- here::here(out_dir, paste0('LCI_subcomps_20to1_table.png'))
 save_as_image(ft, png_fp)
-
-df_out <- stats %>% 
-  pivot_wider(id_cols='name', values_from='Mean', names_from='comp_name')
-
-df_out %>% 
-  mutate(across(where(is.numeric), ~ round(.x))) %>% 
-  readr::write_csv(here::here(out_dir, 'Ikongo_LCI_scores.csv'))
 
 # Map ----
 ## Functions----

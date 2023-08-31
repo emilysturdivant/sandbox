@@ -322,3 +322,86 @@ df %>%
 
 fp <- here::here(out_dir, paste0('plots_carbon_lost_30m_v_500m_pw.png'))
 ggsave(fp, width=7, height=4)
+
+
+
+
+
+
+
+# Plot 500m data ----
+
+agb_id <- 'agb500m_y03_20'
+df_csv <- here::here(home_dir, 'co_outputs', str_c(agb_id, '.csv'))
+df <- readr::read_csv(df_csv)
+
+## Prep 500m df ----
+# Standardize column names and calculate density
+site_df <- df %>% 
+  rename(site = params$site_var, 
+         div_name = params$subdiv_var) %>%
+  mutate(Dens_tCha = carbon_stock_tC / area_ha, 
+         Stock_MtC = carbon_stock_tC * 1e-6, 
+         Area_Mha = area_ha * 1e-6
+  )
+
+# Sort subdivisions by carbon stock in last year
+endyr <- site_df %>% slice_max(stock_year) %>% distinct(stock_year) %>% pull(stock_year)
+div_order <- site_df %>% 
+  filter(stock_year == endyr) %>% 
+  arrange(desc(Dens_tCha)) %>% 
+  distinct(div_name) %>% 
+  pull(div_name)
+
+site_df <- site_df %>% 
+  mutate(div_name = factor(div_name, levels=div_order)) 
+
+site_df <- site_df %>% 
+  group_by(div_name) %>% 
+  mutate(pct_gain_500 = annual_gain_tC / first(carbon_stock_tC),
+         pct_loss_500 = annual_loss_tC / first(carbon_stock_tC),
+         pct_netchange_500 = annual_net_change_tC / first(carbon_stock_tC)
+  ) %>% 
+  rename(mgc_gain_500 = annual_gain_tC, 
+         mgc_loss_500 = annual_loss_tC, 
+         mgc_netchange_500 = annual_net_change_tC
+  ) %>% 
+  ungroup()
+
+## Stock from 500m colored by pct net change ----
+figwidth = 5
+figheight = 6
+
+# Y Fixed
+facet_ncol = 2
+fp <- here::here(out_dir, 'annual_stock_fixed_rel03.png')
+site_df %>% 
+  plot_ann_stock(fp = fp, width=figwidth+4, height=figheight+1, 
+                 facet_scales='fixed', 
+                 facet_ncol = facet_ncol)
+
+# Y Free
+facet_ncol = 3
+fp <- here::here(out_dir, 'annual_stock_free.png')
+site_df %>% 
+  plot_ann_stock(fp = fp, width=figwidth+4, height=figheight+1, 
+                 facet_scales='free_y', 
+                 facet_ncol = facet_ncol)
+
+## Gains and losses ----
+facet_ncol = 3
+fp <- here::here(out_dir, 'annual_gain_loss_fixed_pct.png')
+site_df %>% 
+  plot_gross_changes(fp = fp, width=figwidth+4, height=figheight+1, 
+                     facet_scales='fixed', 
+                     facet_ncol = facet_ncol,
+                     use_percents=T)
+
+## Net change ----
+facet_ncol = 3
+fp <- here::here(out_dir, 'annual_netchange_fixed_pct.png')
+site_df %>% 
+  plot_net_changes(fp = fp, width=figwidth+4, height=figheight+1, 
+                   facet_scales='fixed', 
+                   facet_ncol = facet_ncol,
+                   use_percents=T)
