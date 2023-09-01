@@ -39,10 +39,6 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL){
   
   # Load, clip, and mask raster to AOI polygons
   r_lossyr <- terra::rast(hansen_vrt, win=pols) %>% mask(pols)
-  # r_lossyr <- terra::rast(hansen_vrt)
-  # r_lossyr1 <- r_lossyr %>% crop(pols)
-  # r_lossyr %>% st_bbox()
-  # pols %>% st_bbox()
   r_tc2000 <- terra::rast(tc2000_vrt, win=pols) %>% mask(pols)
   r_mgha <- terra::rast(agb_vrt, win=pols) %>% mask(pols)
   
@@ -56,10 +52,6 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL){
   r_fc00 <- compare(r_tc2000, 25, ">", falseNA=TRUE)
   r_areaha_fc00 <- r_areaha * r_fc00
   names(r_areaha_fc00) <- 'fc_area_2000'
-  
-  # Add 2000 carbon stock and area to polygons
-  pols <- r_mgc %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
-  pols <- r_areaha_fc00 %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
   
   # Create annual loss rasters ----
   # Convert loss year and 2000 carbon to annual layers of area and carbon lost
@@ -86,40 +78,48 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL){
     rast()
   
   # Sum annual losses ----
+  
+  qtm(r_annloss$f2018)
+  
+  # Add 2000 carbon stock and area to polygons
+  pols <- r_mgc %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
+  pols <- r_areaha_fc00 %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
+  
   # Extract
   sums <- r_annloss %>% 
     extract(pols, fun=sum, na.rm=TRUE, bind=TRUE) %>% 
     st_as_sf() %>% 
     st_drop_geometry() %>% 
     rename(div_name=params$subdiv_var, 
-           site=params$site_var)
+           site=params$site_var) %>% 
+    mutate(across(mgc_2000:last_col(), ~ replace_na(.x, 0)))
   
   # Tidy area lost
   loss_ha <- sums %>% 
-    select(div_name, area_ha, contains('a20')) %>% 
+    dplyr::select(div_name, area_ha, contains('a20')) %>% 
     pivot_longer(starts_with('a20'), 
                  names_to='Year', names_prefix='a', 
                  values_to='loss_ha') %>% 
     mutate(loss_pct_area = loss_ha / area_ha) %>% 
-    select(-area_ha)
+    dplyr::select(-area_ha)
   
   # Tidy forest area lost
   loss_fc_ha <- sums %>% 
-    select(div_name, fc_area_2000, contains('f20')) %>% 
+    dplyr::select(div_name, fc_area_2000, contains('f20')) %>% 
     pivot_longer(starts_with('f20'), 
                  names_to='Year', names_prefix='f', 
                  values_to='loss_fc_ha') %>% 
     mutate(loss_pct_fc_area = loss_fc_ha / fc_area_2000) %>% 
-    select(-fc_area_2000)
+    dplyr::select(-fc_area_2000)
   
   # Tidy carbon lost and combine with area
   loss_df <- sums %>% 
-    select(div_name, site, mgc_2000, contains('c20')) %>%
+    dplyr::select(div_name, site, mgc_2000, contains('c20')) %>%
     pivot_longer(starts_with('c20'), 
                  names_to='Year', names_prefix='c', 
                  values_to='loss_mgc') %>% 
     mutate(loss_pct_carbon = loss_mgc / mgc_2000) %>% 
-    select(-mgc_2000) %>% 
+    dplyr::select(-mgc_2000) %>% 
     full_join(loss_ha) %>% 
     full_join(loss_fc_ha) %>% 
     mutate(Year = as.numeric(Year))
@@ -129,6 +129,108 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL){
   }
   
   return(loss_df)
+}
+
+extract_zonal_sums_500m <- function(params, out_csv=NULL){
+  
+  fp_polys = params$polys
+  agb_vrt = params$agb500_fp
+  
+  # Set up year vectors
+  years <- seq(from = params$years[1], to = params$years[2], by = 1)
+  y <- seq(from = params$years[1]-1, to = params$years[2], by = 1)
+  d.yrs <- paste0('d', substr(y[-length(y)], start = 3, stop = 4), '.',
+                  substr(y[-1], start = 3, stop = 4))
+  
+  # Load and prep data ----
+  # Load and reproject polygons to match MODIS
+  pols <- st_read(fp_polys) %>% # Load from shapefile
+    st_transform(st_crs(terra::rast(agb_vrt))) %>%
+    # select(!starts_with('auxiliary')) %>%
+    select(div_name=params$subdiv_var,
+           site=params$site_var) %>% 
+    mutate(area_ha = st_area(geometry) %>% set_units('ha') %>% drop_units())
+  
+  # Load, clip, and mask raster to AOI polygons\
+  r_mgha <- terra::rast(agb_vrt, win=pols) %>% mask(pols)
+  names(r_mgha) <- str_c('y', years)
+  
+  # Convert biomass density (Mg/ha) to carbon stock (MgC)
+  r_mgc <- r_mgha * 0.5 * cellSize(r_mgha, unit='ha')
+  
+  # Annual change in carbon stock per pixel
+  r_mgc_diff <- diff(r_mgc)
+  
+  # Annual losses and gains ----
+  
+  ## Gains
+  r_mgc_gains <- classify(r_mgc_diff, matrix(c(-Inf, 0, 0), ncol=3, byrow=TRUE))
+  p_mgc_gains <- r_mgc_gains %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
+  df_gains <- p_mgc_gains %>%
+    st_as_sf() %>%
+    st_drop_geometry() %>% 
+    pivot_longer(starts_with('y'), 
+                 names_to='Year', names_prefix='y', 
+                 values_to='annual_gain_tC')
+  
+  ## Losses
+  r_mgc_losses <- classify(r_mgc_diff, matrix(c(0, Inf, 0), ncol=3, byrow=TRUE))
+  p_mgc_losses <- r_mgc_losses %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
+  df_losses <- p_mgc_losses %>%
+    st_as_sf() %>%
+    st_drop_geometry() %>% 
+    pivot_longer(starts_with('y'), 
+                 names_to='Year', names_prefix='y', 
+                 values_to='annual_loss_tC')
+  
+  df_change <- df_gains %>% 
+    full_join(df_losses) %>% 
+    mutate(netchange2 = annual_gain_tC + annual_loss_tC)
+  
+  # Add 2000 carbon stock and area to polygons
+  p_mgc <- r_mgc %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
+  df_stock <- p_mgc %>%
+    st_as_sf() %>%
+    st_drop_geometry() %>% 
+    pivot_longer(starts_with('y'), 
+                 names_to='Year', names_prefix='y', 
+                 values_to='carbon_stock_tC') %>% 
+    group_by(div_name) %>% 
+    mutate(netchange1 = carbon_stock_tC - lag(carbon_stock_tC)) %>% 
+    ungroup()
+  
+  # Compare and warn
+  flag_df <- df_stock %>% 
+    full_join(df_change) %>% 
+    mutate(flag = netchange1 - netchange2) %>% 
+    filter(!is.na(flag))
+  
+  if(any(abs(flag_df$flag) > 1e-8)) {
+    warning(paste("Net changes aggregated to the polygon are different", 
+                  "when calculated from stock vs. from gains and losses.", 
+                  "Using net changes calculated from stock totals."))
+  }
+  
+  df_out <- df_stock %>% 
+    full_join(df_change) %>% 
+    mutate(stock_year = as.numeric(Year),
+           change_year = paste0(stock_year-1, '-', stock_year)) %>% 
+    select(site, 
+           div_name, 
+           stock_year,
+           area_ha,
+           carbon_stock_tC,
+           change_year,
+           annual_gain_tC,
+           annual_loss_tC,
+           annual_net_change_tC = netchange1) %>%
+    mutate(across(ends_with('tC'), ~ round(.x, 2)))
+  
+  if( !is.null(out_csv) ){
+    df_out %>% readr::write_csv(out_csv)
+  }
+  
+  return(df_out)
 }
 
 get_pw_line_fc <- function(df_zone, y_var='forest_area_ha', x_var='year') {

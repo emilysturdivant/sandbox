@@ -1,6 +1,6 @@
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Script to:
-#     * View Carbon pool values distributions for input polygons - DRC
+#     * View Carbon pool values distributions for input polygons - Ikongo
 # Requires:
 #     * Biomass GeoTIFs 
 #     * Polygons
@@ -395,8 +395,10 @@ png_fp <- here::here(out_dir, paste0('LCI_subcomps_20to1_table.png'))
 save_as_image(ft, png_fp)
 
 # Map ----
-## Functions----
-prep_polys <- function(adm1_fp, crs=st_crs('epsg:4326')) {
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+prep_polys <- function(adm1_fp, crs=st_crs('epsg:4326'), adm0_fp=NULL) {
   
   if(str_detect(adm1_fp, 'gpkg$')) {
     adm1 <- st_read(adm1_fp, layer='ADM_ADM_1') %>% 
@@ -411,13 +413,21 @@ prep_polys <- function(adm1_fp, crs=st_crs('epsg:4326')) {
   bb_wkt <- bb %>% 
     st_as_sfc() %>% 
     st_geometry() %>% 
-    st_transform(st_crs('epsg:4326')) %>% 
+    st_transform(crs) %>% 
     st_as_text()
   
-  adm0_shp <- here::here(poly_dir, 'gadm36_0.shp')
-  adm0 <- st_read(adm0_shp, wkt_filter=bb_wkt) %>% 
-    st_transform(st_crs(rr)) %>% 
-    st_simplify(dTolerance=1000)
+  if( !is.null(adm0_fp) ) {
+    if( file.exists(adm0_fp) ){
+      # adm0_fp <- here::here(poly_dir, 'gadm36_0.shp')
+      adm0 <- st_read(adm0_fp, wkt_filter=bb_wkt) %>% 
+        st_transform(crs) %>% 
+        st_simplify(dTolerance=1000)
+    } else {
+      
+    }
+  } else {
+    adm0 = NULL
+  }
   
   return(list(adm1=adm1, adm0=adm0, bb=bb))
 }
@@ -431,13 +441,17 @@ get_df <- function(rr, clip_poly, downsample=8) {
     filter(!is.na(mgcha))
 }
 
-plot_map <- function(ar, adm1, adm0, bb, subject='carbon', 
+plot_map <- function(ar, adm1, adm0=NULL, bb, subject='carbon', 
                      value_lims=c(0,250), legend_title=NULL, 
                      palette='viridis', 
                      GID_0 = 'AUS'){
   
-  roi <- adm0 %>% filter(GID_0 == GID_0)
-  
+  if(!is.null(adm0)){
+    roi <- adm0 %>% filter(GID_0 == GID_0)
+  } else {
+    roi <- adm1
+  }
+
   invmask <- st_as_sfc(bb) %>% 
     st_difference(roi)
   
@@ -446,16 +460,21 @@ plot_map <- function(ar, adm1, adm0, bb, subject='carbon',
     geom_raster(aes(x,y, fill = mgcha)) +
     
     geom_sf(data = adm1 %>% select(1), fill = NA, color = "grey40", size = 0.7) +
-    geom_sf(data = adm1 %>% select(1), fill = NA, color = "white", size = 0.2) +
-    geom_sf(data = adm0, fill = NA, color = "white") +
-    # geom_sf(data = adm0 %>% filter(GID_0 != 'COD'), fill = "white", alpha = 0.6, color = NA) +
+    geom_sf(data = adm1 %>% select(1), fill = NA, color = "white", size = 0.2)
+  
+  if(!is.null(adm0)){
+    p <- p +
+      geom_sf(data = adm0, fill = NA, color = "white")
+  }
+
+  p <- p +
     geom_sf(data = invmask, fill = "grey40", alpha = 0.6, color = NA) +
     geom_sf(data = roi, fill = NA, color = "grey40", size = 0.7) +
     geom_sf(data = roi, fill = NA, color = "white")+
     coord_sf(xlim = c(bb$xmin, bb$xmax),
              ylim = c(bb$ymin, bb$ymax),
              expand = F,
-             crs= sf::st_crs(3112)) +
+             crs= sf::st_crs(29738)) +
     ggthemes::theme_map() +
     theme(
       axis.title = element_blank(),
@@ -474,7 +493,8 @@ plot_map <- function(ar, adm1, adm0, bb, subject='carbon',
                          limits = value_lims,
                          n.breaks = 2,
                          oob = scales::squish) 
-    # colorspace::scale_fill_continuous_sequential(palette,
+  p  
+  # colorspace::scale_fill_continuous_sequential(palette,
     #                                              na.value = "transparent",
     #                                              name = legend_title,
     #                                              rev = F,
@@ -494,7 +514,7 @@ create_map <- function(params, polys=NULL, subject='carbon', downsample=5, palet
     value_lims <- params$value_lims
     legend_title = "Carbon\n(tC/ha)"
   } else if(subject=='lci'){
-    rr <- rr / 100
+    # rr <- rr / 100
     value_lims <- c(0,100)
     legend_title = "Index\nvalue"
   } else {
@@ -506,13 +526,16 @@ create_map <- function(params, polys=NULL, subject='carbon', downsample=5, palet
   
   # Convert raster to tibble for plotting
   clip_poly <- st_as_sfc(polys$bb)
-  # clip_poly <- polys$adm0 %>% filter(GID_0 == 'COD')
   ar <- get_df(rr, clip_poly, downsample=downsample)
   
   # Plot
-  p <- plot_map(ar, adm1=polys$adm1, adm0=polys$adm0, 
-                bb=polys$bb, subject=subject, 
-                value_lims, legend_title=legend_title,
+  p <- plot_map(ar, 
+                adm1=polys$adm1, 
+                adm0=polys$adm0, 
+                bb=polys$bb, 
+                subject=subject, 
+                value_lims, 
+                legend_title=legend_title,
                 palette=palette)
   
   # Save
@@ -524,23 +547,23 @@ create_map <- function(params, polys=NULL, subject='carbon', downsample=5, palet
 rr <- stars::read_stars(lci_tifs[[1]]$rast_fp)
 polys <- prep_polys(fp_polys, st_crs(rr))
 
-# Run for all carbon tifs
-agb_tifs[3] %>% purrr::walk(create_map, 
-                            polys=polys, 
-                            subject='carbon', 
-                            downsample=1, 
-                            palette='viridis')
-
-params <- agb_tifs[[3]]
-# Plot
-# ar <- stars::read_stars(agb_tifs[[3]]$rast_fp)
+# # Run for all carbon tifs
+# agb_tifs[3] %>% purrr::walk(create_map, 
+#                             polys=polys, 
+#                             subject='carbon', 
+#                             downsample=1, 
+#                             palette='viridis')
 # 
-# p <- plot_map(ar, polys$adm1, polys$adm0, bb=polys$bb, subject=subject, 
-#               value_lims, legend_title=legend_title,
-#               palette=palette)
+# params <- agb_tifs[[3]]
+# # Plot
+# # ar <- stars::read_stars(agb_tifs[[3]]$rast_fp)
+# # 
+# # p <- plot_map(ar, polys$adm1, polys$adm0, bb=polys$bb, subject=subject, 
+# #               value_lims, legend_title=legend_title,
+# #               palette=palette)
 
 ## LCI maps ----
-polys <- st_read(fp_polys)
+# polys <- st_read(fp_polys)
 
 # Run for all carbon tifs
 lci_tifs[1] %>% purrr::walk(create_map, 

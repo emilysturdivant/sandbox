@@ -389,7 +389,8 @@ p_large <- plot_comp_30mpw_500m(df_subset,
                      use_percents = T)
 
 # Change in percents: subset with smaller changes
-df_subset <- df %>% filter(str_detect(div_name, 'Xingu|Cachoeira|Apyterewa|Paquiçamba', negate=T))
+df_subset <- df %>% 
+  filter(str_detect(div_name, 'Xingu|Cachoeira|Apyterewa|Paquiçamba', negate=T))
 p_small <- plot_comp_30mpw_500m(df_subset, 
                      facet_scales='fixed', 
                      width=figwidth+2, 
@@ -471,104 +472,4 @@ div_names <- site_df %>% distinct(div_name) %>% pull() %>% as.vector()
 for( div in div_names ){
   print(div)
   plot_site(div)
-}
-
-# UNTESTED - Get zonal sums from 500m data ----
-extract_zonal_sums_500m <- function(params, out_csv=NULL){
-  
-  fp_polys = params$polys
-  agb_vrt = params$agb500_fp
-  
-  # Load and prep data ----
-  # Load and reproject polygons
-  pols <- st_read(fp_polys) %>% # Load from shapefile
-    st_transform(st_crs('SR-ORG:6842')) %>% 
-    mutate(area_ha = st_area(geometry) %>% set_units('ha') %>% drop_units())
-  
-  # Load, clip, and mask raster to AOI polygons\
-  r_mgha <- terra::rast(agb_vrt, win=pols) %>% mask(pols)
-  
-  # Area of each pixel
-  r_areaha <- cellSize(r_lossyr, unit='ha')
-  
-  # convert biomass density (Mg/ha) to carbon stock (MgC)
-  r_mgc <- r_mgha * 0.5 * r_areaha; names(r_mgc) <- 'mgc_2000'
-  
-  # Apply the 25% threshold to get forest area in 2000
-  r_fc00 <- compare(r_tc2000, 25, ">", falseNA=TRUE)
-  r_areaha_fc00 <- r_areaha * r_fc00
-  names(r_areaha_fc00) <- 'fc_area_2000'
-  
-  # Add 2000 carbon stock and area to polygons
-  pols <- r_mgc %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
-  pols <- r_areaha_fc00 %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
-  
-  # Create annual loss rasters ----
-  # Convert loss year and 2000 carbon to annual layers of area and carbon lost
-  yrvals <- r_lossyr %>% unique() %>% slice(-1) %>% pull(alltiles_lossyear)
-  r_annloss <- yrvals %>% 
-    purrr::map(function(x){
-      r_loss_ann <- compare(r_lossyr, x, "==", falseNA=TRUE)
-      
-      # Carbon stock
-      r_stock <- r_mgc %>% mask(r_loss_ann)
-      names(r_stock) <- paste0('c', 2000+x)
-      
-      # Total area
-      r_area <- r_areaha %>% mask(r_loss_ann)
-      names(r_area) <- paste0('a', 2000+x)
-      
-      # Forested area
-      r_fc_area <- r_areaha_fc00 %>% mask(r_loss_ann)
-      names(r_fc_area) <- paste0('f', 2000+x)
-      
-      # Return all three
-      return(c(r_stock, r_area, r_fc_area))
-    }) %>% 
-    rast()
-  
-  # Sum annual losses ----
-  # Extract
-  sums <- r_annloss %>% 
-    extract(pols, fun=sum, na.rm=TRUE, bind=TRUE) %>% 
-    st_as_sf() %>% 
-    st_drop_geometry() %>% 
-    rename(div_name=params$subdiv_var, 
-           site=params$site_var)
-  
-  # Tidy area lost
-  loss_ha <- sums %>% 
-    select(div_name, area_ha, contains('a20')) %>% 
-    pivot_longer(starts_with('a20'), 
-                 names_to='Year', names_prefix='a', 
-                 values_to='loss_ha') %>% 
-    mutate(loss_pct_area = loss_ha / area_ha) %>% 
-    select(-area_ha)
-  
-  # Tidy forest area lost
-  loss_fc_ha <- sums %>% 
-    select(div_name, fc_area_2000, contains('f20')) %>% 
-    pivot_longer(starts_with('f20'), 
-                 names_to='Year', names_prefix='f', 
-                 values_to='loss_fc_ha') %>% 
-    mutate(loss_pct_fc_area = loss_fc_ha / fc_area_2000) %>% 
-    select(-fc_area_2000)
-  
-  # Tidy carbon lost and combine with area
-  loss_df <- sums %>% 
-    select(div_name, site, mgc_2000, contains('c20')) %>%
-    pivot_longer(starts_with('c20'), 
-                 names_to='Year', names_prefix='c', 
-                 values_to='loss_mgc') %>% 
-    mutate(loss_pct_carbon = loss_mgc / mgc_2000) %>% 
-    select(-mgc_2000) %>% 
-    full_join(loss_ha) %>% 
-    full_join(loss_fc_ha) %>% 
-    mutate(Year = as.numeric(Year))
-  
-  if( !is.null(out_csv) ){
-    loss_df %>% readr::write_csv(out_csv)
-  }
-  
-  return(loss_df)
 }
