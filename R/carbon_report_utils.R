@@ -24,7 +24,7 @@ abbreviate_year <- function(x){
   str_glue("'{x}") %>% str_remove_all('(?<!\\d)20')
 }
 
-extract_zonal_sums_30m <- function(params, out_csv=NULL){
+extract_zonal_sums_30m <- function(params, out_csv=NULL, only_losses=TRUE){
   
   fp_polys = params$polys
   hansen_vrt = params$lossyear_fp
@@ -100,8 +100,8 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL){
     pivot_longer(starts_with('a20'), 
                  names_to='Year', names_prefix='a', 
                  values_to='loss_ha') %>% 
-    mutate(loss_pct_area = loss_ha / area_ha) %>% 
-    dplyr::select(-area_ha)
+    mutate(loss_pct_area = loss_ha / area_ha) #%>% 
+    # dplyr::select(-area_ha)
   
   # Tidy forest area lost
   loss_fc_ha <- sums %>% 
@@ -109,8 +109,8 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL){
     pivot_longer(starts_with('f20'), 
                  names_to='Year', names_prefix='f', 
                  values_to='loss_fc_ha') %>% 
-    mutate(loss_pct_fc_area = loss_fc_ha / fc_area_2000) %>% 
-    dplyr::select(-fc_area_2000)
+    mutate(loss_pct_fc_area = loss_fc_ha / fc_area_2000)# %>% 
+    # dplyr::select(-fc_area_2000)
   
   # Tidy carbon lost and combine with area
   loss_df <- sums %>% 
@@ -119,10 +119,15 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL){
                  names_to='Year', names_prefix='c', 
                  values_to='loss_mgc') %>% 
     mutate(loss_pct_carbon = loss_mgc / mgc_2000) %>% 
-    dplyr::select(-mgc_2000) %>% 
+    # dplyr::select(-mgc_2000) %>% 
     full_join(loss_ha) %>% 
     full_join(loss_fc_ha) %>% 
     mutate(Year = as.numeric(Year))
+  
+  if(only_losses){
+    loss_df %>% 
+      select(-any_of(c('area_ha', 'fc_area_2000', 'mgc_2000')))
+  }
   
   if( !is.null(out_csv) ){
     loss_df %>% readr::write_csv(out_csv)
