@@ -78,9 +78,7 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL, only_losses=TRUE){
     rast()
   
   # Sum annual losses ----
-  
-  qtm(r_annloss$f2018)
-  
+
   # Add 2000 carbon stock and area to polygons
   pols <- r_mgc %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
   pols <- r_areaha_fc00 %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
