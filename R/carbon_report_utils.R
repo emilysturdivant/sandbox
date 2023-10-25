@@ -37,6 +37,11 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL, only_losses=TRUE){
     st_transform(st_crs('EPSG:4326')) %>% 
     mutate(area_ha = st_area(geometry) %>% set_units('ha') %>% drop_units())
   
+  if(params$subdiv_var == params$site_var) {
+    pols$div_name = pols[[params$site_var]]
+    params$subdiv_var = 'div_name'
+  }
+  
   # Load, clip, and mask raster to AOI polygons
   r_lossyr <- terra::rast(hansen_vrt, win=pols) %>% mask(pols)
   r_tc2000 <- terra::rast(tc2000_vrt, win=pols) %>% mask(pols)
@@ -56,6 +61,7 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL, only_losses=TRUE){
   # Create annual loss rasters ----
   # Convert loss year and 2000 carbon to annual layers of area and carbon lost
   yrvals <- r_lossyr %>% unique() %>% slice(-1) %>% pull(alltiles_lossyear)
+  yrvals <- seq(1, 22, 1)
   r_annloss <- yrvals %>% 
     purrr::map(function(x){
       r_loss_ann <- compare(r_lossyr, x, "==", falseNA=TRUE)
@@ -82,7 +88,7 @@ extract_zonal_sums_30m <- function(params, out_csv=NULL, only_losses=TRUE){
   # Add 2000 carbon stock and area to polygons
   pols <- r_mgc %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
   pols <- r_areaha_fc00 %>% extract(pols, fun=sum, na.rm=TRUE, bind=TRUE)
-  
+ 
   # Extract
   sums <- r_annloss %>% 
     extract(pols, fun=sum, na.rm=TRUE, bind=TRUE) %>% 
@@ -287,6 +293,7 @@ plot_gross_changes <- function(df,
                                facet_ncol=NULL, 
                                facets_on=TRUE,
                                use_percents=FALSE, 
+                               include_net_line=FALSE,
                                ...) { 
   
   # labels
@@ -322,10 +329,20 @@ plot_gross_changes <- function(df,
     geom_line(show.legend = FALSE) +
     geom_area(alpha = 0.7, show.legend=FALSE) + 
     scale_y_continuous(label = y_lab_fun, name=y_title) +
-    scale_x_continuous(labels = label_yearintervals, name=NULL) +
+    scale_x_continuous(labels = label_yearintervals, name=NULL,
+                       minor_breaks=seq(2004, 2020, 1)) +
     scale_color_manual(name = NULL, values = c(gain_500='#30C9A0', loss_500='#F5A011')) +
     scale_fill_manual(name = NULL, values = c(gain_500='#30C9A0', loss_500='#F5A011')) +
     theme_bw() 
+  
+  if(include_net_line) {
+    p <- p +
+      geom_line(inherit.aes=FALSE, data=df, 
+                aes(x=stock_year, y=.data[[str_c(names_prefix, 'netchange_500')]]),
+                linetype=2,
+                color='slategray'
+      )
+  }
   
   if(facets_on){
     p <- p +
@@ -406,13 +423,15 @@ plot_ann_stock <- function(df, facet_scales='free', fp=NULL, facet_ncol=NULL, fa
     gather(key = 'key', value = 'value', carbon_stock_tC, 
            factor_key = T)
   
+  fy <- df1 %>% slice_min(stock_year) %>% pull(stock_year)
+  
   p <- df1 %>% 
     ggplot(aes(x = stock_year, y = value, fill = pct_change)) +
     geom_bar(stat = 'identity') + 
     scale_y_continuous(label = label_number(scale_cut=cut_short_scale()), 
                        expand = expansion(mult=c(0, 0.05))) +
     scale_x_continuous(label = abbreviate_year, name=NULL) +
-    scale_fill_gradient2(name = str_wrap('% change relative to previous year', 11),
+    scale_fill_gradient2(name = str_wrap(str_glue('% change relative to {fy}'), 11),
                          low = '#F5A011', 
                          mid = 'grey90', 
                          high = '#30C9A0', 
@@ -440,15 +459,29 @@ plot_ann_stock <- function(df, facet_scales='free', fp=NULL, facet_ncol=NULL, fa
 # Compare 30m to 500m 
 plot_comp_30mpw_500m <- function(df, facet_scales='free', 
                                  fp=NULL, facet_ncol=NULL, facets_on=TRUE, 
-                                 use_percents=FALSE, ...) {
+                                 use_percents=FALSE, include_pw=TRUE, ...) {
   
   # labels
-  legend_order <- c('netchange_500', 'loss_500', 'loss_30', 'pw_fit')
-  lines_order <- c('loss_30', 'pw_fit', 'netchange_500', 'loss_500')
+  legend_order <- c('netchange_500', 'loss_500', 'loss_30')
+  lines_order <- c('loss_30', 'netchange_500', 'loss_500')
   cat_labels <- c(netchange_500='Net change in carbon\n(Woodwell 500 m)', 
                   loss_500='Carbon loss\n(Woodwell 500 m)', 
-                  loss_30='Carbon loss\n(Hansen + Woodwell 30 m)', 
-                  pw_fit='Loss trend line\n(Hansen + Woodwell 30 m)')
+                  loss_30='Carbon loss\n(Hansen + Woodwell 30 m)')
+  cat_colors=c(loss_500='darkblue', netchange_500='darkblue', 
+               loss_30='#edca55') #'F5A011'
+  cat_linetype=c(loss_500=1, netchange_500=2, loss_30=1)
+  cat_lw=c(loss_500=0.5, netchange_500=0.5, loss_30=0.5)
+  
+  if(include_pw) {
+    
+    legend_order <- c(legend_order, 'pw_fit')
+    lines_order <- c('loss_30', 'pw_fit', 'netchange_500', 'loss_500')
+    cat_labels <- c(cat_labels, 
+                    pw_fit='Loss trend line\n(Hansen + Woodwell 30 m)')
+    cat_colors=c(cat_colors, pw_fit='#de8f07') #'F5A011'
+    cat_linetype=c(cat_linetype, pw_fit=1)
+    cat_lw=c(cat_lw, pw_fit=0.75)
+  }
   
   # Optionally plot as percents
   if(use_percents){
@@ -474,28 +507,19 @@ plot_comp_30mpw_500m <- function(df, facet_scales='free',
   
   # Plot lines 
   p <- df_pivot %>% 
-    ggplot(aes(x=stock_year, y=value, color=var, lty=var, size=var)) +
+    ggplot(aes(x=stock_year, y=value, color=var, lty=var, linewidth=var)) +
     geom_hline(aes(yintercept=0), color='black') +
     geom_line() +
     scale_color_manual(limits=legend_order,
-                       values=c(loss_500='darkblue', 
-                                netchange_500='darkblue', 
-                                loss_30='#edca55', 
-                                pw_fit='#de8f07'),#F5A011
+                       values=cat_colors,
                        labels=cat_labels,
                        name=NULL) + 
     scale_linetype_manual(limits=legend_order,
-                          values=c(loss_500=1, 
-                                   netchange_500=2, 
-                                   loss_30=1, 
-                                   pw_fit=1),
+                          values=cat_linetype,
                           labels=cat_labels,
                           name=NULL) + 
-    scale_size_manual(limits=legend_order,
-                      values=c(loss_500=0.5, 
-                               netchange_500=0.5, 
-                               loss_30=0.5, 
-                               pw_fit=0.75),
+    scale_linewidth_manual(limits=legend_order,
+                      values=cat_lw,
                       labels=cat_labels,
                       name=NULL) + 
     scale_x_continuous(labels=label_yearintervals, 
