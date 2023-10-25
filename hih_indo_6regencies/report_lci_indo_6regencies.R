@@ -277,9 +277,17 @@ stats <- create_summary_table(df_p) %>%
 #   ungroup() %>% 
 #   left_join(lu)
 
-plot_as_dots <- function(df, xlim=c(25, 100), val_var='Mean', invert_palette=FALSE){
-  p <- df %>% 
-  ggplot(aes(y=name, x=.data[[val_var]], color=.data[[val_var]])) +
+plot_as_dots <- function(df, xlim=c(25, 100), val_var='Mean', invert_palette=FALSE,
+                         colors=TRUE){
+  
+  if(colors){
+    p <- df %>% 
+      ggplot(aes(y=name, x=.data[[val_var]], color=.data[[val_var]]))
+  } else {
+    p <- df %>% 
+      ggplot(aes(y=name, x=.data[[val_var]]))
+  }
+  p <- p +
     geom_point(stat='identity', show.legend = FALSE) +
     geom_segment(aes(yend = name), xend = 0) +  # Add connecting lines
     scale_y_discrete(limits=rev) +
@@ -289,9 +297,14 @@ plot_as_dots <- function(df, xlim=c(25, 100), val_var='Mean', invert_palette=FAL
     facet_grid(cols=vars(component)) +
     theme_bw()
   
-  if(invert_palette) {
-    p <- p +
-      scale_color_continuous(high = "#132B43", low = "#56B1F7")
+  if(colors){
+    if(invert_palette) {
+      p <- p +
+        scale_color_continuous(high = "#132B43", low = "#56B1F7")
+    } else {
+      p <- p +
+        scale_color_continuous(high = "#56B1F7", low = "#132B43")
+    }
   }
   
   return(p)
@@ -326,6 +339,36 @@ stats %>%
   plot_as_dots(xlim=xlim, val_var='Mean', 
                invert_palette = invert_palette)
 ggsave(here::here(out_dir, paste0('LCI_subcomps_dotplot_2facets.png')), 
+       width=5, height=2)
+
+# Selected scores
+stats_sub <- stats %>% 
+  ungroup() %>% 
+  filter(str_detect(comp_name, 'Add$|Add_Hist')) %>% 
+  mutate(component = ifelse(comp_name == 'Add', 'Threat\nScore', 'Historical Forest\nLoss Score'))
+
+stats_sub %>% 
+  filter(str_detect(comp_name, 'Add$')) %>% 
+  plot_as_dots(xlim=xlim, val_var='Mean', 
+               invert_palette = invert_palette, colors=F)
+ggsave(here::here(out_dir, paste0('LCI_threats_dotplot.png')), 
+       width=3, height=2)
+
+stats_sub %>% 
+  filter(str_detect(comp_name, 'Add_Hist')) %>% 
+  plot_as_dots(xlim=xlim, val_var='Mean', 
+               invert_palette = invert_palette, colors=F)
+ggsave(here::here(out_dir, paste0('LCI_histthreats_dotplot.png')), 
+       width=3, height=2)
+
+# Selected scores
+stats %>% 
+  ungroup() %>% 
+  filter(str_detect(comp_name, 'Add$|Add_Hist')) %>% 
+  mutate(component = ifelse(comp_name == 'Add', 'Threat\nScore', 'Historical Forest\nLoss Score')) %>% 
+  plot_as_dots(xlim=xlim, val_var='Mean', 
+               invert_palette = invert_palette, colors=F)
+ggsave(here::here(out_dir, paste0('LCI_threats_dotplot_2facets.png')), 
        width=5, height=2)
 
 # Print table ----

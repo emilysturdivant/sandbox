@@ -14,10 +14,10 @@ source(here::here('R/carbon_report_utils.R'))
 library(tmap)
 tmap_mode('view')
 
-home_dir <- here::here('hih_indo_6regencies')
+home_dir <- here::here('nickbrown_elsilencio')
 out_dir <- here::here(home_dir, 'outputs'); dir.create(out_dir, recursive=TRUE)
 
-fp_polys <- '/Users/esturdivant/data/hih_sites/Indonesia_request/adm2_selected_regencies.geojson'
+fp_polys <- here::here(home_dir, 'working_data/el_silencio_total_2023.geojson')
 
 # Create VRTs ----
 # 30m AGB
@@ -48,12 +48,12 @@ gdalUtilities::gdalbuildvrt(gdalfile = interp_tiles, agb500m_vrt, overwrite=T) #
 # Prep df ----
 params <-
   list(
-    filter = c(COUNTRY = 'Indonesia'),
+    filter = c(),
     polys = fp_polys,
-    site_var = 'NAME_1',
-    subdiv_var='NAME_2',
+    site_var = 'Name',
+    subdiv_var='Name',
     years = c(2003, 2020),
-    single_site = FALSE,
+    single_site = TRUE,
     agb30_fp = agb30m_vrt, 
     agb500_fp = agb500m_vrt, 
     tc2000_fp = tc2000_vrt,
@@ -66,6 +66,7 @@ loss_csv <- here::here(out_dir, 'loss_30m_Hansen_v1.10_expanded.csv')
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Get zonal sums from 500m data ----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+overwrite <- FALSE
 agb_id <- 'agb500m_y03_20'
 agb500_csv <- here::here(out_dir, str_c(agb_id, '.csv'))
 
@@ -73,6 +74,8 @@ agb500_csv <- here::here(out_dir, str_c(agb_id, '.csv'))
 if( !file.exists(agb500_csv) | overwrite ){
   agb500_df <- extract_zonal_sums_500m(params, agb500_csv)
 }
+
+p <- sf::st_read(params$polys)
 
 # Read CSV
 agb500_df <- readr::read_csv(agb500_csv)
@@ -110,14 +113,42 @@ site_df <- site_df %>%
   mutate(div_name = factor(div_name, levels=div_order))
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Plot 500 m data ----
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Stock from 500m colored by pct net change ----
+figwidth = 7
+figheight = 6
+
+# Y Fixed
+fp <- here::here(out_dir, 'annual_stock.png')
+(p_stock <- site_df %>% 
+  plot_ann_stock(fp = fp, width=figwidth+4, height=figheight+1, facets_on=F))
+
+## Gains and losses ----
+fp <- here::here(out_dir, 'annual_gain_loss_mgc.png')
+(p_gl <- site_df %>% 
+  plot_gross_changes(fp = fp, width=figwidth+4, height=figheight+1,
+                     use_percents=F, include_net_line = T, facets_on=F))
+
+fp <- here::here(out_dir, 'annual_stock_and_gross_mgc.png')
+p_gl / p_stock + plot_annotation(tag_levels='A')
+ggsave(fp, width=figwidth, height=figheight+1)
+
+## Net change ----
+fp <- here::here(out_dir, 'annual_netchange_mgc.png')
+site_df %>% 
+  plot_net_changes(fp = fp, width=figwidth+4, height=figheight+1, 
+                   use_percents=F)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Get zonal sums from 30m data----
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+overwrite <- TRUE
 if( !file.exists(loss_csv) | overwrite ){
   loss_df <- extract_zonal_sums_30m(params, out_csv=loss_csv)
 }
 
 loss_df <- readr::read_csv(loss_csv) 
-# divnames_ordered <- c('West','East','North','Center')
 
 ## Plot ---- 
 if(exists('div_order')){
@@ -137,11 +168,11 @@ loss_df %>%
   scale_color_discrete(name = '') +
   scale_y_continuous(labels=percent, name='Loss') +
   scale_x_continuous(labels=label_yearintervals, 
-                     n.breaks=6, name='') + 
+                     n.breaks=8, name='') + 
   facet_wrap(vars(div_name), scales='fixed') +
   theme_bw() 
 
-fp <- here::here(out_dir, paste0('plots_30m_loss_pct_fixed.png'))
+fp <- here::here(out_dir, paste0('plots_30m_loss_pct.png'))
 ggsave(fp, width=7, height=6)
 
 # Carbon and area and tree cover area lost
@@ -177,7 +208,7 @@ p <- loss_df %>%
   theme_bw() 
 p
 
-fp <- here::here(out_dir, paste0('plots_30m_carbon_lost_pct_fixed.png'))
+fp <- here::here(out_dir, paste0('plots_30m_carbon_lost_pct.png'))
 ggsave(fp, plot=p, width=7, height=6)
 
 # Forest area lost
@@ -200,7 +231,7 @@ p <- loss_df %>%
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 p
 
-fp <- here::here(out_dir, paste0('plots_30m_fc_area_lost_fixed.png'))
+fp <- here::here(out_dir, paste0('plots_30m_fc_area_lost.png'))
 ggsave(fp, plot=p, width=5, height=6)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -284,64 +315,6 @@ ggsave(fp, plot=p, width=7, height=6)
 #   readr::write_csv(here::here(out_dir, 'piecewise_loss.csv'))
 # df_pw <- readr::read_csv(here::here(out_dir, 'piecewise_loss.csv'))
 # 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Plot 500 m data ----
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## Stock from 500m colored by pct net change ----
-figwidth = 7
-figheight = 6
-facet_ncol = 3
-
-# Y Fixed
-fp <- here::here(out_dir, 'annual_stock_fixed.png')
-site_df %>% 
-  plot_ann_stock(fp = fp, width=figwidth+4, height=figheight+1, 
-                 facet_scales='fixed', 
-                 facet_ncol = 6)
-
-# Y Free
-fp <- here::here(out_dir, 'annual_stock_free.png')
-site_df %>% 
-  plot_ann_stock(fp = fp, width=figwidth+4, height=figheight+1, 
-                 facet_scales='free_y', 
-                 facet_ncol = facet_ncol)
-
-## Gains and losses ----
-fp <- here::here(out_dir, 'annual_gain_loss_fixed_pct.png')
-site_df %>% 
-  plot_gross_changes(fp = fp, width=figwidth+4, height=figheight+1, 
-                     facet_scales='fixed', 
-                     facet_ncol = facet_ncol,
-                     use_percents=T)
-
-fp <- here::here(out_dir, 'annual_gain_loss_free_mgc.png')
-site_df %>% 
-  plot_gross_changes(fp = fp, width=figwidth+4, height=figheight+1, 
-                     facet_scales='free_y', 
-                     facet_ncol = facet_ncol,
-                     use_percents=F)
-
-fp <- here::here(out_dir, 'annual_gain_loss_fixed_mgc.png')
-site_df %>% 
-  plot_gross_changes(fp = fp, width=figwidth+4, height=figheight+1, 
-                     facet_scales='fixed', 
-                     facet_ncol = facet_ncol,
-                     use_percents=F)
-
-## Net change ----
-fp <- here::here(out_dir, 'annual_netchange_fixed_pct.png')
-site_df %>% 
-  plot_net_changes(fp = fp, width=figwidth+4, height=figheight+1, 
-                   facet_scales='fixed', 
-                   facet_ncol = facet_ncol,
-                   use_percents=T)
-
-fp <- here::here(out_dir, 'annual_netchange_free_mgc.png')
-site_df %>% 
-  plot_net_changes(fp = fp, width=figwidth+4, height=figheight+1, 
-                   facet_scales='free_y', 
-                   facet_ncol = facet_ncol,
-                   use_percents=F)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Plot 500 with 30 m data ----
@@ -370,40 +343,11 @@ df %>%
                        width=figwidth+2, 
                        height=figheight,
                        facet_ncol = facet_ncol,
-                       use_percents = F)
+                       use_percents = F,
+                       include_pw = F)
 
-fp <- here::here(out_dir, paste0('plots_carbon_lost_30m_v_500m_pw.png'))
+fp <- here::here(out_dir, paste0('plots_carbon_lost_30m_v_500m.png'))
 ggsave(fp, width=7, height=4)
-
-
-
-df_pw %>% 
-  filter(div_name == 'Aceh Selatan') %>% head(3)
-
-site_df %>% 
-  filter(div_name == 'Aceh Selatan') %>% 
-  select(-any_of(c('site', 'div_name', 'area_ha', 'stock_year',
-                   'Dens_tCha', 'Stock_MtC', 'Area_Mha'))) %>% 
-  select(change_year, mgc_loss_500, mgc_)
-head(3)
-
-df %>% 
-  filter(div_name == 'Aceh Selatan') %>% 
-  select(-any_of(c('site', 'div_name', 'area_ha', 'stock_year',
-                   'Dens_tCha', 'Stock_MtC', 'Area_Mha'))) %>% 
-  tbl_vars()
-
-df %>% 
-  filter(div_name == 'Aceh Selatan') %>% 
-  select(stock_year, mgc_loss_500, pct_loss_500, mgc_loss_30, pct_loss_30) %>% 
-  pivot_longer(mgc_loss_500:mgc_pw_fit) %>% 
-  ggplot(aes(x=stock_year, y=value)) +
-  geom_line() +
-  facet_wrap(vars(name), scales='free_y')
-
-
-
-
 
 # Table of stock and density in most recent year ----
 library(flextable)
@@ -429,11 +373,11 @@ loss_17to22_df <- df %>%
 
 summary_df <- site_df %>% 
   filter(stock_year == endyr) %>% 
-  # arrange(desc(Dens_tCha)) %>% 
-  left_join(loss_17to22_df, by='div_name') %>%
-  select(site, div_name, loss_fc_ha_mean_17to22, fc_area_ly) %>% 
-  mutate(loss_fc_ha_mean_17to22 = round(loss_fc_ha_mean_17to22),
-         fc_area_ly = round(fc_area_ly))
+  left_join(loss_17to22_df) %>% 
+  arrange(desc(Dens_tCha)) %>%
+  select(site, div_name, area_ha, Dens_tCha, Stock_MtC, fc_area_ly) %>% 
+  mutate(fc_area_ly = round(fc_area_ly),
+         area_ha = round(area_ha))
 
 ft <- summary_df %>% 
   flextable() %>% 
@@ -447,21 +391,18 @@ ft <- summary_df %>%
   # Column names
   mk_par(j = 'site', part = 'header', value = as_paragraph('Province')) %>% 
   mk_par(j = 'div_name', part = 'header', value = as_paragraph('Regency')) %>% 
-  # mk_par(j = 'Stock_MtC', part = 'header', value = as_paragraph('Carbon stock\nin 2020\n(MtC)')) %>% 
-  # mk_par(j = 'Dens_tCha', part = 'header', value = as_paragraph('Carbon density\n2020\n(tC/ha)')) %>% 
-  # mk_par(j = 'mgc_loss_500_mean', part = 'header', 
-  #        value = as_paragraph(str_glue('Carbon loss\n2015-2020 (tC/yr)'))) %>% 
-  mk_par(j = 'loss_fc_ha_mean_17to22', part = 'header', 
-         value = as_paragraph(str_glue('Forest loss rate\n2017-2022 (ha/yr)'))) %>% 
+  mk_par(j = 'Stock_MtC', part = 'header', value = as_paragraph('Carbon stock\nin 2020\n(MtC)')) %>%
+  mk_par(j = 'Dens_tCha', part = 'header', value = as_paragraph('Carbon density\n2020\n(tC/ha)')) %>%
   mk_par(j = 'fc_area_ly', part = 'header',
          value = as_paragraph(str_glue('Forested area\n{lastyr}\n(ha)'))) %>%
   # Alignment
-  # align(j = 'Dens_tCha', align = 'right', part = 'body') %>% 
-  align(j = 'loss_fc_ha_mean_17to22', align = 'right', part = 'body') %>%
+  align(j = 'Dens_tCha', align = 'right', part = 'body') %>%
   align(j = 'fc_area_ly', align = 'right', part = 'body') %>% 
   align(j = 'site', align = 'left', part = 'header') %>% 
   align(j = 'div_name', align = 'left', part = 'header') %>% 
   bold(j = 'div_name') %>% 
+  # set_formatter(area_ha=function(x) sprintf("%.01f", x)) %>%
+  set_formatter(Stock_MtC=function(x) sprintf("%.01f", x)) %>%
   set_formatter(Dens_tCha=function(x) sprintf("%.01f", x)) %>%
   hline_top(border = fp_border(width = 1), part = 'all') %>%
   hline_bottom(border = fp_border(width = 1), part = 'all')
@@ -477,7 +418,7 @@ plot_site <- function(div) {
   p_gl <- df_sub %>% plot_gross_changes(facets_on=F)
   p_nc <- df_sub %>% plot_net_changes(facets_on=F)
   p_as <- df_sub %>% plot_ann_stock(facets_on=F)
-  p_comp30 <- df_sub %>% plot_comp_30mpw_500m(facets_on=F)
+  p_comp30 <- df_sub %>% plot_comp_30mpw_500m(facets_on=F, include_pw=F)
   
   # Layout and save
   p <- ((p_comp30 / p_nc ) | p_as) + plot_layout(guides='collect')
