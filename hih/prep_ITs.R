@@ -18,14 +18,19 @@ dhf <- st_read(dhf_shp) %>%
   st_simplify(dTolerance = 0.01) %>% 
   ungroup()
 
+bb_wkt = dhf %>% st_bbox() %>% st_as_sfc() %>% st_as_text()
+
+dhf_diss_fp <- here::here('hih/data/Ecoregions2017_MBF.geojson')
+dhf %>% summarize() %>% st_write(dhf_diss_fp, delete_dsn=T)
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Prep RRI data for the entire tropics ----
 ## ITs from RRI 2021 ----
 # (use DHF extent, but don't limit to intersection with DHF)
 its_rri21_fp <- here::here('hih/data/ITs_RRI21_tropics.shp')
-wkt = dhf %>% st_bbox() %>% st_as_sfc() %>% st_as_text()
+
 layers <- st_layers(wcmc_gdb)$name
-its_rri21 <- st_read(wcmc_gdb, layer=layers[1], wkt_filter = wkt) %>% 
+its_rri21 <- st_read(wcmc_gdb, layer=layers[1], wkt_filter = bb_wkt) %>% 
   st_make_valid() %>% 
   group_by() %>% 
   summarize()  %>%
@@ -35,7 +40,7 @@ its_rri21 <- st_read(its_rri21_fp)
 
 ## ITs from RRI 2018 ----
 its_rri18_fp <- here::here('hih/data/ITs_RRI18_tropics.shp')
-wkt = dhf %>% st_bbox() %>% st_as_sfc() %>% st_as_text()
+
 layers <- st_layers(rri18_gdb)$name
 its_rri18 <- st_read(rri18_gdb, layer=layers[1]) %>% 
   st_transform(crs = st_crs(dhf)) %>% 
@@ -50,6 +55,7 @@ its_rri18 <- st_read(its_rri18_fp)
 
 ## Combine ----
 its_rri1821_fp <- here::here('hih/data/ITs_RRI_1821_tropics.shp')
+
 its_rri18 <- its_rri18 %>% filter(Identity == 'Indigenous')
 its_union <- st_union(its_rri21, its_rri18) %>% 
   st_union() %>% 
@@ -63,14 +69,25 @@ its_union <- st_read(its_rri1821_fp)
 
 ## LCs from RRI 2021 ----
 lcs_trop_fp <- here::here('hih/data/LCs_RRI21_tropics.shp')
-wkt = dhf %>% st_bbox() %>% st_as_sfc() %>% st_as_text()
+
 layers <- st_layers(wcmc_gdb)$name
-lcs_rri21 <- st_read(wcmc_gdb, layer=layers[2], wkt_filter = wkt) %>% 
+lcs_rri21 <- st_read(wcmc_gdb, layer=layers[2], wkt_filter = bb_wkt) %>% 
   st_make_valid() %>% 
   group_by() %>% 
   summarize()  %>%
   st_simplify(dTolerance = 0.01)
 lcs_rri21 %>% st_write(lcs_trop_fp, delete_dsn = TRUE)
+lcs_rri21 <- st_read(lcs_trop_fp)
+
+## Combine ITs and LCs ----
+iplcs_trop_fp <- here::here('hih/data/IPLCs_RRI_tropics.shp')
+
+iplcs <- st_union(its_union, lcs_rri21) %>% 
+  st_union() %>% 
+  st_buffer(0.001) %>% st_buffer(-0.001) %>% 
+  st_simplify(dTolerance = 0.01)
+
+iplcs %>% st_write(iplcs_trop_fp, delete_dsn = TRUE)
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -248,6 +265,7 @@ lcs_no_overlap %>% st_write(lcs_out_shp, delete_dsn = TRUE)
 
 # WDPA ----
 wdpa_dir <- '/Volumes/ejs_storage/data/raw_data/WDPA/WDPA_Mar2023_Public_shp'
+oecm_dir <- '/Volumes/ejs_storage/data/raw_data/WDPA/WDOECM_Nov2023_Public_shp'
 
 wdpa_its_fp <- here::here('hih/data/WDPA_Mar2023_Public_ITs.shp')
 wdpa_lcs_fp <- here::here('hih/data/WDPA_Mar2023_Public_LCs.shp')
@@ -296,3 +314,21 @@ lcs_wdpa <- itlc_wdpa %>%
 # Save
 its_wdpa %>% st_write(wdpa_its_fp, delete_dsn = TRUE)
 lcs_wdpa %>% st_write(wdpa_lcs_fp, delete_dsn = TRUE)
+
+
+in_fp <- here::here(oecm_dir, 'WDOECM_Nov2023_Public_shp_0')
+lyr_idx <- 1
+# Load polygons from WCMC
+layers <- st_layers(in_fp)$name
+p1 <- st_read(in_fp, layer=layers[lyr_idx]) %>% 
+  filter(MARINE != 2) %>% 
+  filter(str_detect(DESIG_ENG, regex('indig|communit', ignore_case=T)) | 
+           str_detect(GOV_TYPE, regex('indig|communit', ignore_case=T))) %>% 
+  st_transform(crs = st_crs(dhf)) %>% 
+  st_make_valid()
+
+p1 %>% tbl_vars()
+p1 %>% st_drop_geometry() %>% distinct(GOV_TYPE,OWN_TYPE, DESIG_ENG, STATUS, DESIG_TYPE)
+p1 %>% st_drop_geometry() %>% distinct(OWN_TYPE)
+p1 %>% st_drop_geometry() %>% distinct(DESIG_ENG)
+p1 %>% st_drop_geometry() %>% filter(GOV_TYPE == 'Collaborative governance')
