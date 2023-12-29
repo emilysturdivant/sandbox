@@ -7,21 +7,36 @@ library(tmap)
 tmap_mode('view')
 Sys.setenv(OGR_GEOJSON_MAX_OBJ_SIZE=500)
 
-dhf_shp <- '/Volumes/ejs_storage/data/raw_data/Ecoregions2017/Ecoregions2017_DHF.shp'
 wcmc_gdb <- '/Volumes/ejs_storage/data/raw_data/WCMC/IPLC_WWF_2021_split_version.gdb'
 rri18_gdb <- '/Volumes/ejs_storage/data/raw_data/RRI_2018/2018_06_12_clean.gdb'
 
+out_dir <- here::here('hih/data') 
+
 # Load and prep DHF boundary ----
+# Download ecoregions
+dl_url <- 'https://storage.googleapis.com/teow2016/Ecoregions2017.zip'
+local_zip_fp <- here::here(out_dir, 'Dinerstein_etal_2017/Ecoregions2017.zip')
+download.file(dl_url, destfile = local_zip_fp)
+
+# Unzip to temp dir
+eco_dir <- here::here(out_dir, 'Dinerstein_etal_2017')
+unzip(local_zip_fp, exdir = eco_dir)
+dhf_shp <- list.files(eco_dir, '.shp', full.names=TRUE)
+
+dhf_diss_fp <- here::here(out_dir, 'Ecoregions2017_MBF_realms.geojson')
 dhf <- st_read(dhf_shp) %>% 
+  filter(str_detect(BIOME_NAME, 'Moist Broadleaf Forests')) %>% 
+  st_make_valid() %>% 
   group_by(BIOME_NAME, BIOME_NUM, REALM) %>% 
   summarize() %>% 
   st_simplify(dTolerance = 0.01) %>% 
   ungroup()
-
-bb_wkt = dhf %>% st_bbox() %>% st_as_sfc() %>% st_as_text()
+dhf %>% st_write(dhf_diss_fp, delete_dsn=T)
 
 dhf_diss_fp <- here::here('hih/data/Ecoregions2017_MBF.geojson')
 dhf %>% summarize() %>% st_write(dhf_diss_fp, delete_dsn=T)
+
+bb_wkt = dhf %>% st_bbox() %>% st_as_sfc() %>% st_as_text()
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Prep RRI data for the entire tropics ----

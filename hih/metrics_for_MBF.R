@@ -5,104 +5,159 @@ library(terra)
 library(units)
 library(stars)
 
-out_dir <- '/Users/esturdivant/data/hih/requests/scaling'
+# "sudo gsutil -m cp -r gs://ejs-data/raw_inputs/Walker_etal_2022/ \
+# ~/repos/sandbox/hih/data/Walker_etal_2022/"
+
+# gdalbuildvrt ~/repos/sandbox/hih/data/from_gee_500m/MBF/alltiles.vrt ~/repos/sandbox/hih/data/from_gee_500m/MBF/*.tif
+# gdalbuildvrt tropics.vrt *.tif
+
 out_dir <- here::here('hih/data') 
 
 # Walker AGB
-# agb_tif <- '/Volumes/ejs_storage/data/raw_data/biomass/Woodwell_AGB_2018_Global_500m_Mgha_wm.tif'
-agb_tif <- '~/data/Walker_etal_2022/Base_Cur_AGB_MgCha_500m.tif'
+agb_tif <- here::here(out_dir, 'Walker_etal_2022/Base_Cur_AGB_MgCha_500m.tif')
+agbm_fp <- here::here(out_dir, 'Base_Cur_AGB_MgCha_500m_forest_MBF.tif')
+agb_biome_fp <- here::here(out_dir, 'Base_Cur_AGB_MgCha_500m_MBF.tif')
 
 # Biome
-dhf_diss_fp <- here::here('hih/data/Ecoregions2017_MBF_realms.geojson')
+dhf_diss_fp <- here::here(out_dir, 'Ecoregions2017_MBF_realms.geojson')
 
-# Hansen forest cover
-hansen_dir <- '/Users/esturdivant/data/Hansen_etal_2013/from_gee_500m'
-interp_tiles <- list.files(hansen_dir, '*\\.tif', full.names = TRUE)
-forest_vrt <- here::here(hansen_dir, 'alltiles.vrt')
-gdalUtilities::gdalbuildvrt(gdalfile = interp_tiles, forest_vrt, overwrite=T)
+iplcs_fp <- here::here('hih/data/IPLCs_RRI_tropics.shp')
 
-# Convert to correct MODIS crs
+# Forest
+hansen_dir <- here::here(out_dir, 'from_gee_500m/MBF')
 forest_tif <- here::here(hansen_dir, 'alltiles_mod.tif')
-args <- c('-a_srs', "'+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs'", 
-          forest_vrt, forest_tif) 
-out <- system2('gdal_translate', args = args)
-str_c('gdal_translate ', str_c(args, collapse=' '))
+fmask_fp <- here::here(out_dir, 'forest_mask25.tif')
+
+# Prep forest ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# sudo gsutil -m cp -r gs://ejs-data/processed_hansen/MBF \
+# ~/repos/sandbox/hih/data/from_gee_500m/
+
+if(!file.exists(forest_tif)){
+  # VRT for Hansen forest cover - doesn't work on VM
+  interp_tiles <- list.files(hansen_dir, '*\\.tif', full.names = TRUE)
+  forest_vrt <- here::here(hansen_dir, 'alltiles.vrt')
+  # gdalUtilities::gdalbuildvrt(gdalfile = interp_tiles, forest_vrt, overwrite=T)
+  # cd ~/repos/sandbox/hih/data/from_gee_500m/MBF
+  # sudo gdalbuildvrt alltiles.vrt *.tif  
+  args <- c('gdalbuildvrt', forest_vrt, interp_tiles) 
+  out <- system2('sudo', args = args)
+  
+  # Convert forest to correct MODIS crs
+  args <- c('gdal_translate', '-a_srs', "'+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs'", 
+            forest_vrt, forest_tif) 
+  out <- system2('sudo', args = args)
+}
+
+# Mask AGB to biome ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+if(!file.exists(agb_biome_fp)){
+  agb_mgcha <- terra::rast(agb_tif)
+  
+  # Load biome polygons and transform
+  pols <- st_read(dhf_diss_fp) %>% 
+    st_transform(st_crs(agb_mgcha)) 
+  
+  # Get area of biome
+  pols %>% st_area() %>% units::set_units('ha') %>% sum()
+  
+  # Crop and mask to biome
+  agb_mgcha_biome <- agb_mgcha %>% 
+    crop(terra::vect(pols), mask=TRUE, 
+         filename = agb_biome_fp,
+         # datatype = 'INT1U',
+         gdal=c("COMPRESS=LZW"),
+         overwrite = FALSE)
+  # plot(agb_mgcha_biome)
+  
+} else {
+  agb_mgcha_biome <- terra::rast(agb_biome_fp)
+}
+
+pix_m <- res(agb_mgcha_biome)[1]
+pix_ha <- pix_m * pix_m * 1e-4
+
+# Get sum for biome
+c_biome <- agb_mgcha_biome %>% global(fun='sum', na.rm=TRUE)
+cstock_biome <- c_biome * pix_ha
+cstock_biome
+
+# # Convert C density to stock
+# agb_mgc_biome <- agb_mgcha_biome * pix_ha
+# plot(agb_mgc_biome)
+# 
+# # Get sum for biome
+# cstock_biome <- agb_mgc_biome %>% global(fun='sum', na.rm=TRUE)
+# cstock_biome
 
 # Mask AGB to forest ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-agb_r <- stars::read_stars(agb_tif)
-for_r <- stars::read_stars(forest_tif)
-
-for_r <- terra::rast(forest_tif)
-agb_r <- terra::rast(agb_tif, win=terra::ext(for_r))
-
-agbm_fp <- here::here(out_dir, 'Base_Cur_AGB_MgCha_500m_forest_MBF.tif')
-agb_rm <- agb_r %>%
-  mask(for_r, maskvalues=NA, filename=agbm_fp, 
-       gdal=c("COMPRESS=LZW"))
-plot(agb_r)
-plot(for_r)
-plot(agb_rm)
-
-# Get values for one raster layer ----
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-fp_poly <- dhf_diss_fp
-site_var <- params$site_var
-
-params <- list(rast_fp = agbm_fp, level='AGB_MgCha')
-
-extract_values <- function(params) {
-  # Read stars (proxy)
-  rr <- stars::read_stars(params$rast_fp)
+# Mask to forest
+if(!file.exists(agbm_fp)){
+  # Load biome polygons and transform
+  pols <- st_read(dhf_diss_fp) %>% 
+    st_transform(st_crs(agb_mgcha_biome)) 
   
-  # Pixel area in hectares to convert density to stock
-  dims <- st_dimensions(rr)
-  pix_ha <- dims$x$delta * dims$y$delta * 1e-4
+  for_r <- terra::rast(forest_tif) %>% 
+    crop(terra::vect(pols))
   
-  # Load and reproject polygons
-  pols <- st_read(fp_poly) |> st_transform(st_crs(rr))
+  # Reclassify treecover % to forest mask
+  rclmat <- rbind(c(-Inf, 0.25, NA), 
+                  c(0.25, Inf, 1))
+  fmask <- for_r %>% 
+    classify(rclmat, 
+             include.lowest=TRUE, 
+             filename = fmask_fp,
+             datatype = 'INT1U',
+             overwrite = TRUE)
   
-  # Get pixel values for each polygon ----
-  df <- seq_len(nrow(pols)) |> 
-    purrr::map_dfr(
-      function(i) {
-        pol <- pols[i,]
-        
-        # Extract values
-        ar <- rr[pol] |> 
-          stars::st_as_stars() |> 
-          pull() |> 
-          as.vector() |> 
-          na.omit() |> 
-          as_tibble() |> 
-          mutate(value = value * pix_ha)
-      }
-    )
-  
-  # Add variable with LCI level name
-  df |> mutate(level = params$level)
+  fmask <- fmask %>% crop(agb_mgcha_biome)
+  agb_mgcha_biome <- agb_mgcha_biome %>% crop(fmask)
+         
+  # Mask to forest
+  agb_mgcha_bf <- agb_mgcha_biome %>%
+    mask(fmask, maskvalues=NA, filename=agbm_fp, 
+         gdal=c("COMPRESS=LZW"),
+         overwrite = TRUE)
 }
 
-# Extract values ----
-df_p <- extract_values(params)
+# plot(fmask)
 
-df_p <- tifs_params |> purrr::map_dfr(extract_values) |> 
-  mutate(comp_name = factor(level, levels = purrr::map_chr(tifs_params, ~.x$level))) 
+agb_mgcha_bf <- terra::rast(agbm_fp)
+plot(agb_mgcha_bf)
 
-# Summary stats ----
-pix.ha <- 463.3127 * 463.3127 * 1e-4
-stats <- df_p |> 
-  # mutate(name = forcats::fct_rev(name)) |> 
-  group_by(comp_name) |> 
-  summarize(Min = min(value, na.rm=TRUE),
-            Q1 = quantile(value, 0.25, na.rm=TRUE),
-            Median = median(value, na.rm=TRUE),
-            Mean = mean(value, na.rm=TRUE),
-            Q3 = quantile(value, 0.75, na.rm=TRUE),
-            Max = max(value, na.rm=TRUE),
-            N = n(),
-            Stock_tC = sum(value, na.rm=TRUE), 
-            Area_ha = N * pix.ha, 
-            Dens_tCha = Stock_tC / Area_ha, 
-            Stock_MtC = Stock_tC * 1e-6, 
-            Area_Mha = Area_ha * 1e-6)
+# Get sum
+c_bf <- agb_mgcha_bf %>% global(fun='sum', na.rm=TRUE)
+cstock_bf <- c_bf * pix_ha
+cstock_bf
+
+# Mask AGB to IPLC ----
+
+# Load biome polygons and transform
+pols <- st_read(iplcs_fp) %>% 
+  st_transform(st_crs(agb_mgcha_biome)) 
+
+# Get area of biome
+pols %>% st_area() %>% units::set_units('ha') %>% sum()
+
+# Crop and mask to IPLC
+agb_mgcha_bip <- agb_mgcha_biome %>% 
+  crop(terra::vect(pols), mask=TRUE)
+plot(agb_mgcha_bip)
+
+# Get sum for biome
+c_bip <- agb_mgcha_bip %>% global(fun='sum', na.rm=TRUE)
+cstock_bip <- c_bip * pix_ha
+cstock_bip
+
+# Mask AGB to IPLC and forest ----
+
+# Crop and mask to IPLC
+agb_mgcha_bipf <- agb_mgcha_bf %>% 
+  crop(terra::vect(pols), mask=TRUE)
+plot(agb_mgcha_bipf)
+
+# Get sum for biome
+c_bipf <- agb_mgcha_bipf %>% global(fun='sum', na.rm=TRUE)
+cstock_bipf <- c_bipf * pix_ha
+cstock_bipf
