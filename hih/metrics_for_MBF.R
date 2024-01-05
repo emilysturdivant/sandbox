@@ -8,14 +8,22 @@ library(stars)
 # "sudo gsutil -m cp -r gs://ejs-data/raw_inputs/Walker_etal_2022/ \
 # ~/repos/sandbox/hih/data/Walker_etal_2022/"
 
+# sudo gsutil -m cp -r gs://ejs-data/processed_hansen/MBF \
+# ~/repos/sandbox/hih/data/from_gee_500m/
+
 # gdalbuildvrt ~/repos/sandbox/hih/data/from_gee_500m/MBF/alltiles.vrt ~/repos/sandbox/hih/data/from_gee_500m/MBF/*.tif
 # gdalbuildvrt tropics.vrt *.tif
+# gdalbuildvrt forest2022_tropics.vrt forest2022*.tif
+# gdalbuildvrt ~/repos/sandbox/hih/data/from_gee_500m/MBF/forest2022_tropics.vrt \
+# ~/repos/sandbox/hih/data/from_gee_500m/MBF/forest2022*.tif
+
 
 out_dir <- here::here('hih/data') 
 
 # Walker AGB
 agb_tif <- here::here(out_dir, 'Walker_etal_2022/Base_Cur_AGB_MgCha_500m.tif')
 agbm_fp <- here::here(out_dir, 'Base_Cur_AGB_MgCha_500m_forest_MBF.tif')
+agbm_fpip <- here::here(out_dir, 'Base_Cur_AGB_MgCha_500m_forest_MBF_IPLC.tif')
 agb_biome_fp <- here::here(out_dir, 'Base_Cur_AGB_MgCha_500m_MBF.tif')
 
 # Biome
@@ -25,21 +33,18 @@ iplcs_fp <- here::here('hih/data/IPLCs_RRI_tropics.shp')
 
 # Forest
 hansen_dir <- here::here(out_dir, 'from_gee_500m/MBF')
-forest_tif <- here::here(hansen_dir, 'alltiles_mod.tif')
-fmask_fp <- here::here(out_dir, 'forest_mask25.tif')
+forest_tif <- here::here(hansen_dir, 'forest2022_tropics.tif')
+fmask_fp <- here::here(out_dir, 'forestmask_500m.tif')
+fmask_biome_fp <- here::here(out_dir, 'forestmask_500m_MBF.tif')
+fmask_bip_fp <- here::here(out_dir, 'forestmask_500m_MBF_IPLCs.tif')
+fbuff_fp <- here::here(out_dir, 'forestmask_500m_buff2km.tif')
 
 # Prep forest ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# sudo gsutil -m cp -r gs://ejs-data/processed_hansen/MBF \
-# ~/repos/sandbox/hih/data/from_gee_500m/
-
 if(!file.exists(forest_tif)){
   # VRT for Hansen forest cover - doesn't work on VM
-  interp_tiles <- list.files(hansen_dir, '*\\.tif', full.names = TRUE)
-  forest_vrt <- here::here(hansen_dir, 'alltiles.vrt')
-  # gdalUtilities::gdalbuildvrt(gdalfile = interp_tiles, forest_vrt, overwrite=T)
-  # cd ~/repos/sandbox/hih/data/from_gee_500m/MBF
-  # sudo gdalbuildvrt alltiles.vrt *.tif  
+  interp_tiles <- list.files(hansen_dir, 'forest2022.*\\.tif', full.names = TRUE)
+  forest_vrt <- here::here(hansen_dir, 'forest2022_tropics.vrt')
   args <- c('gdalbuildvrt', forest_vrt, interp_tiles) 
   out <- system2('sudo', args = args)
   
@@ -48,6 +53,30 @@ if(!file.exists(forest_tif)){
             forest_vrt, forest_tif) 
   out <- system2('sudo', args = args)
 }
+
+# Load biome polygons and transform
+mbf_pols <- st_read(dhf_diss_fp) %>% 
+  st_transform(st_crs(terra::rast(forest_tif))) 
+
+# Crop and mask to biome
+for_rb <- terra::rast(forest_tif) %>% 
+  crop(terra::vect(mbf_pols), mask=TRUE, 
+       filename = fmask_biome_fp,
+       datatype = 'INT1U',
+       gdal=c("COMPRESS=LZW"),
+       overwrite = TRUE)
+
+# Load IPLC polygons and transform
+ip_pols <- st_read(iplcs_fp) %>% 
+  st_transform(st_crs(terra::rast(forest_tif))) 
+
+# Crop and mask to biome
+for_bip <- terra::rast(fmask_biome_fp) %>% 
+  crop(terra::vect(ip_pols), mask=TRUE, 
+       filename = fmask_bip_fp,
+       datatype = 'INT1U',
+       gdal=c("COMPRESS=LZW"),
+       overwrite = TRUE)
 
 # Mask AGB to biome ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -142,7 +171,11 @@ pols %>% st_area() %>% units::set_units('ha') %>% sum()
 
 # Crop and mask to IPLC
 agb_mgcha_bip <- agb_mgcha_biome %>% 
-  crop(terra::vect(pols), mask=TRUE)
+  crop(terra::vect(pols), mask=TRUE,
+       filename=agbm_fpip,
+       datatype = 'INT2U',
+       gdal=c("COMPRESS=LZW"),
+       overwrite = TRUE)
 plot(agb_mgcha_bip)
 
 # Get sum for biome
@@ -161,3 +194,72 @@ plot(agb_mgcha_bipf)
 c_bipf <- agb_mgcha_bipf %>% global(fun='sum', na.rm=TRUE)
 cstock_bipf <- c_bipf * pix_ha
 cstock_bipf
+
+
+# Buffer ----
+buff_dist <- 2000 # 2km
+fmask <- terra::rast(fmask_fp)
+fbuff <- fmask %>% buffer(buff_dist)
+fbuff <- fbuff %>% mask()
+
+fbuff <- fbuff %>% 
+  crop(vect(pols), mask=TRUE, 
+       filename = fbuff_fp,
+       datatype = 'INT1U',
+       gdal=c("COMPRESS=LZW"),
+       overwrite = FALSE)
+
+# View for a subregion
+pols <- st_read(dhf_diss_fp) %>% 
+  st_transform(st_crs(agb_mgcha_biome)) 
+subpol <- pols %>% slice(1)
+plot(fbuff %>% crop(vect(subpol)))
+
+
+fbuff <- fbuff %>% crop(agb_mgcha_biome)
+agb_mgcha_biome <- agb_mgcha_biome %>% crop(fbuff)
+
+
+# Calculate Euclidean distance. Set image parameters
+# var euclideanDist = forest.gt(forest_tc)
+# .distance(ee.Kernel.euclidean(buff_dist, 'meters'));
+
+# var buffer = euclideanDist.gt(0)
+# .reduceResolution(ee.Reducer.mode(), false, 65535);
+
+
+
+# LCI ----
+# sudo gsutil -m cp -r gs://ejs-data/lci_projects/biome_mbf/ \
+# ~/repos/sandbox/hih/data/LCI/
+lci_dir <- here::here('hih/data/LCI/biome_mbf')
+
+lci_r <- terra::rast(here::here(lci_dir, 'comp_add.tif'))
+lci_mask1_fp <- here::here(dirname(lci_dir), 'comp_add_MBF.tif')
+lci_mask2_fp <- here::here(dirname(lci_dir), 'comp_add_MBF_IPLC.tif')
+
+# Load biome polygons and transform
+mbf_pols <- st_read(dhf_diss_fp) %>% 
+  st_transform(st_crs(lci_r)) 
+
+# Load IPLC polygons and transform
+ip_pols <- st_read(iplcs_fp) %>% 
+  st_transform(st_crs(lci_r)) 
+
+# Crop and mask to biome
+lci_rb <- lci_r %>% 
+  crop(terra::vect(mbf_pols), mask=TRUE, 
+       filename = lci_mask_fp,
+       datatype = 'INT1U',
+       gdal=c("COMPRESS=LZW"),
+       overwrite = TRUE)
+
+# Crop and mask to biome
+lci_bip <- lci_rb %>% 
+  crop(terra::vect(ip_pols), mask=TRUE, 
+       filename = lci_mask2_fp,
+       datatype = 'INT1U',
+       gdal=c("COMPRESS=LZW"),
+       overwrite = TRUE)
+
+
