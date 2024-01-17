@@ -11,6 +11,9 @@ library(stars)
 # sudo gsutil -m cp -r gs://ejs-data/processed_hansen/MBF \
 # ~/repos/sandbox/hih/data/from_gee_500m/
 
+# sudo gsutil -m cp -r gs://ejs-data/processed_hansen/MBF/forest2022_buff2km* \
+# ~/repos/sandbox/hih/data/from_gee_500m/
+
 # gdalbuildvrt ~/repos/sandbox/hih/data/from_gee_500m/MBF/alltiles.vrt ~/repos/sandbox/hih/data/from_gee_500m/MBF/*.tif
 # gdalbuildvrt tropics.vrt *.tif
 # gdalbuildvrt forest2022_tropics.vrt forest2022*.tif
@@ -38,6 +41,8 @@ fmask_fp <- here::here(out_dir, 'forestmask_500m.tif')
 fmask_biome_fp <- here::here(out_dir, 'forestmask_500m_MBF.tif')
 fmask_bip_fp <- here::here(out_dir, 'forestmask_500m_MBF_IPLCs.tif')
 fbuff_fp <- here::here(out_dir, 'forestmask_500m_buff2km.tif')
+
+forestbuff_tif <- here::here(out_dir, 'forest2022_buff2km_500m.tif')
 
 # Prep forest ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -77,6 +82,21 @@ for_bip <- terra::rast(fmask_biome_fp) %>%
        datatype = 'INT1U',
        gdal=c("COMPRESS=LZW"),
        overwrite = TRUE)
+
+# Load forest buffer ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+if(!file.exists(forestbuff_tif)){
+  # VRT for Hansen forest cover - doesn't work on VM
+  interp_tiles <- list.files(dirname(hansen_dir), 'forest2022_buff2km.*\\.tif', full.names = TRUE)
+  forestbuff_vrt <- here::here(dirname(hansen_dir), 'forest2022_buff2km_tropics.vrt')
+  args <- c('gdalbuildvrt', forestbuff_vrt, interp_tiles) 
+  out <- system2('sudo', args = args)
+  
+  # Convert forest to correct MODIS crs
+  args <- c('gdal_translate', '-a_srs', "'+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs'", 
+            forestbuff_vrt, forestbuff_tif) 
+  out <- system2('sudo', args = args)
+}
 
 # Mask AGB to biome ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -237,6 +257,8 @@ lci_dir <- here::here('hih/data/LCI/biome_mbf')
 lci_r <- terra::rast(here::here(lci_dir, 'comp_add.tif'))
 lci_mask1_fp <- here::here(dirname(lci_dir), 'comp_add_MBF.tif')
 lci_mask2_fp <- here::here(dirname(lci_dir), 'comp_add_MBF_IPLC.tif')
+lci_forest_fp <- here::here(dirname(lci_dir), 'comp_add_forest_MBF_IPLC.tif')
+lci_forestbuff_fp <- here::here(dirname(lci_dir), 'comp_add_forest_MBF_IPLC.tif')
 
 # Load biome polygons and transform
 mbf_pols <- st_read(dhf_diss_fp) %>% 
@@ -262,4 +284,24 @@ lci_bip <- lci_rb %>%
        gdal=c("COMPRESS=LZW"),
        overwrite = TRUE)
 
+# Mask LCI to forest and forest+buffer ----
+lci_forest_fp <- here::here(dirname(lci_dir), 'comp_add_forest_MBF.tif')
+lci_forestbuff_fp <- here::here(dirname(lci_dir), 'comp_add_forestbuff_MBF_IPLC.tif')
 
+# Mask to forest+buffer
+fbmask <- terra::rast(forestbuff_tif)
+fbmask <- fbmask %>% crop(lci_r)
+lci_r <- lci_r %>% crop(fbmask)
+lci_fb <- lci_r %>%
+  mask(fbmask, maskvalues=0, filename=lci_forestbuff_fp, 
+       gdal=c("COMPRESS=LZW"),
+       overwrite = TRUE)
+
+# Mask to forest
+fmask <- terra::rast(fmask_fp)
+fmask <- fmask %>% crop(lci_r)
+lci_r <- lci_r %>% crop(fmask)
+lci_f <- lci_r %>%
+  mask(fmask, maskvalues=NA, filename=lci_forest_fp, 
+       gdal=c("COMPRESS=LZW"),
+       overwrite = TRUE)
