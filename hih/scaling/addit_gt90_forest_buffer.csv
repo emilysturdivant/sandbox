@@ -1,0 +1,19 @@
+continent,unit,zone,value
+Africa,Area (million ha),forestbuff,6.189551
+Americas,Area (million ha),forestbuff,7.225284
+Australasia,Area (million ha),forestbuff,14.996397
+Africa,Area (million ha),Tropical forests,34.229204
+Americas,Area (million ha),Tropical forests,35.858172
+Australasia,Area (million ha),Tropical forests,31.623032
+Africa,Area (million ha),IPLC tropical forests,4.409891
+Americas,Area (million ha),IPLC tropical forests,4.912314
+Australasia,Area (million ha),IPLC tropical forests,8.353554
+Africa,Area (million ha),IPLC lands,6.225874
+Americas,Area (million ha),IPLC lands,7.23387
+Australasia,Area (million ha),IPLC lands,15.408543
+Africa,Area (million ha),Biome,46.482896
+Americas,Area (million ha),Biome,63.420662
+Australasia,Area (million ha),Biome,58.762826
+Africa,Area (million ha),2 km forest buffer,1.77966
+Americas,Area (million ha),2 km forest buffer,2.31297
+Australasia,Area (million ha),2 km forest buffer,6.642843

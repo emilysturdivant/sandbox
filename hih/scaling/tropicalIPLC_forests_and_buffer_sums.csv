@@ -1,0 +1,28 @@
+continent,unit,zone,value
+Africa,Area (million ha),forestplus,100.569688
+Africa,Carbon (PgC),forestplus,12.130194124
+Africa,Population (million people),forestplus,35.996781
+Americas,Area (million ha),forestplus,300.737832
+Americas,Carbon (PgC),forestplus,34.906877237
+Americas,Population (million people),forestplus,20.230092
+Australasia,Area (million ha),forestplus,287.068401
+Australasia,Carbon (PgC),forestplus,29.77557353
+Australasia,Population (million people),forestplus,132.35484
+Africa,Area (million ha),forest,81.26343
+Africa,Carbon (PgC),forest,10.52776099
+Africa,Population (million people),forest,13.228758
+Americas,Area (million ha),forest,244.106366
+Americas,Carbon (PgC),forest,30.336175922
+Americas,Population (million people),forest,4.494728
+Australasia,Area (million ha),forest,210.343358
+Australasia,Carbon (PgC),forest,24.883395985
+Australasia,Population (million people),forest,27.902556
+Africa,Area (million ha),buffer,19.306258
+Africa,Carbon (PgC),buffer,1.602433134
+Africa,Population (million people),buffer,22.768023
+Americas,Area (million ha),buffer,56.631466
+Americas,Carbon (PgC),buffer,4.570701315000004
+Americas,Population (million people),buffer,15.735364
+Australasia,Area (million ha),buffer,76.725043
+Australasia,Carbon (PgC),buffer,4.892177544999999
+Australasia,Population (million people),buffer,104.452284
