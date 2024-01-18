@@ -1,0 +1,37 @@
+continent,unit,threshold,zone,value
+Africa,Area (million ha),70th percentile,Tropical forests,90.219895
+Africa,Area (million ha),90th percentile,Tropical forests,34.229204
+Americas,Area (million ha),70th percentile,Tropical forests,136.382997
+Americas,Area (million ha),90th percentile,Tropical forests,35.858172
+Australasia,Area (million ha),70th percentile,Tropical forests,103.845741
+Australasia,Area (million ha),90th percentile,Tropical forests,31.623032
+Africa,Area (million ha),70th percentile,In or <2 km from IPLC tropical forests,22.1273
+Africa,Area (million ha),90th percentile,In or <2 km from IPLC tropical forests,6.189551
+Americas,Area (million ha),70th percentile,In or <2 km from IPLC tropical forests,28.058123
+Americas,Area (million ha),90th percentile,In or <2 km from IPLC tropical forests,7.225284
+Australasia,Area (million ha),70th percentile,In or <2 km from IPLC tropical forests,59.637154
+Australasia,Area (million ha),90th percentile,In or <2 km from IPLC tropical forests,14.996397
+Africa,Area (million ha),70th percentile,IPLC tropical forests,17.313775
+Africa,Area (million ha),90th percentile,IPLC tropical forests,4.409891
+Americas,Area (million ha),70th percentile,IPLC tropical forests,21.089317
+Americas,Area (million ha),90th percentile,IPLC tropical forests,4.912314
+Australasia,Area (million ha),70th percentile,IPLC tropical forests,38.482036
+Australasia,Area (million ha),90th percentile,IPLC tropical forests,8.353554
+Africa,Area (million ha),70th percentile,IPLC lands,22.601705
+Africa,Area (million ha),90th percentile,IPLC lands,6.225874
+Americas,Area (million ha),70th percentile,IPLC lands,28.213714
+Americas,Area (million ha),90th percentile,IPLC lands,7.23387
+Australasia,Area (million ha),70th percentile,IPLC lands,61.550989
+Australasia,Area (million ha),90th percentile,IPLC lands,15.408543
+Africa,Area (million ha),70th percentile,Biome,121.964139
+Africa,Area (million ha),90th percentile,Biome,46.482896
+Americas,Area (million ha),70th percentile,Biome,235.524049
+Americas,Area (million ha),90th percentile,Biome,63.420662
+Australasia,Area (million ha),70th percentile,Biome,185.673624
+Australasia,Area (million ha),90th percentile,Biome,58.762826
+Africa,Area (million ha),90th percentile,2 km forest buffer,1.77966
+Africa,Area (million ha),70th percentile,2 km forest buffer,4.813525
+Americas,Area (million ha),90th percentile,2 km forest buffer,2.31297
+Americas,Area (million ha),70th percentile,2 km forest buffer,6.968806
+Australasia,Area (million ha),90th percentile,2 km forest buffer,6.642843
+Australasia,Area (million ha),70th percentile,2 km forest buffer,21.155118
