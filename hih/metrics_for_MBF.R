@@ -14,6 +14,9 @@ library(stars)
 # sudo gsutil -m cp -r gs://ejs-data/processed_hansen/MBF/forest2022_buff2km* \
 # ~/repos/sandbox/hih/data/from_gee_500m/
 
+# sudo gsutil -m cp -r gs://ejs-data/processed_hansen/MBF/Pop_2020_cons_unadj_500m* \
+# ~/repos/sandbox/hih/data/from_gee_500m/
+
 # gdalbuildvrt ~/repos/sandbox/hih/data/from_gee_500m/MBF/alltiles.vrt ~/repos/sandbox/hih/data/from_gee_500m/MBF/*.tif
 # gdalbuildvrt tropics.vrt *.tif
 # gdalbuildvrt forest2022_tropics.vrt forest2022*.tif
@@ -305,3 +308,82 @@ lci_f <- lci_r %>%
   mask(fmask, maskvalues=NA, filename=lci_forest_fp, 
        gdal=c("COMPRESS=LZW"),
        overwrite = TRUE)
+
+
+# Mask Population to forest and forest+buffer ----
+gee_dir <- here::here(out_dir, 'from_gee_500m')
+pop_tif <- here::here(out_dir, 'pop_500m')
+
+if(!file.exists(pop_tif)){
+  # VRT for Hansen forest cover - doesn't work on VM
+  interp_tiles <- list.files(gee_dir, 'Pop_2020_cons_unadj_500m.*\\.tif', full.names = TRUE)
+  pop_vrt <- here::here(gee_dir, 'Pop_2020_cons_unadj_500m.vrt')
+  args <- c('gdalbuildvrt', pop_vrt, interp_tiles) 
+  out <- system2('sudo', args = args)
+  
+  # Convert forest to correct MODIS crs
+  args <- c('gdal_translate', '-a_srs', "'+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +a=6371007.181 +b=6371007.181 +units=m +no_defs'", 
+            pop_vrt, pop_tif) 
+  out <- system2('sudo', args = args)
+}
+
+
+
+pop_biome_fp <- here::here(out_dir, 'pop_500m_MBF.tif')
+pop_bip_fp <- here::here(out_dir, 'pop_500m_MBF_IPLC.tif')
+pop_forest_fp <- here::here(out_dir, 'pop_500m_forIPLC.tif')
+pop_forestbuff_fp <- here::here(out_dir, 'pop_500m_forIPLC_buff.tif')
+
+pop_r <- terra::rast(pop_tif)
+
+# Load biome polygons and transform
+mbf_pols <- st_read(dhf_diss_fp) %>% 
+  st_transform(st_crs(pop_r)) 
+
+# Load IPLC polygons and transform
+ip_pols <- st_read(iplcs_fp) %>% 
+  st_transform(st_crs(pop_r)) 
+
+# Crop and mask to biome
+pop_biom <- pop_r %>% 
+  crop(terra::vect(mbf_pols), mask=TRUE,
+       filename=pop_biome_fp, 
+       datatype = 'INT4U',
+       gdal=c("COMPRESS=LZW"),
+       overwrite = TRUE)
+
+# Crop and mask to IPLCs
+pop_biom_ip <- pop_biom %>% 
+  crop(terra::vect(ip_pols), mask=TRUE,
+       filename=pop_bip_fp, 
+       datatype = 'INT4U',
+       gdal=c("COMPRESS=LZW"),
+       overwrite = TRUE)
+
+plot(pop_biom_ip)
+
+# Mask to forest+buffer
+fbmask <- terra::rast(forestbuff_tif)
+fbmask <- fbmask %>% crop(pop_r)
+pop_biomc <- pop_biom %>% crop(fbmask)
+pop_fb <- pop_biomc %>%
+  mask(fbmask, 
+       maskvalues=0, 
+       filename=pop_forestbuff_fp, 
+       datatype = 'INT4U',
+       gdal=c("COMPRESS=LZW"),
+       overwrite = TRUE)
+plot(pop_fb)
+
+# Mask to forest in IPLC
+fmask <- terra::rast(fmask_fp)
+fmask <- fmask %>% crop(pop_biom_ip)
+pop_biom_ipc <- pop_biom_ip %>% crop(fmask)
+pop_f <- pop_biom_ipc %>%
+  mask(fmask, 
+       maskvalues=NA, 
+       filename=pop_forest_fp, 
+       datatype = 'INT4U',
+       gdal=c("COMPRESS=LZW"),
+       overwrite = TRUE)
+
