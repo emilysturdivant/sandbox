@@ -69,3 +69,13 @@ hih_*/*/*.csv
 hih_*/*.pdf
 
 hih_*/working_data/
+
+hih/**/**.csv
+hih/*/*/*.csv
+hih/outputs/*
+hih/data/*
+hih/scaling/*.csv
+hih/scaling/outputs/*
+
+outputs/*
+data/*
