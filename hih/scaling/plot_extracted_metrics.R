@@ -21,6 +21,8 @@ library(jsonlite)
 ## area, carbon, and population from Test5b_forestIPLCs_buffer ----
 # Load results
 results <- jsonlite::read_json(here::here('hih/scaling/tropicalIPLC_forests_and_buffer_sums.geojson'))
+results <- jsonlite::read_json(here::here('hih/scaling/tropicalITs_forests_and_buffer_sums.geojson'))
+results <- jsonlite::read_json(here::here('hih/scaling/ITs_inMBF_forests_and_buffer_sums.geojson'))
 out <- results$features[[1]]$properties
 tbl <- out %>% purrr::map_dfr(as_tibble)
 
@@ -37,7 +39,7 @@ df2 <- tbl %>%
                           unit == 'carbon' ~ 'Carbon (PgC)', 
                           TRUE ~ unit), 
          zone = case_when(zone == 'b' ~ '2 km forest buffer', 
-                          zone == 'f' ~ 'IPLC tropical forests', 
+                          zone == 'f' ~ 'IP tropical forests', 
                           zone == 'fb' ~ 'forestplus', 
                           TRUE ~ zone), 
          # zone = factor(zone, levels=c('buffer', 'forest'), ordered=T)
@@ -57,20 +59,21 @@ df2 %>%
   cowplot::theme_cowplot()
 
 # Save plot
-ggsave(here::here('hih/outputs/scaling', 'forestbuffer_continent.png'),
-       width = 6, height = 8)
+out_png <- here::here('hih/scaling/outputs', 'forestbuffer_continent_ITs.png')
+ggsave(out_png, width = 6, height = 8)
 
 # Save CSV
 df2 %>% 
-  write_csv(here::here('hih/scaling/tropicalIPLC_forests_and_buffer_sums.csv'))
+  write_csv(here::here('hih/scaling/outputs/ITs_inMBF_forests_and_buffer_sums.csv'))
 
 # Look at values
-df2 %>% filter(str_detect(unit, 'Population')) %>% 
-  group_by(zone) %>% 
+df2 %>% 
+  # filter(str_detect(unit, 'Population')) %>% 
+  group_by(zone, unit) %>% 
   summarize(sum(value))
 
 ## Additionality component scores from Test6_risk_threshold ----
-results <- jsonlite::read_json(here::here('hih/scaling/additionality_summarized (2).geojson'))
+results <- jsonlite::read_json(here::here('hih/scaling/additionality_sumzd_ITs.geojson'))
 tbl <- results$features[[1]]$properties %>% purrr::map_dfr(as_tibble)
 
 df2 <- tbl %>% 
@@ -84,10 +87,10 @@ df2 <- tbl %>%
                           TRUE ~ unit), 
          zone = case_when(zone == 'biome' ~ 'Biome', 
                           zone == 'forest' ~ 'Tropical forests',  
-                          zone == 'IPLC' ~ 'IPLC lands', 
-                          zone == 'forIPLC' ~ 'IPLC tropical forests', 
+                          zone == 'IPLC' ~ 'IP lands', 
+                          zone == 'forIPLC' ~ 'IP tropical forests', 
                           zone == 'buffer' ~ '2 km forest buffer',
-                          zone == 'forestbuff' ~ 'In or <2 km from IPLC tropical forests',
+                          zone == 'forestbuff' ~ 'In or <2 km from IP tropical forests',
                           TRUE ~ zone), 
          threshold = case_when(threshold == 'gt70' ~ '70th percentile', 
                                threshold == 'gt90' ~ '90th percentile', 
@@ -98,7 +101,7 @@ df2 <- tbl %>%
   arrange(desc(zone))
 
 df2 %>% 
-  filter(zone %in% c('2 km forest buffer', 'IPLC tropical forests')) %>% 
+  filter(zone %in% c('2 km forest buffer', 'IP tropical forests')) %>% 
   ggplot(aes(x=continent, y=value, group=continent, fill=zone)) + 
   scale_y_continuous(labels=scales::comma, name='Area (million ha)') +
   scale_x_discrete(name=NULL) +
@@ -107,7 +110,7 @@ df2 %>%
   facet_wrap(vars(threshold)) +
   cowplot::theme_cowplot()
 
-ggsave(here::here('hih/scaling/outputs', 'addit_gt70gt90_forest_buffer.png'),
+ggsave(here::here('hih/scaling/outputs', 'addit_gt70gt90_ITs.png'),
        width = 8, height = 4)
 
 # Save
@@ -117,6 +120,6 @@ df2 %>%
 df2 %>% 
   group_by(zone, threshold) %>% 
   summarize(area_Mha = sum(value)) %>% 
-  filter(zone %in% c('In or <2 km from IPLC tropical forests', 'IPLC tropical forests')) %>% 
+  filter(zone %in% c('In or <2 km from IP tropical forests', 'IP tropical forests')) %>% 
   pivot_wider(names_from=threshold, values_from=area_Mha) %>% 
-  write_csv(here::here('hih/scaling/addit_table_gt70gt90_forest_buffer.csv'))
+  write_csv(here::here('hih/scaling/addit_table_gt70gt90_ITs.csv'))
